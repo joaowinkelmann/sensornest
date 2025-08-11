@@ -1,4 +1,4 @@
-name: Tempmesh API Deploy
+name: Tempmesh Front-end Deploy
 
 on:
     push:
