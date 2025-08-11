@@ -5,7 +5,7 @@
       <router-link to="/login">
         <button>Login</button>
       </router-link>
-      <router-link to="/dashboard">
+      <router-link to="/my-dashboard">
         <button>Go to Dashboard</button>
       </router-link>
     </div>
