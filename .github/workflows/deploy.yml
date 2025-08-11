@@ -2,9 +2,9 @@ name: Tempmesh Front-end Deploy
 
 on:
     push:
-        branches: [master]
+        branches: [main]
     pull_request:
-        branches: [master]
+        branches: [main]
     
     workflow_dispatch:
     
