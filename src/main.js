@@ -1,6 +1,6 @@
 import './assets/main.css'
-import 'leaflet/dist/leaflet.css' // 👈 Add this line
-import 'leaflet-draw/dist/leaflet.draw.css' // 👈 Add this line
+import 'leaflet/dist/leaflet.css'
+import 'leaflet-draw/dist/leaflet.draw.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
