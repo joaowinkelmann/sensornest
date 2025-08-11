@@ -13,10 +13,14 @@ const router = createRouter({
       component: LoginView,
     },
     {
-      path: '/',
+      path: '/dashboard',
       name: 'dashboard',
       component: DashboardView,
-      meta: { requiresAuth: true }, // This route requires authentication
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/',
+      redirect: '/dashboard',
     },
   ],
 });
