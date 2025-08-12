@@ -12,17 +12,10 @@ const router = createRouter({
       component: LoginView,
     },
     {
-      path: '/dashboard',
+      path: '/',
       name: 'dashboard',
       component: DashboardView,
       meta: { requiresAuth: true },
-    },
-    {
-      path: '/',
-      redirect: (to) => {
-        const authStore = useAuthStore();
-        return authStore.isAuthenticated ? '/dashboard' : '/login';
-      },
     },
     {
       path: '/:catchAll(.*)',

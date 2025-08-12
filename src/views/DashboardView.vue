@@ -3,12 +3,13 @@
     <!-- Header -->
     <header class="bg-white shadow-sm p-4 flex justify-between items-center z-10">
       <h1 class="text-2xl font-bold text-gray-800">TempMesh Dashboard</h1>
-      <div v-if="authStore.user" class="flex items-center">
-        <span class="text-gray-600 mr-4">Welcome, {{ authStore.user.name }}</span>
-        <button @click="authStore.logout()" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md transition-colors">
-          Logout
-        </button>
-      </div>
+      <button
+        @click="authStore.logout()"
+        class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md transition-colors"
+        style="margin-left: 1rem;"
+      >
+        Logout
+      </button>
     </header>
 
     <!-- Main Content -->
