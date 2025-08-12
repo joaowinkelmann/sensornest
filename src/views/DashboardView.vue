@@ -75,20 +75,28 @@
             >
               M
             </button>
-            <button
-              @click="setMode(null)"
-              :class="[
-                'px-3 py-1 rounded font-bold',
-                mode === null ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'
-              ]"
-              title="Normal Mode"
-            >
-              N
-            </button>
-            <span class="ml-4 text-xs text-gray-500">
-              Mode: <span class="font-bold">{{ modeLabel }}</span>
-            </span>
-          </div>
+              <button
+                @click="setMode(null)"
+                :class="[
+                  'px-3 py-1 rounded font-bold',
+                  mode === null ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'
+                ]"
+                title="Normal Mode"
+              >
+                N
+              </button>
+              <button
+                @click="saveZone"
+                :disabled="!zonesStore.activeZone"
+                class="px-3 py-1 rounded font-bold bg-yellow-500 text-white disabled:opacity-50"
+                title="Save Zone"
+              >
+                S
+              </button>
+              <span class="ml-4 text-xs text-gray-500">
+                Mode: <span class="font-bold">{{ modeLabel }}</span>
+              </span>
+            </div>
           <div class="flex-grow min-h-[500px]">
             <LeafletMap 
               :zones="convertedZones" 
@@ -222,5 +230,21 @@ const handleVertexMoved = ({ index, latlng }) => {
     zonesStore.zones[zoneIdx] = updatedZone;
   }
   // zonesStore.updateZone(activeZone.id, { vertices: updatedVertices });
+};
+const saveZone = async () => {
+  const zone = zonesStore.activeZone;
+  if (!zone) return;
+  try {
+    // PATCH /zones/:id
+    await zonesStore.updateZone(zone.id, {
+      name: zone.name,
+      vertices: zone.vertices,
+      meshId: zone.meshId,
+    });
+    // Optionally show a success message
+    alert('Zone saved!');
+  } catch (e) {
+    alert('Failed to save zone.');
+  }
 };
 </script>

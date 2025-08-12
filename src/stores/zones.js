@@ -50,10 +50,7 @@ export const useZonesStore = defineStore('zones', {
       this.loading = true;
       this.error = null;
       try {
-        // This corresponds to PUT /zones/:zoneId (example endpoint)
-        // Note: The backend API for this might need to be created.
-        // For now, we optimistically update the local state.
-        const response = await apiClient.put(`/zones/${zoneId}`, zoneData);
+        const response = await apiClient.patch(`/zones/${zoneId}`, zoneData);
         const index = this.zones.findIndex(z => z.id === zoneId);
         if (index !== -1) {
           this.zones[index] = response.data;

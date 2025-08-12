@@ -25,7 +25,27 @@ const emit = defineEmits(['vertex-added', 'vertex-removed', 'vertex-moved']);
 
 const mapContainer = ref(null);
 let map = null;
-let zoneLayers = {}; // Use an object to store layers by zone ID
+let zoneLayers = {};
+
+// This function enables or disables map dragging and other interactions
+const setMapDragging = (enabled) => {
+  if (!map) return;
+  if (enabled) {
+    map.dragging.enable();
+    map.touchZoom.enable();
+    map.doubleClickZoom.enable();
+    map.scrollWheelZoom.enable();
+    map.boxZoom.enable();
+    map.keyboard.enable();
+  } else {
+    map.dragging.disable();
+    map.touchZoom.disable();
+    map.doubleClickZoom.disable();
+    map.scrollWheelZoom.disable();
+    map.boxZoom.disable();
+    map.keyboard.disable();
+  }
+};
 
 // This function draws/updates the zone polygons on the map
 const drawZones = (zones) => {
@@ -72,62 +92,51 @@ const drawZones = (zones) => {
         }
         zoneLayers[zone.id]._vertexMarkers = [];
 
-        // Add vertex markers for remove mode (only for active zone)
         // Add vertex markers for remove/move mode (only for active zone)
         if (isActive && (props.mode === 'remove' || props.mode === 'move')) {
           zone.vertices.forEach((v, idx) => {
-            const marker = L.marker([v.lat, v.lng], {
-              icon: L.divIcon({
-                className: 'vertex-remove-marker',
-                html: '<span style="color:red;font-weight:bold;">R</span>',
-                iconSize: [24, 24],
-                iconAnchor: [12, 12],
-              }),
-              interactive: true,
-            });
-            marker.on('click', (e) => {
-              emit('vertex-removed', idx);
-            });
+            let markerOptions = {};
+            if (props.mode === 'remove') {
+              markerOptions = {
+                icon: L.divIcon({
+                  className: 'vertex-remove-marker',
+                  html: '<span style="color:red;font-weight:bold;">R</span>',
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12],
+                }),
+                interactive: true,
+              };
+            } else if (props.mode === 'move') {
+              markerOptions = {
+                draggable: true,
+                icon: L.divIcon({
+                  className: 'vertex-move-marker',
+                  html: '<span style="color:blue;font-weight:bold;">M</span>',
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12],
+                }),
+                interactive: true,
+              };
+            }
+            const marker = L.marker([v.lat, v.lng], markerOptions);
+            if (props.mode === 'remove') {
+              marker.on('click', (e) => {
+                emit('vertex-removed', idx);
+              });
+            } else if (props.mode === 'move') {
+              marker.on('dragstart', () => setMapDragging(false));
+              marker.on('dragend', (e) => {
+                setMapDragging(true);
+                const newLatLng = e.target.getLatLng();
+                emit('vertex-moved', { index: idx, latlng: newLatLng });
+              });
+              marker.on('click', () => setMapDragging(false));
+              marker.on('mouseup', () => setMapDragging(true));
+            }
             marker.addTo(map);
             zoneLayers[zone.id]._vertexMarkers.push(marker);
           });
         }
-          let markerOptions = {};
-          if (props.mode === 'remove') {
-            markerOptions = {
-              icon: L.divIcon({
-                className: 'vertex-remove-marker',
-                html: '<span style="color:red;font-weight:bold;">R</span>',
-                iconSize: [24, 24],
-                iconAnchor: [12, 12],
-              }),
-              interactive: true,
-            };
-          } else if (props.mode === 'move') {
-            markerOptions = {
-              draggable: true,
-              icon: L.divIcon({
-                className: 'vertex-move-marker',
-                html: '<span style="color:blue;font-weight:bold;">M</span>',
-                iconSize: [24, 24],
-                iconAnchor: [12, 12],
-              }),
-              interactive: true,
-            };
-          }
-          const marker = L.marker([v.lat, v.lng], markerOptions);
-          if (props.mode === 'remove') {
-            marker.on('click', (e) => {
-              emit('vertex-removed', idx);
-            });
-          } else if (props.mode === 'move') {
-            marker.on('dragend', (e) => {
-              const newLatLng = e.target.getLatLng();
-              emit('vertex-moved', { index: idx, latlng: newLatLng });
-            });
-          }
-          marker.addTo(map);
-          zoneLayers[zone.id]._vertexMarkers.push(marker);
       }
     });
 
@@ -171,6 +180,11 @@ onUnmounted(() => {
     map.remove();
     map = null;
   }
+});
+
+// Watch for changes to the 'mode' prop to enable/disable map interactions
+watch(() => props.mode, (newMode) => {
+  setMapDragging(newMode !== 'move');
 });
 
 // Watch for changes to the 'zones' prop and redraw the polygons on the map
