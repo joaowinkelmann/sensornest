@@ -1,9 +1,9 @@
 #!/usr/bin/bash
 
-# Variables
 APP_NAME="front-tempmesh"
 APP_DIR="/var/www/html/$APP_NAME"
 LOG_FILE="$APP_DIR/run-deployment.log"
+DIST_DIR="$APP_DIR/dist"
 
 log() {
   local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
@@ -24,7 +24,6 @@ mkdir -p "$(dirname "$LOG_FILE")"
 log "Starting deployment process for $APP_NAME"
 
 export PATH="$HOME/.bun/bin:$PATH"
-
 export NVM_DIR="$HOME/.config/nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" || handle_error "NVM script not found. Please install NVM first"
 
@@ -58,16 +57,17 @@ bun upgrade || handle_error "Failed to upgrade Bun"
 log "Running Bun $(bun --revision)"
 bun install || handle_error "Failed to install dependencies"
 
-log "Building application..."
+log "Building application for production..."
+export NODE_ENV=production
 bun run build || handle_error "Build failed"
 log "Build completed successfully"
 
 if pm2 show $APP_NAME &> /dev/null; then
-  log "Restarting $APP_NAME application..."
+  log "Restarting $APP_NAME static server..."
   pm2 restart $APP_NAME || handle_error "Failed to restart application with PM2"
 else
-  log "Starting $APP_NAME application..."
-  pm2 start bun --name "$APP_NAME" -- run start || handle_error "Failed to start application with PM2"
+  log "Starting $APP_NAME static server..."
+  pm2 serve $DIST_DIR 7772 --name "$APP_NAME" --spa || handle_error "Failed to start static server with PM2"
 fi
 
 log "Saving PM2 configuration..."

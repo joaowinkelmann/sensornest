@@ -25,7 +25,7 @@ jobs:
                     REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
                     REMOTE_USER: ${{ secrets.REMOTE_USER }}
                     TARGET: ${{ secrets.TARGET_DIR }}
-                    EXCLUDE: "/node_modules/, **.env, .env.local, .gitignore, .git/, .github/, .scripts/, .vscode/"
+                    EXCLUDE: "/node_modules/, **.env, .env.local, .gitignore, .git/, .github/, .vscode/"
                     SCRIPT_BEFORE: |
                         echo "===> Starting deployment"
                         sudo systemctl stop nginx
