@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import LoginView from '../views/LoginView.vue';
 import DashboardView from '../views/DashboardView.vue';
-import HomeView from '../views/HomeView.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const router = createRouter({
@@ -13,19 +12,21 @@ const router = createRouter({
       component: LoginView,
     },
     {
-      path: '/my-dashboard',
+      path: '/dashboard',
       name: 'dashboard',
       component: DashboardView,
       meta: { requiresAuth: true },
     },
     {
-      path: '/home',
-      name: 'home',
-      component: HomeView,
+      path: '/',
+      redirect: (to) => {
+        const authStore = useAuthStore();
+        return authStore.isAuthenticated ? '/dashboard' : '/login';
+      },
     },
     {
-      path: '/',
-      redirect: '/home',
+      path: '/:catchAll(.*)',
+      redirect: '/',
     },
   ],
 });
@@ -40,10 +41,10 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    // If route requires auth and user is not logged in, redirect to login
     next({ name: 'login' });
+  } else if (to.name === 'login' && authStore.isAuthenticated) {
+    next({ name: 'dashboard' });
   } else {
-    // Otherwise, allow navigation
     next();
   }
 });
