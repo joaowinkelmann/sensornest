@@ -3,7 +3,7 @@
     <div class="max-w-md w-full space-y-8 p-10 bg-white shadow-lg rounded-xl">
       <div>
         <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Sign in to your TempMesh
+          Sign in to TempMesh
         </h2>
       </div>
       <form class="mt-8 space-y-6" @submit.prevent="handleLogin">
@@ -52,6 +52,17 @@
             <span v-else>Sign in</span>
           </button>
         </div>
+
+        <!-- Register button -->
+        <div class="text-sm text-center">
+          <button 
+            @click="$router.push('/register')" 
+            class="mt-2 font-medium text-indigo-600 hover:text-indigo-500"
+          >
+            Create a new account
+          </button>
+        </div>
+
       </form>
     </div>
   </div>
