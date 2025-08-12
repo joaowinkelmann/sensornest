@@ -1,47 +1,141 @@
 <template>
   <!-- This div is the container where the Leaflet map will be rendered. -->
-  <div ref="mapContainer" class="h-full w-full"></div>
+  <div ref="mapContainer" class="leaflet-map-container"></div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import L from 'leaflet';
-import 'leaflet-draw';
 
-// Define props to receive data from the parent component (ZoneManager)
+// Define props to receive data from the parent component
 const props = defineProps({
   zones: {
     type: Array,
     required: true,
   },
+  activeZoneId: {
+    type: String,
+    default: null,
+  },
+  mode: String, // 'add', 'remove', 'move', or null
 });
 
-// Define the event that this component can emit to its parent
-const emit = defineEmits(['zone-created']);
+// Define the events that this component can emit to its parent
+const emit = defineEmits(['vertex-added', 'vertex-removed', 'vertex-moved']);
 
 const mapContainer = ref(null);
 let map = null;
-let drawnItems = null;
+let zoneLayers = {}; // Use an object to store layers by zone ID
 
-// This function draws the existing zone polygons on the map
+// This function draws/updates the zone polygons on the map
 const drawZones = (zones) => {
-  if (!map || !drawnItems) return;
+  if (!map) return;
 
-  drawnItems.clearLayers(); // Clear previous polygons before drawing new ones
+  const existingZoneIds = Object.keys(zoneLayers);
+  const newZoneIds = zones.map(z => z.id);
+
+  // Remove layers for zones that no longer exist
+  existingZoneIds.forEach(zoneId => {
+    if (!newZoneIds.includes(zoneId)) {
+      map.removeLayer(zoneLayers[zoneId]);
+      delete zoneLayers[zoneId];
+    }
+  });
 
   if (zones && zones.length > 0) {
     zones.forEach(zone => {
-      // Ensure vertices exist and is an array
+      const isActive = zone.id === props.activeZoneId;
+      const style = {
+        color: isActive ? '#d97706' : '#3388ff', // Amber for active, blue for others
+        weight: isActive ? 3 : 2,
+        opacity: 1,
+        fillOpacity: 0.2,
+      };
+
       if (Array.isArray(zone.vertices) && zone.vertices.length > 0) {
         const latlngs = zone.vertices.map(v => [v.lat, v.lng]);
-        const polygon = L.polygon(latlngs, { color: '#3388ff' }).bindPopup(`<b>${zone.name}</b>`);
-        drawnItems.addLayer(polygon);
+        
+        if (zoneLayers[zone.id]) {
+          // Update existing layer
+          zoneLayers[zone.id].setLatLngs(latlngs);
+          zoneLayers[zone.id].setStyle(style);
+        } else {
+          // Create new layer
+          const polygon = L.polygon(latlngs, style).bindPopup(`<b>${zone.name}</b>`);
+          polygon.addTo(map);
+          zoneLayers[zone.id] = polygon;
+        }
+
+        // Remove old markers
+        if (zoneLayers[zone.id]._vertexMarkers) {
+          zoneLayers[zone.id]._vertexMarkers.forEach(marker => map.removeLayer(marker));
+        }
+        zoneLayers[zone.id]._vertexMarkers = [];
+
+        // Add vertex markers for remove mode (only for active zone)
+        // Add vertex markers for remove/move mode (only for active zone)
+        if (isActive && (props.mode === 'remove' || props.mode === 'move')) {
+          zone.vertices.forEach((v, idx) => {
+            const marker = L.marker([v.lat, v.lng], {
+              icon: L.divIcon({
+                className: 'vertex-remove-marker',
+                html: '<span style="color:red;font-weight:bold;">R</span>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+              }),
+              interactive: true,
+            });
+            marker.on('click', (e) => {
+              emit('vertex-removed', idx);
+            });
+            marker.addTo(map);
+            zoneLayers[zone.id]._vertexMarkers.push(marker);
+          });
+        }
+          let markerOptions = {};
+          if (props.mode === 'remove') {
+            markerOptions = {
+              icon: L.divIcon({
+                className: 'vertex-remove-marker',
+                html: '<span style="color:red;font-weight:bold;">R</span>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+              }),
+              interactive: true,
+            };
+          } else if (props.mode === 'move') {
+            markerOptions = {
+              draggable: true,
+              icon: L.divIcon({
+                className: 'vertex-move-marker',
+                html: '<span style="color:blue;font-weight:bold;">M</span>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+              }),
+              interactive: true,
+            };
+          }
+          const marker = L.marker([v.lat, v.lng], markerOptions);
+          if (props.mode === 'remove') {
+            marker.on('click', (e) => {
+              emit('vertex-removed', idx);
+            });
+          } else if (props.mode === 'move') {
+            marker.on('dragend', (e) => {
+              const newLatLng = e.target.getLatLng();
+              emit('vertex-moved', { index: idx, latlng: newLatLng });
+            });
+          }
+          marker.addTo(map);
+          zoneLayers[zone.id]._vertexMarkers.push(marker);
       }
     });
 
     // Fit the map view to the bounds of all drawn polygons
-    if (drawnItems.getLayers().length > 0) {
-      map.fitBounds(drawnItems.getBounds().pad(0.1));
+    const allLayers = Object.values(zoneLayers).filter(l => l instanceof L.Polygon);
+    if (allLayers.length > 0) {
+      const group = new L.featureGroup(allLayers);
+      map.fitBounds(group.getBounds().pad(0.1));
     }
   }
 };
@@ -50,43 +144,19 @@ const drawZones = (zones) => {
 onMounted(() => {
   if (mapContainer.value) {
     // Initialize the map
-    map = L.map(mapContainer.value).setView([-23.5505, -46.6333], 13); // Centered on São Paulo
+    map = L.map(mapContainer.value, {
+      zoomControl: true,
+    }).setView([-23.5505, -46.6333], 13); // Centered on São Paulo
 
     // Add the tile layer (the map background) from OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
 
-    // Initialize the feature group that will hold our drawn polygons
-    drawnItems = new L.FeatureGroup();
-    map.addLayer(drawnItems);
-
-    // Initialize the Leaflet Draw control
-    const drawControl = new L.Control.Draw({
-      edit: {
-        featureGroup: drawnItems, // Allow editing of the polygons in this group
-      },
-      draw: {
-        polygon: true, // Allow drawing polygons
-        polyline: false,
-        rectangle: false,
-        circle: false,
-        marker: false,
-        circlemarker: false,
-      },
-    });
-    map.addControl(drawControl);
-
-    // Event listener for when a new shape is created
-    map.on(L.Draw.Event.CREATED, (event) => {
-      const layer = event.layer;
-      const vertices = layer.getLatLngs()[0].map(latlng => ({ lat: latlng.lat, lng: latlng.lng }));
-      
-      const zoneName = prompt("Enter a name for the new zone:", "New Zone");
-      
-      if (zoneName) {
-        // Emit the 'zone-created' event to the parent component with the new zone's data
-        emit('zone-created', { name: zoneName, vertices });
+    // Event listener for when the map is clicked
+    map.on('click', (event) => {
+      if (props.activeZoneId && props.mode === 'add') {
+        emit('vertex-added', event.latlng);
       }
     });
 
@@ -104,7 +174,37 @@ onUnmounted(() => {
 });
 
 // Watch for changes to the 'zones' prop and redraw the polygons on the map
-watch(() => props.zones, (newZones) => {
-  drawZones(newZones);
-}, { deep: true }); // 'deep: true' is important to detect changes within the array of objects
+watch(() => [props.zones, props.mode, props.activeZoneId], () => {
+  drawZones(props.zones);
+}, { deep: true });
 </script>
+
+<style>
+.leaflet-map-container {
+  width: 100%;
+  min-height: 500px;
+  height: 100%;
+}
+.vertex-remove-marker {
+  cursor: pointer;
+  background: white;
+  border-radius: 50%;
+  border: 2px solid red;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+.vertex-move-marker {
+  cursor: grab;
+  background: white;
+  border-radius: 50%;
+  border: 2px solid blue;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+</style>
