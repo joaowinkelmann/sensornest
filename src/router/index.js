@@ -1,8 +1,6 @@
-// src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router';
 import LoginView from '../views/LoginView.vue';
 import DashboardView from '../views/DashboardView.vue';
-// Create a simple HomeView for demonstration
 import HomeView from '../views/HomeView.vue';
 import { useAuthStore } from '@/stores/auth';
 

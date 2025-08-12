@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   // Carrega as variaveis de ambiente do arquivo .env
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    base: '/',
+    base: '/tempmesh/',
     plugins: [
       vue(),
       vueDevTools(),
@@ -22,4 +22,4 @@ export default defineConfig(({ mode }) => {
       allowedHosts: ['winkels.com.br'],
     },
   }
-})/
+})
