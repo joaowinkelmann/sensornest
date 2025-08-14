@@ -45,6 +45,13 @@ export const useZonesStore = defineStore('zones', {
     setActiveZone(zoneId) {
       this.activeZoneId = zoneId;
     },
+    // Action to optimistically update a zone locally
+    updateLocalZone(zoneId, zoneData) {
+      const index = this.zones.findIndex(z => z.id === zoneId);
+      if (index !== -1) {
+        this.zones[index] = { ...this.zones[index], ...zoneData };
+      }
+    },
     // Action to update a zone's data (e.g., adding a vertex)
     async updateZone(zoneId, zoneData) {
       this.loading = true;

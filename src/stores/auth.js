@@ -44,7 +44,8 @@ export const useAuthStore = defineStore('auth', {
       this.token = null;
       this.user = null;
       localStorage.removeItem('token');
-      router.push('/login');
+      // No longer need to redirect, the UI will reactively update.
+      // router.push('/login');
     },
   },
 });

@@ -1,6 +1,24 @@
 <template>
-  <!-- This div is the container where the Leaflet map will be rendered. -->
-  <div ref="mapContainer" class="leaflet-map-container"></div>
+  <div class="leaflet-map-wrapper">
+    <div ref="mapContainer" class="leaflet-map-container"></div>
+    <div class="leaflet-controls-container">
+      <q-btn-group push>
+        <q-btn push label="Add" icon="add_circle" @click="setMode('add')" :color="mode === 'add' ? 'primary' : 'white'" :text-color="mode === 'add' ? 'white' : 'black'" />
+        <q-btn push label="Remove" icon="remove_circle" @click="setMode('remove')" :color="mode === 'remove' ? 'negative' : 'white'" :text-color="mode === 'remove' ? 'white' : 'black'" />
+        <q-btn push label="Move" icon="open_with" @click="setMode('move')" :color="mode === 'move' ? 'info' : 'white'" :text-color="mode === 'move' ? 'white' : 'black'" />
+        <q-btn push label="Normal" icon="pan_tool" @click="setMode(null)" :color="!mode ? 'positive' : 'white'" :text-color="!mode ? 'white' : 'black'" />
+      </q-btn-group>
+      <q-btn
+        push
+        label="Save Zone"
+        icon="save"
+        color="amber"
+        class="q-ml-md"
+        :disabled="!activeZone"
+        @click="$emit('zone-updated')"
+      />
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -9,23 +27,22 @@ import L from 'leaflet';
 
 // Define props to receive data from the parent component
 const props = defineProps({
-  zones: {
-    type: Array,
-    required: true,
-  },
-  activeZoneId: {
-    type: String,
-    default: null,
-  },
-  mode: String, // 'add', 'remove', 'move', or null
+  zones: { type: Array, required: true },
+  activeZoneId: { type: String, default: null },
+  activeZone: { type: Object, default: null },
 });
 
 // Define the events that this component can emit to its parent
-const emit = defineEmits(['vertex-added', 'vertex-removed', 'vertex-moved']);
+const emit = defineEmits(['vertex-added', 'vertex-removed', 'vertex-moved', 'zone-updated']);
 
 const mapContainer = ref(null);
+const mode = ref(null); // 'add', 'remove', 'move', or null
 let map = null;
 let zoneLayers = {};
+
+const setMode = (newMode) => {
+  mode.value = newMode;
+};
 
 // This function enables or disables map dragging and other interactions
 const setMapDragging = (enabled) => {
@@ -35,15 +52,11 @@ const setMapDragging = (enabled) => {
     map.touchZoom.enable();
     map.doubleClickZoom.enable();
     map.scrollWheelZoom.enable();
-    map.boxZoom.enable();
-    map.keyboard.enable();
   } else {
     map.dragging.disable();
     map.touchZoom.disable();
     map.doubleClickZoom.disable();
     map.scrollWheelZoom.disable();
-    map.boxZoom.disable();
-    map.keyboard.disable();
   }
 };
 
@@ -57,7 +70,12 @@ const drawZones = (zones) => {
   // Remove layers for zones that no longer exist
   existingZoneIds.forEach(zoneId => {
     if (!newZoneIds.includes(zoneId)) {
-      map.removeLayer(zoneLayers[zoneId]);
+      if (zoneLayers[zoneId]) {
+        if (zoneLayers[zoneId]._vertexMarkers) {
+          zoneLayers[zoneId]._vertexMarkers.forEach(marker => map.removeLayer(marker));
+        }
+        map.removeLayer(zoneLayers[zoneId]);
+      }
       delete zoneLayers[zoneId];
     }
   });
@@ -76,62 +94,38 @@ const drawZones = (zones) => {
         const latlngs = zone.vertices.map(v => [v.lat, v.lng]);
         
         if (zoneLayers[zone.id]) {
-          // Update existing layer
-          zoneLayers[zone.id].setLatLngs(latlngs);
-          zoneLayers[zone.id].setStyle(style);
+          zoneLayers[zone.id].setLatLngs(latlngs).setStyle(style);
         } else {
-          // Create new layer
-          const polygon = L.polygon(latlngs, style).bindPopup(`<b>${zone.name}</b>`);
-          polygon.addTo(map);
+          const polygon = L.polygon(latlngs, style).bindPopup(`<b>${zone.name}</b>`).addTo(map);
           zoneLayers[zone.id] = polygon;
         }
 
-        // Remove old markers
+        // Manage vertex markers
         if (zoneLayers[zone.id]._vertexMarkers) {
           zoneLayers[zone.id]._vertexMarkers.forEach(marker => map.removeLayer(marker));
         }
         zoneLayers[zone.id]._vertexMarkers = [];
 
-        // Add vertex markers for remove/move mode (only for active zone)
-        if (isActive && (props.mode === 'remove' || props.mode === 'move')) {
+        if (isActive && (mode.value === 'remove' || mode.value === 'move')) {
           zone.vertices.forEach((v, idx) => {
-            let markerOptions = {};
-            if (props.mode === 'remove') {
-              markerOptions = {
-                icon: L.divIcon({
-                  className: 'vertex-remove-marker',
-                  html: '<span style="color:red;font-weight:bold;">R</span>',
-                  iconSize: [24, 24],
-                  iconAnchor: [12, 12],
-                }),
-                interactive: true,
-              };
-            } else if (props.mode === 'move') {
-              markerOptions = {
-                draggable: true,
-                icon: L.divIcon({
-                  className: 'vertex-move-marker',
-                  html: '<span style="color:blue;font-weight:bold;">M</span>',
-                  iconSize: [24, 24],
-                  iconAnchor: [12, 12],
-                }),
-                interactive: true,
-              };
-            }
-            const marker = L.marker([v.lat, v.lng], markerOptions);
-            if (props.mode === 'remove') {
-              marker.on('click', (e) => {
-                emit('vertex-removed', idx);
-              });
-            } else if (props.mode === 'move') {
+            const marker = L.marker([v.lat, v.lng], {
+              draggable: mode.value === 'move',
+              icon: L.divIcon({
+                className: `vertex-marker vertex-${mode.value}-marker`,
+                html: `<span>${mode.value.charAt(0).toUpperCase()}</span>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+              }),
+            });
+
+            if (mode.value === 'remove') {
+              marker.on('click', () => emit('vertex-removed', idx));
+            } else if (mode.value === 'move') {
               marker.on('dragstart', () => setMapDragging(false));
               marker.on('dragend', (e) => {
                 setMapDragging(true);
-                const newLatLng = e.target.getLatLng();
-                emit('vertex-moved', { index: idx, latlng: newLatLng });
+                emit('vertex-moved', { index: idx, latlng: e.target.getLatLng() });
               });
-              marker.on('click', () => setMapDragging(false));
-              marker.on('mouseup', () => setMapDragging(true));
             }
             marker.addTo(map);
             zoneLayers[zone.id]._vertexMarkers.push(marker);
@@ -140,8 +134,7 @@ const drawZones = (zones) => {
       }
     });
 
-    // Fit the map view to the bounds of all drawn polygons
-    const allLayers = Object.values(zoneLayers).filter(l => l instanceof L.Polygon);
+    const allLayers = Object.values(zoneLayers).filter(l => l instanceof L.Polygon && l.getLatLngs()[0].length > 0);
     if (allLayers.length > 0) {
       const group = new L.featureGroup(allLayers);
       map.fitBounds(group.getBounds().pad(0.1));
@@ -149,32 +142,23 @@ const drawZones = (zones) => {
   }
 };
 
-// onMounted is a Vue lifecycle hook that runs after the component is added to the DOM
 onMounted(() => {
   if (mapContainer.value) {
-    // Initialize the map
-    map = L.map(mapContainer.value, {
-      zoomControl: true,
-    }).setView([-23.5505, -46.6333], 13); // Centered on São Paulo
-
-    // Add the tile layer (the map background) from OpenStreetMap
+    map = L.map(mapContainer.value).setView([-23.5505, -46.6333], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
 
-    // Event listener for when the map is clicked
     map.on('click', (event) => {
-      if (props.activeZoneId && props.mode === 'add') {
+      if (props.activeZoneId && mode.value === 'add') {
         emit('vertex-added', event.latlng);
       }
     });
 
-    // Initial drawing of zones passed via props
     drawZones(props.zones);
   }
 });
 
-// onUnmounted is a lifecycle hook that cleans up when the component is destroyed
 onUnmounted(() => {
   if (map) {
     map.remove();
@@ -182,43 +166,57 @@ onUnmounted(() => {
   }
 });
 
-// Watch for changes to the 'mode' prop to enable/disable map interactions
-watch(() => props.mode, (newMode) => {
+watch(() => mode.value, (newMode) => {
   setMapDragging(newMode !== 'move');
+  drawZones(props.zones); // Redraw to show/hide markers
 });
 
-// Watch for changes to the 'zones' prop and redraw the polygons on the map
-watch(() => [props.zones, props.mode, props.activeZoneId], () => {
+watch(() => [props.zones, props.activeZoneId], () => {
   drawZones(props.zones);
 }, { deep: true });
 </script>
 
 <style>
+.leaflet-map-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 600px;
+}
 .leaflet-map-container {
   width: 100%;
-  min-height: 500px;
   height: 100%;
 }
-.vertex-remove-marker {
+.leaflet-controls-container {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000; /* Above the map */
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.vertex-marker {
   cursor: pointer;
   background: white;
   border-radius: 50%;
-  border: 2px solid red;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
+  font-weight: bold;
+  font-family: sans-serif;
+}
+.vertex-remove-marker {
+  border: 2px solid #C10015; /* Quasar negative */
+  color: #C10015;
 }
 .vertex-move-marker {
   cursor: grab;
-  background: white;
-  border-radius: 50%;
-  border: 2px solid blue;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
+  border: 2px solid #31CCEC; /* Quasar info */
+  color: #31CCEC;
 }
 </style>

@@ -1,117 +1,89 @@
 <template>
-  <div class="flex flex-col h-screen bg-gray-100">
+  <q-layout view="hHh LpR fFf">
     <!-- Header -->
-    <header class="bg-white shadow-sm p-4 flex justify-between items-center z-10">
-      <h1 class="text-2xl font-bold text-gray-800">TempMesh Dashboard</h1>
-      <button
-        @click="authStore.logout()"
-        class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md transition-colors"
-        style="margin-left: 1rem;"
-      >
-        Logout
-      </button>
-    </header>
+    <q-header elevated class="bg-primary text-white">
+      <q-toolbar>
+        <q-toolbar-title>
+          <q-avatar>
+            <img src="https://cdn.quasar.dev/logo-v2/svg/logo-mono-white.svg">
+          </q-avatar>
+          TempMesh Dashboard
+        </q-toolbar-title>
+        <q-btn
+          v-if="authStore.isAuthenticated"
+          @click="authStore.logout()"
+          flat
+          round
+          dense
+          icon="logout"
+          label="Logout"
+        />
+      </q-toolbar>
+    </q-header>
 
-    <!-- Main Content -->
-    <main class="flex-grow p-4 sm:p-6 lg:p-8 overflow-y-auto">
-      <div class="max-w-7xl mx-auto flex flex-col md:flex-row gap-8">
-        <!-- Left Column: Controls -->
-        <div class="w-full md:w-1/3 flex flex-col gap-6">
-          <MeshManager />
-          
-          <!-- Zone List -->
-          <div class="bg-white rounded-lg shadow p-4">
-            <h3 class="font-semibold text-gray-700 mb-3">Zones</h3>
-            <ul v-if="zonesStore.zones.length > 0" class="space-y-2">
-              <li 
-                v-for="zone in zonesStore.zones" 
-                :key="zone.id" 
-                @click="zonesStore.setActiveZone(zone.id)"
-                class="p-3 rounded-md shadow-sm border cursor-pointer transition-colors"
-                :class="{
-                  'bg-indigo-100 border-indigo-400 ring-2 ring-indigo-300': zonesStore.activeZoneId === zone.id,
-                  'bg-gray-50 border-gray-200 hover:bg-gray-100': zonesStore.activeZoneId !== zone.id
-                }"
-              >
-                {{ zone.name }}
-              </li>
-            </ul>
-            <p v-else class="text-sm text-gray-400 mt-4">
-              No zones found for this mesh.
-            </p>
-          </div>
-        </div>
-
-        <!-- Right Column: Map -->
-        <div class="w-full md:w-2/3 bg-white rounded-lg shadow overflow-hidden flex flex-col">
-          <!-- Toolbar -->
-          <div class="flex items-center gap-2 bg-gray-50 border-b px-4 py-2">
-            <button
-              @click="setMode('add')"
-              :class="[
-                'px-3 py-1 rounded font-bold',
-                mode === 'add' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'
-              ]"
-              title="Add Vertices"
-            >
-              A
-            </button>
-            <button
-              @click="setMode('remove')"
-              :class="[
-                'px-3 py-1 rounded font-bold',
-                mode === 'remove' ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-700'
-              ]"
-              title="Remove Vertices"
-            >
-              R
-            </button>
-            <button
-              @click="setMode('move')"
-              :class="[
-                'px-3 py-1 rounded font-bold',
-                mode === 'move' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
-              ]"
-              title="Move Vertices"
-            >
-              M
-            </button>
-              <button
-                @click="setMode(null)"
-                :class="[
-                  'px-3 py-1 rounded font-bold',
-                  mode === null ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'
-                ]"
-                title="Normal Mode"
-              >
-                N
-              </button>
-              <button
-                @click="saveZone"
-                :disabled="!zonesStore.activeZone"
-                class="px-3 py-1 rounded font-bold bg-yellow-500 text-white disabled:opacity-50"
-                title="Save Zone"
-              >
-                S
-              </button>
-              <span class="ml-4 text-xs text-gray-500">
-                Mode: <span class="font-bold">{{ modeLabel }}</span>
-              </span>
+    <q-page-container>
+      <q-page padding v-if="authStore.isAuthenticated">
+        <div class="row q-col-gutter-md">
+          <!-- Left Column: Controls -->
+          <div class="col-12 col-md-4">
+            <div class="q-gutter-y-md">
+              <MeshManager />
+              
+              <!-- Zone List -->
+              <q-card flat bordered>
+                <q-card-section>
+                  <div class="text-h6">Zones</div>
+                </q-card-section>
+                <q-list separator v-if="zonesStore.zones.length > 0">
+                  <q-item 
+                    v-for="zone in zonesStore.zones" 
+                    :key="zone.id" 
+                    clickable 
+                    v-ripple
+                    @click="zonesStore.setActiveZone(zone.id)"
+                    :active="zonesStore.activeZoneId === zone.id"
+                    active-class="bg-teal-1 text-grey-8"
+                  >
+                    <q-item-section>{{ zone.name }}</q-item-section>
+                  </q-item>
+                </q-list>
+                <q-card-section v-else class="text-grey-6">
+                  No zones found for this mesh.
+                </q-card-section>
+              </q-card>
             </div>
-          <div class="flex-grow min-h-[500px]">
-            <LeafletMap 
-              :zones="convertedZones" 
-              :active-zone-id="zonesStore.activeZoneId"
-              :mode="mode"
-              @vertex-added="handleVertexAdded"
-              @vertex-removed="handleVertexRemoved"
-              @vertex-moved="handleVertexMoved"
-            />
+          </div>
+
+          <!-- Right Column: Map -->
+          <div class="col-12 col-md-8">
+            <q-card flat bordered class="full-height">
+              <LeafletMap 
+                :zones="convertedZones" 
+                :active-zone-id="zonesStore.activeZoneId"
+                :active-zone="zonesStore.activeZone"
+                @vertex-added="handleVertexAdded"
+                @vertex-removed="handleVertexRemoved"
+                @vertex-moved="handleVertexMoved"
+                @zone-updated="saveZone"
+              />
+            </q-card>
           </div>
         </div>
+      </q-page>
+      
+      <!-- Auth Modals -->
+      <div v-else>
+        <LoginModal 
+          :show="!authStore.isAuthenticated && !showRegisterModal" 
+          @show-register="showRegisterModal = true" 
+        />
+        <RegisterModal 
+          :show="showRegisterModal" 
+          @show-login="showRegisterModal = false" 
+        />
       </div>
-    </main>
-  </div>
+    </q-page-container>
+  </q-layout>
 </template>
 
 <script setup>
@@ -121,10 +93,14 @@ import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
 import MeshManager from '@/components/MeshManager.vue';
 import LeafletMap from '@/components/LeafletMap.vue';
+import LoginModal from '@/components/LoginModal.vue';
+import RegisterModal from '@/components/RegisterModal.vue';
 
 const authStore = useAuthStore();
 const meshesStore = useMeshesStore();
 const zonesStore = useZonesStore();
+
+const showRegisterModal = ref(false);
 
 const BASE_LAT = -23.5505 // São Paulo latitude
 const BASE_LNG = -46.6333 // São Paulo longitude
@@ -136,7 +112,6 @@ const convertedZones = computed(() =>
     if (!zone.vertices || zone.vertices.length === 0) {
       return { ...zone, vertices: [] };
     }
-    // Find the centroid of the zone in local coordinates
     const xs = zone.vertices.map(v => v.x);
     const ys = zone.vertices.map(v => v.y);
     const centroidX = xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -155,7 +130,15 @@ const convertedZones = computed(() =>
 // Convert a Leaflet {lat, lng} point back to API {x, y}
 const convertToApiVertex = (latlng) => {
   const activeZone = zonesStore.activeZone;
-  if (!activeZone || activeZone.vertices.length === 0) return null;
+  if (!activeZone || activeZone.vertices.length === 0) {
+     // If there are no vertices, create a new reference point
+    const centroidX = 0;
+    const centroidY = 0;
+     return {
+      x: Math.round(((latlng.lng - BASE_LNG) / SCALE) + centroidX),
+      y: Math.round(((latlng.lat - BASE_LAT) / SCALE) + centroidY),
+    };
+  }
 
   const xs = activeZone.vertices.map(v => v.x);
   const ys = activeZone.vertices.map(v => v.y);
@@ -168,22 +151,7 @@ const convertToApiVertex = (latlng) => {
   };
 };
 
-const mode = ref(null); // null, 'add', 'remove'
-
-const setMode = (newMode) => {
-  mode.value = newMode;
-};
-
-const modeLabel = computed(() => {
-  if (mode.value === 'add') return 'Add Vertices';
-  if (mode.value === 'remove') return 'Remove Vertices';
-  if (mode.value === 'move') return 'Move Vertices';
-  return 'Normal';
-});
-
 const handleVertexAdded = (latlng) => {
-  if (mode.value !== 'add') return;
-
   const activeZone = zonesStore.activeZone;
   if (!activeZone) return;
 
@@ -191,60 +159,42 @@ const handleVertexAdded = (latlng) => {
   if (!newApiVertex) return;
 
   const updatedVertices = [...activeZone.vertices, newApiVertex];
-  const updatedZone = { ...activeZone, vertices: updatedVertices };
   
-  // Optimistically update the local state
-  const index = zonesStore.zones.findIndex(z => z.id === activeZone.id);
-  if (index !== -1) {
-    zonesStore.zones[index] = updatedZone;
-  }
-
-  // Here you would typically call the update action
-  // zonesStore.updateZone(activeZone.id, { vertices: updatedVertices });
+  zonesStore.updateLocalZone(activeZone.id, { vertices: updatedVertices });
 };
 
 const handleVertexRemoved = (vertexIndex) => {
-  if (mode.value !== 'remove') return;
   const activeZone = zonesStore.activeZone;
   if (!activeZone) return;
   const updatedVertices = activeZone.vertices.filter((_, idx) => idx !== vertexIndex);
-  const updatedZone = { ...activeZone, vertices: updatedVertices };
-  const index = zonesStore.zones.findIndex(z => z.id === activeZone.id);
-  if (index !== -1) {
-    zonesStore.zones[index] = updatedZone;
-  }
-  // zonesStore.updateZone(activeZone.id, { vertices: updatedVertices });
+  zonesStore.updateLocalZone(activeZone.id, { vertices: updatedVertices });
 };
 
 const handleVertexMoved = ({ index, latlng }) => {
-  if (mode.value !== 'move') return;
   const activeZone = zonesStore.activeZone;
   if (!activeZone) return;
+  const newApiVertex = convertToApiVertex(latlng);
+  if (!newApiVertex) return;
+  
   const updatedVertices = activeZone.vertices.map((v, idx) =>
-    idx === index
-      ? convertToApiVertex(latlng)
-      : v
+    idx === index ? newApiVertex : v
   );
-  const updatedZone = { ...activeZone, vertices: updatedVertices };
-  const zoneIdx = zonesStore.zones.findIndex(z => z.id === activeZone.id);
-  if (zoneIdx !== -1) {
-    zonesStore.zones[zoneIdx] = updatedZone;
-  }
-  // zonesStore.updateZone(activeZone.id, { vertices: updatedVertices });
+  zonesStore.updateLocalZone(activeZone.id, { vertices: updatedVertices });
 };
+
 const saveZone = async () => {
   const zone = zonesStore.activeZone;
   if (!zone) return;
   try {
-    // PATCH /zones/:id
     await zonesStore.updateZone(zone.id, {
       name: zone.name,
       vertices: zone.vertices,
       meshId: zone.meshId,
     });
-    // Optionally show a success message
+    // You can use Quasar's Notify plugin for a better user experience
     alert('Zone saved!');
   } catch (e) {
+    console.error('Failed to save zone:', e);
     alert('Failed to save zone.');
   }
 };

@@ -2,6 +2,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
+import { quasar, transformAssetUrls } from '@quasar/vite-plugin'
 
 export default defineConfig(({ mode }) => {
   // Carrega as variaveis de ambiente do arquivo .env
@@ -9,8 +10,13 @@ export default defineConfig(({ mode }) => {
   return {
     base: '/tempmesh/',
     plugins: [
-      vue(),
+      vue({
+        template: { transformAssetUrls }
+      }),
       vueDevTools(),
+      quasar({
+        sassVariables: '/quasar.variables.sass',
+      })
     ],
     resolve: {
       alias: {
