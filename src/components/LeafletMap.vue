@@ -1,222 +1,157 @@
 <template>
   <div class="leaflet-map-wrapper">
     <div ref="mapContainer" class="leaflet-map-container"></div>
-    <div class="leaflet-controls-container">
-      <q-btn-group push>
-        <q-btn push label="Add" icon="add_circle" @click="setMode('add')" :color="mode === 'add' ? 'primary' : 'white'" :text-color="mode === 'add' ? 'white' : 'black'" />
-        <q-btn push label="Remove" icon="remove_circle" @click="setMode('remove')" :color="mode === 'remove' ? 'negative' : 'white'" :text-color="mode === 'remove' ? 'white' : 'black'" />
-        <q-btn push label="Move" icon="open_with" @click="setMode('move')" :color="mode === 'move' ? 'info' : 'white'" :text-color="mode === 'move' ? 'white' : 'black'" />
-        <q-btn push label="Normal" icon="pan_tool" @click="setMode(null)" :color="!mode ? 'positive' : 'white'" :text-color="!mode ? 'white' : 'black'" />
-      </q-btn-group>
-      <q-btn
-        push
-        label="Save Zone"
-        icon="save"
-        color="amber"
-        class="q-ml-md"
-        :disabled="!activeZone"
-        @click="$emit('zone-updated')"
-      />
-    </div>
+    
+    <!-- Map Controls -->
+    <MapControls
+      :mode="mode"
+      :active-zone="activeZone"
+      @mode-changed="handleModeChange"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import L from 'leaflet';
+import MapControls from './MapControls.vue';
+import { useMapManager } from './composables/useMapManager';
+import { useZoneRenderer } from './composables/useZoneRenderer';
 
-// Define props to receive data from the parent component
+// Define props
 const props = defineProps({
-  zones: { type: Array, required: true },
-  activeZoneId: { type: String, default: null },
-  activeZone: { type: Object, default: null },
+  zones: { 
+    type: Array, 
+    required: true 
+  },
+  activeZoneId: { 
+    type: String, 
+    default: null 
+  },
+  activeZone: { 
+    type: Object, 
+    default: null 
+  },
 });
 
-// Define the events that this component can emit to its parent
-const emit = defineEmits(['vertex-added', 'vertex-removed', 'vertex-moved', 'zone-updated']);
+// Define emits
+const emit = defineEmits([
+  'vertex-added', 
+  'vertex-removed', 
+  'vertex-moved', 
+]);
 
+// Reactive references
 const mapContainer = ref(null);
-const mode = ref(null); // 'add', 'remove', 'move', or null
-let map = null;
-let zoneLayers = {};
+const mode = ref(null);
 
-const setMode = (newMode) => {
+// Use composables for map management
+const { 
+  map, 
+  initializeMap, 
+  destroyMap, 
+  setMapDragging 
+} = useMapManager(mapContainer);
+
+const { 
+  zoneLayers, 
+  drawZones, 
+  clearZoneLayers 
+} = useZoneRenderer(map, props, emit);
+
+// Mode management
+const handleModeChange = (newMode) => {
   mode.value = newMode;
+  setMapDragging(newMode !== 'move');
+  // Redraw zones to show/hide vertex markers based on mode
+  drawZones(props.zones, props.activeZoneId, mode.value);
 };
 
-// This function enables or disables map dragging and other interactions
-const setMapDragging = (enabled) => {
-  if (!map) return;
-  if (enabled) {
-    map.dragging.enable();
-    map.touchZoom.enable();
-    map.doubleClickZoom.enable();
-    map.scrollWheelZoom.enable();
-  } else {
-    map.dragging.disable();
-    map.touchZoom.disable();
-    map.doubleClickZoom.disable();
-    map.scrollWheelZoom.disable();
+// Map click handler
+const handleMapClick = (event) => {
+  if (props.activeZoneId && mode.value === 'add') {
+    emit('vertex-added', event.latlng);
   }
 };
 
-// This function draws/updates the zone polygons on the map
-const drawZones = (zones) => {
-  if (!map) return;
-
-  const existingZoneIds = Object.keys(zoneLayers);
-  const newZoneIds = zones.map(z => z.id);
-
-  // Remove layers for zones that no longer exist
-  existingZoneIds.forEach(zoneId => {
-    if (!newZoneIds.includes(zoneId)) {
-      if (zoneLayers[zoneId]) {
-        if (zoneLayers[zoneId]._vertexMarkers) {
-          zoneLayers[zoneId]._vertexMarkers.forEach(marker => map.removeLayer(marker));
-        }
-        map.removeLayer(zoneLayers[zoneId]);
-      }
-      delete zoneLayers[zoneId];
-    }
-  });
-
-  if (zones && zones.length > 0) {
-    zones.forEach(zone => {
-      const isActive = zone.id === props.activeZoneId;
-      const style = {
-        color: isActive ? '#d97706' : '#3388ff', // Amber for active, blue for others
-        weight: isActive ? 3 : 2,
-        opacity: 1,
-        fillOpacity: 0.2,
-      };
-
-      if (Array.isArray(zone.vertices) && zone.vertices.length > 0) {
-        const latlngs = zone.vertices.map(v => [v.lat, v.lng]);
-        
-        if (zoneLayers[zone.id]) {
-          zoneLayers[zone.id].setLatLngs(latlngs).setStyle(style);
-        } else {
-          const polygon = L.polygon(latlngs, style).bindPopup(`<b>${zone.name}</b>`).addTo(map);
-          zoneLayers[zone.id] = polygon;
-        }
-
-        // Manage vertex markers
-        if (zoneLayers[zone.id]._vertexMarkers) {
-          zoneLayers[zone.id]._vertexMarkers.forEach(marker => map.removeLayer(marker));
-        }
-        zoneLayers[zone.id]._vertexMarkers = [];
-
-        if (isActive && (mode.value === 'remove' || mode.value === 'move')) {
-          zone.vertices.forEach((v, idx) => {
-            const marker = L.marker([v.lat, v.lng], {
-              draggable: mode.value === 'move',
-              icon: L.divIcon({
-                className: `vertex-marker vertex-${mode.value}-marker`,
-                html: `<span>${mode.value.charAt(0).toUpperCase()}</span>`,
-                iconSize: [24, 24],
-                iconAnchor: [12, 12],
-              }),
-            });
-
-            if (mode.value === 'remove') {
-              marker.on('click', () => emit('vertex-removed', idx));
-            } else if (mode.value === 'move') {
-              marker.on('dragstart', () => setMapDragging(false));
-              marker.on('dragend', (e) => {
-                setMapDragging(true);
-                emit('vertex-moved', { index: idx, latlng: e.target.getLatLng() });
-              });
-            }
-            marker.addTo(map);
-            zoneLayers[zone.id]._vertexMarkers.push(marker);
-          });
-        }
-      }
-    });
-
-    const allLayers = Object.values(zoneLayers).filter(l => l instanceof L.Polygon && l.getLatLngs()[0].length > 0);
-    if (allLayers.length > 0) {
-      const group = new L.featureGroup(allLayers);
-      map.fitBounds(group.getBounds().pad(0.1));
-    }
-  }
-};
-
-onMounted(() => {
-  if (mapContainer.value) {
-    map = L.map(mapContainer.value).setView([-23.5505, -46.6333], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
-
-    map.on('click', (event) => {
-      if (props.activeZoneId && mode.value === 'add') {
-        emit('vertex-added', event.latlng);
-      }
-    });
-
-    drawZones(props.zones);
+// Lifecycle hooks
+onMounted(async () => {
+  await initializeMap();
+  if (map.value) {
+    map.value.on('click', handleMapClick);
+    drawZones(props.zones, props.activeZoneId, mode.value);
   }
 });
 
 onUnmounted(() => {
-  if (map) {
-    map.remove();
-    map = null;
-  }
+  clearZoneLayers();
+  destroyMap();
 });
 
+// Watchers
 watch(() => mode.value, (newMode) => {
   setMapDragging(newMode !== 'move');
-  drawZones(props.zones); // Redraw to show/hide markers
+  drawZones(props.zones, props.activeZoneId, newMode);
 });
 
 watch(() => [props.zones, props.activeZoneId], () => {
-  drawZones(props.zones);
+  drawZones(props.zones, props.activeZoneId, mode.value);
 }, { deep: true });
+
+// Expose methods for parent component
+defineExpose({
+  setMode: (newMode) => {
+    mode.value = newMode;
+  },
+  getCurrentMode: () => mode.value,
+  focusOnZone: (zoneId) => {
+    const zone = props.zones.find(z => z.id === zoneId);
+    if (zone && zone.vertices?.length > 0) {
+      const bounds = L.latLngBounds(zone.vertices.map(v => [v.lat, v.lng]));
+      map.value?.fitBounds(bounds.pad(0.2));
+    }
+  }
+});
 </script>
 
-<style>
+<style scoped>
 .leaflet-map-wrapper {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 600px;
+  background: #f0f0f0;
 }
+
 .leaflet-map-container {
+  height: 100vh;
   width: 100%;
-  height: 100%;
+  border-radius: 0;
 }
-.leaflet-controls-container {
+
+/* Loading state */
+.leaflet-map-container:empty::before {
+  content: 'Loading map...';
   position: absolute;
-  top: 10px;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000; /* Above the map */
-  background-color: rgba(255, 255, 255, 0.8);
-  padding: 8px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  transform: translate(-50%, -50%);
+  color: #666;
+  font-size: 16px;
+  z-index: 1000;
 }
-.vertex-marker {
-  cursor: pointer;
-  background: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  font-weight: bold;
-  font-family: sans-serif;
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .leaflet-map-container {
+    height: 100vh;
+    height: 100dvh; /* Dynamic viewport height for mobile */
+  }
 }
-.vertex-remove-marker {
-  border: 2px solid #C10015; /* Quasar negative */
-  color: #C10015;
-}
-.vertex-move-marker {
-  cursor: grab;
-  border: 2px solid #31CCEC; /* Quasar info */
-  color: #31CCEC;
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .leaflet-map-wrapper {
+    background: #1a1a1a;
+  }
 }
 </style>

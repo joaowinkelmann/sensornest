@@ -7,6 +7,7 @@ export const useZonesStore = defineStore('zones', {
     activeZoneId: null, // To track the currently selected zone
     loading: false,
     error: null,
+    isZoneDirty: false, // Track if the active zone has unsaved changes
   }),
   getters: {
     // Getter to easily find the active zone object
@@ -22,6 +23,7 @@ export const useZonesStore = defineStore('zones', {
       }
       this.loading = true;
       this.error = null;
+      this.isZoneDirty = false; // Reset dirty state on fetch
       try {
         // This corresponds to GET /meshes/:meshId/zones
         const response = await apiClient.get(`/meshes/${meshId}/zones`);
@@ -44,12 +46,14 @@ export const useZonesStore = defineStore('zones', {
     // Action to set the active zone
     setActiveZone(zoneId) {
       this.activeZoneId = zoneId;
+      this.isZoneDirty = false; // Reset dirty state when changing zone
     },
     // Action to optimistically update a zone locally
     updateLocalZone(zoneId, zoneData) {
       const index = this.zones.findIndex(z => z.id === zoneId);
       if (index !== -1) {
         this.zones[index] = { ...this.zones[index], ...zoneData };
+        this.isZoneDirty = true; // Mark as dirty
       }
     },
     // Action to update a zone's data (e.g., adding a vertex)
@@ -61,6 +65,7 @@ export const useZonesStore = defineStore('zones', {
         const index = this.zones.findIndex(z => z.id === zoneId);
         if (index !== -1) {
           this.zones[index] = response.data;
+          this.isZoneDirty = false; // Mark as clean after successful save
         }
       } catch (e) {
         this.error = 'Failed to update zone.';
@@ -79,6 +84,7 @@ export const useZonesStore = defineStore('zones', {
         this.zones.push(response.data);
         // Set the newly created zone as active
         this.setActiveZone(response.data.id);
+        this.isZoneDirty = true; // A new zone is considered dirty until its points are saved
       } catch (e) {
         this.error = 'Failed to create zone.';
         console.error(e);

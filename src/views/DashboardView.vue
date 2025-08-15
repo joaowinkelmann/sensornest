@@ -1,112 +1,117 @@
 <template>
-  <q-layout view="hHh LpR fFf">
-    <!-- Header -->
-    <q-header elevated class="bg-primary text-white">
-      <q-toolbar>
-        <q-toolbar-title>
-          <q-avatar>
-            <img src="https://cdn.quasar.dev/logo-v2/svg/logo-mono-white.svg">
-          </q-avatar>
-          TempMesh Dashboard
-        </q-toolbar-title>
-        <q-btn
-          v-if="authStore.isAuthenticated"
-          @click="authStore.logout()"
-          flat
-          round
-          dense
-          icon="logout"
-          label="Logout"
-        />
-      </q-toolbar>
-    </q-header>
+  <div class="dashboard-root">
+    <!-- Map Fullscreen -->
+    <div class="map-fullscreen">
+      <LeafletMap
+        :zones="convertedZones"
+        :active-zone-id="zonesStore.activeZoneId"
+        :active-zone="zonesStore.activeZone"
+        @vertex-added="handleVertexAdded"
+        @vertex-removed="handleVertexRemoved"
+        @vertex-moved="handleVertexMoved"
+        @zone-updated="saveZone"
+      />
+    </div>
 
-    <q-page-container>
-      <q-page padding v-if="authStore.isAuthenticated">
-        <div class="row q-col-gutter-md">
-          <!-- Left Column: Controls -->
-          <div class="col-12 col-md-4">
-            <div class="q-gutter-y-md">
-              <MeshManager />
-              
-              <!-- Zone List -->
-              <q-card flat bordered>
-                <q-card-section>
-                  <div class="text-h6">Zones</div>
-                </q-card-section>
-                <q-list separator v-if="zonesStore.zones.length > 0">
-                  <q-item 
-                    v-for="zone in zonesStore.zones" 
-                    :key="zone.id" 
-                    clickable 
-                    v-ripple
-                    @click="zonesStore.setActiveZone(zone.id)"
-                    :active="zonesStore.activeZoneId === zone.id"
-                    active-class="bg-teal-1 text-grey-8"
-                  >
-                    <q-item-section>{{ zone.name }}</q-item-section>
-                  </q-item>
-                </q-list>
-                <q-card-section v-else class="text-grey-6">
-                  No zones found for this mesh.
-                </q-card-section>
-              </q-card>
-            </div>
-          </div>
+    <!-- Floating Sidebar Component -->
+    <FloatingSidebar
+      ref="sidebarRef"
+      :meshes="meshesStore.meshes"
+      :zones="zonesStore.zones"
+      :selected-mesh-id="meshesStore.selectedMeshId"
+      :can-create-zone="!!meshesStore.selectedMeshId"
+      :show-save-button="zonesStore.isZoneDirty"
+      @mesh-select-clicked="showMeshDialog = true"
+      @mesh-create-clicked="promptCreateMesh"
+      @zone-manage-clicked="showZonesDialog = true"
+      @zone-create-clicked="promptCreateZone"
+      @save-zone-clicked="saveZone"
+      @logout-clicked="handleLogout"
+    />
 
-          <!-- Right Column: Map -->
-          <div class="col-12 col-md-8">
-            <q-card flat bordered class="full-height">
-              <LeafletMap 
-                :zones="convertedZones" 
-                :active-zone-id="zonesStore.activeZoneId"
-                :active-zone="zonesStore.activeZone"
-                @vertex-added="handleVertexAdded"
-                @vertex-removed="handleVertexRemoved"
-                @vertex-moved="handleVertexMoved"
-                @zone-updated="saveZone"
-              />
-            </q-card>
-          </div>
-        </div>
-      </q-page>
-      
-      <!-- Auth Modals -->
-      <div v-else>
-        <LoginModal 
-          :show="!authStore.isAuthenticated && !showRegisterModal" 
-          @show-register="showRegisterModal = true" 
-        />
-        <RegisterModal 
-          :show="showRegisterModal" 
-          @show-login="showRegisterModal = false" 
-        />
-      </div>
-    </q-page-container>
-  </q-layout>
+    <!-- Dialog Components -->
+    <MeshDialog
+      :show="showMeshDialog"
+      :meshes="meshesStore.meshes"
+      :current-mesh-id="meshesStore.selectedMeshId"
+      @close="showMeshDialog = false"
+      @mesh-selected="onMeshSelected"
+    />
+
+    <ZonesDialog
+      :show="showZonesDialog"
+      :zones="zonesStore.zones"
+      :active-zone-id="zonesStore.activeZoneId"
+      @close="showZonesDialog = false"
+      @zone-selected="onZoneSelected"
+    />
+
+    <!-- Initial Setup Modals -->
+    <MeshManagerModal
+      v-if="!meshesStore.selectedMeshId && authStore.isAuthenticated"
+      :show="!meshesStore.selectedMeshId && authStore.isAuthenticated"
+      @mesh-selected="onMeshSelected"
+    />
+
+    <!-- Auth Modals -->
+    <LoginModal
+      v-if="!authStore.isAuthenticated && !showRegisterModal"
+      :show="!authStore.isAuthenticated && !showRegisterModal"
+      @show-register="showRegisterModal = true"
+    />
+    <RegisterModal
+      v-if="showRegisterModal"
+      :show="showRegisterModal"
+      @show-login="showRegisterModal = false"
+    />
+  </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted } from 'vue';
+import { useQuasar } from 'quasar';
 import { useAuthStore } from '@/stores/auth';
 import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
-import MeshManager from '@/components/MeshManager.vue';
+
+// Map component
 import LeafletMap from '@/components/LeafletMap.vue';
+
+// Floating sidebar components
+import FloatingSidebar from '@/components/FloatingSidebar.vue';
+import MeshDialog from '@/components/MeshDialog.vue';
+import ZonesDialog from '@/components/ZonesDialog.vue';
+
+// Modal components
 import LoginModal from '@/components/LoginModal.vue';
 import RegisterModal from '@/components/RegisterModal.vue';
+import MeshManagerModal from '@/components/MeshManagerModal.vue';
 
+const $q = useQuasar();
 const authStore = useAuthStore();
 const meshesStore = useMeshesStore();
 const zonesStore = useZonesStore();
 
+// Component refs
+const sidebarRef = ref(null);
+
+// Modal states
 const showRegisterModal = ref(false);
+const showMeshDialog = ref(false);
+const showZonesDialog = ref(false);
 
-const BASE_LAT = -23.5505 // São Paulo latitude
-const BASE_LNG = -46.6333 // São Paulo longitude
-const SCALE = 0.0001 // Adjust scale for reasonable size on map
+// Map configuration
+const BASE_LAT = -23.5505;
+const BASE_LNG = -46.6333;
+const SCALE = 0.0001;
 
-// Convert API vertices {x, y} to Leaflet {lat, lng}
+onMounted(() => {
+  if (authStore.isAuthenticated) {
+    meshesStore.fetchMeshes();
+  }
+});
+
+// Computed properties for map data conversion
 const convertedZones = computed(() =>
   zonesStore.zones.map(zone => {
     if (!zone.vertices || zone.vertices.length === 0) {
@@ -127,16 +132,13 @@ const convertedZones = computed(() =>
   })
 );
 
-// Convert a Leaflet {lat, lng} point back to API {x, y}
+// Coordinate conversion utilities
 const convertToApiVertex = (latlng) => {
   const activeZone = zonesStore.activeZone;
   if (!activeZone || activeZone.vertices.length === 0) {
-     // If there are no vertices, create a new reference point
-    const centroidX = 0;
-    const centroidY = 0;
-     return {
-      x: Math.round(((latlng.lng - BASE_LNG) / SCALE) + centroidX),
-      y: Math.round(((latlng.lat - BASE_LAT) / SCALE) + centroidY),
+    return {
+      x: Math.round((latlng.lng - BASE_LNG) / SCALE),
+      y: Math.round((latlng.lat - BASE_LAT) / SCALE),
     };
   }
 
@@ -151,15 +153,19 @@ const convertToApiVertex = (latlng) => {
   };
 };
 
+// Map event handlers
 const handleVertexAdded = (latlng) => {
   const activeZone = zonesStore.activeZone;
-  if (!activeZone) return;
-
+  if (!activeZone) {
+    $q.notify({ 
+      type: 'warning', 
+      message: 'Please select or create a zone first.',
+      position: 'top'
+    });
+    return;
+  }
   const newApiVertex = convertToApiVertex(latlng);
-  if (!newApiVertex) return;
-
   const updatedVertices = [...activeZone.vertices, newApiVertex];
-  
   zonesStore.updateLocalZone(activeZone.id, { vertices: updatedVertices });
 };
 
@@ -174,28 +180,184 @@ const handleVertexMoved = ({ index, latlng }) => {
   const activeZone = zonesStore.activeZone;
   if (!activeZone) return;
   const newApiVertex = convertToApiVertex(latlng);
-  if (!newApiVertex) return;
-  
-  const updatedVertices = activeZone.vertices.map((v, idx) =>
-    idx === index ? newApiVertex : v
-  );
+  const updatedVertices = activeZone.vertices.map((v, idx) => (idx === index ? newApiVertex : v));
   zonesStore.updateLocalZone(activeZone.id, { vertices: updatedVertices });
 };
 
+// Action handlers
 const saveZone = async () => {
   const zone = zonesStore.activeZone;
-  if (!zone) return;
+  if (!zone) {
+    $q.notify({ 
+      type: 'warning', 
+      message: 'No active zone to save.',
+      position: 'top'
+    });
+    return;
+  }
+  
   try {
     await zonesStore.updateZone(zone.id, {
       name: zone.name,
       vertices: zone.vertices,
       meshId: zone.meshId,
     });
-    // You can use Quasar's Notify plugin for a better user experience
-    alert('Zone saved!');
-  } catch (e) {
-    console.error('Failed to save zone:', e);
-    alert('Failed to save zone.');
+    $q.notify({ 
+      type: 'positive', 
+      message: 'Zone saved successfully!',
+      position: 'top'
+    });
+  } catch (error) {
+    console.error('Failed to save zone:', error);
+    $q.notify({ 
+      type: 'negative', 
+      message: 'Failed to save zone. Please try again.',
+      position: 'top'
+    });
   }
+};
+
+const onMeshSelected = (meshId) => {
+  meshesStore.selectMesh(meshId);
+  showMeshDialog.value = false;
+  $q.notify({ 
+    type: 'positive', 
+    message: 'Mesh selected successfully!',
+    position: 'top'
+  });
+};
+
+const onZoneSelected = (zoneId) => {
+  zonesStore.setActiveZone(zoneId);
+  showZonesDialog.value = false;
+  $q.notify({ 
+    type: 'info', 
+    message: 'Zone selected. You can now edit it on the map.',
+    position: 'top'
+  });
+};
+
+const promptCreateMesh = () => {
+  $q.dialog({
+    title: 'Create New Mesh',
+    message: 'Enter a name for the new mesh:',
+    prompt: { 
+      model: '', 
+      type: 'text',
+      isValid: val => val && val.length > 0
+    },
+    cancel: true,
+    persistent: true,
+    ok: {
+      label: 'Create',
+      color: 'primary'
+    },
+    cancel: {
+      label: 'Cancel',
+      color: 'grey-7',
+      flat: true
+    }
+  }).onOk(async (name) => {
+    if (name.trim()) {
+      try {
+        await meshesStore.createMesh(name.trim());
+        $q.notify({ 
+          type: 'positive', 
+          message: `Mesh "${name}" created successfully!`,
+          position: 'top'
+        });
+      } catch (error) {
+        console.error('Failed to create mesh:', error);
+        $q.notify({ 
+          type: 'negative', 
+          message: 'Failed to create mesh. Please try again.',
+          position: 'top'
+        });
+      }
+    }
+  });
+};
+
+const promptCreateZone = () => {
+  if (!meshesStore.selectedMeshId) {
+    $q.notify({ 
+      type: 'warning', 
+      message: 'Please select a mesh first.',
+      position: 'top'
+    });
+    return;
+  }
+  
+  $q.dialog({
+    title: 'Create New Zone',
+    message: 'Enter a name for the new zone:',
+    prompt: { 
+      model: '', 
+      type: 'text',
+      isValid: val => val && val.length > 0
+    },
+    cancel: true,
+    persistent: true,
+    ok: {
+      label: 'Create',
+      color: 'primary'
+    },
+    cancel: {
+      label: 'Cancel',
+      color: 'grey-7',
+      flat: true
+    }
+  }).onOk(async (name) => {
+    if (name.trim()) {
+      try {
+        const newZone = await zonesStore.createZone(meshesStore.selectedMeshId, { 
+          name: name.trim(), 
+          vertices: [] 
+        });
+        $q.notify({ 
+          type: 'positive', 
+          message: `Zone "${name}" created! You can now add points on the map.`,
+          position: 'top',
+          timeout: 4000
+        });
+        // Auto-select the new zone
+        if (newZone && newZone.id) {
+          zonesStore.setActiveZone(newZone.id);
+        }
+      } catch (error) {
+        console.error('Failed to create zone:', error);
+        $q.notify({ 
+          type: 'negative', 
+          message: 'Failed to create zone. Please try again.',
+          position: 'top'
+        });
+      }
+    }
+  });
+};
+
+const handleLogout = () => {
+  $q.dialog({
+    title: 'Confirm Logout',
+    message: 'Are you sure you want to logout?',
+    cancel: true,
+    persistent: true,
+    ok: {
+      label: 'Logout',
+      color: 'negative'
+    },
+    cancel: {
+      label: 'Cancel',
+      color: 'grey-7',
+      flat: true
+    }
+  }).onOk(() => {
+    authStore.logout();
+    $q.notify({ 
+      type: 'info', 
+      message: 'Logged out successfully',
+      position: 'top'
+    });
+  });
 };
 </script>
