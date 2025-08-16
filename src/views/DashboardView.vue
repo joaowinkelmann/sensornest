@@ -4,8 +4,8 @@
     <div class="map-fullscreen">
       <LeafletMap ref="mapRef" :zones="convertedZones" :active-zone-id="zonesStore.activeZoneId"
         :active-zone="zonesStore.activeZone" :center-lat="baseCoords.lat" :center-lng="baseCoords.lng"
-        @vertex-added="handleVertexAdded" @vertex-removed="handleVertexRemoved" @vertex-moved="handleVertexMoved"
-        @zone-updated="saveZone" />
+        :devices="devicesStore.devices" :conversion-fn="convertDeviceToLatLng" @vertex-added="handleVertexAdded"
+        @vertex-removed="handleVertexRemoved" @vertex-moved="handleVertexMoved" @zone-updated="saveZone" />
     </div>
 
     <!-- Floating Sidebar Component -->
@@ -40,6 +40,7 @@ import { useQuasar } from 'quasar';
 import { useAuthStore } from '@/stores/auth';
 import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
+import { useDevicesStore } from '@/stores/devices';
 
 // Map component
 import LeafletMap from '@/components/LeafletMap.vue';
@@ -58,6 +59,7 @@ const $q = useQuasar();
 const authStore = useAuthStore();
 const meshesStore = useMeshesStore();
 const zonesStore = useZonesStore();
+const devicesStore = useDevicesStore();
 
 // Component refs
 const sidebarRef = ref(null);
@@ -90,8 +92,13 @@ onMounted(() => {
 });
 
 // When active zone changes, drop any pending backup (new selection)
-watch(() => zonesStore.activeZoneId, () => {
+watch(() => zonesStore.activeZoneId, (newZoneId) => {
   backupVertices.value = null;
+  if (newZoneId) {
+    devicesStore.fetchDevices(newZoneId);
+  } else {
+    devicesStore.clearDevices();
+  }
 });
 
 // Computed properties for map data conversion
@@ -100,39 +107,32 @@ const convertedZones = computed(() =>
     if (!zone.vertices || zone.vertices.length === 0) {
       return { ...zone, vertices: [] };
     }
-    const xs = zone.vertices.map(v => v.x);
-    const ys = zone.vertices.map(v => v.y);
-    const centroidX = xs.reduce((a, b) => a + b, 0) / xs.length;
-    const centroidY = ys.reduce((a, b) => a + b, 0) / ys.length;
 
     return {
       ...zone,
       vertices: zone.vertices.map(v => ({
-        lat: baseCoords.value.lat + (v.y - centroidY) * SCALE,
-        lng: baseCoords.value.lng + (v.x - centroidX) * SCALE,
+        lat: baseCoords.value.lat + v.y * SCALE,
+        lng: baseCoords.value.lng + v.x * SCALE,
       })),
     };
   })
 );
 
-// Coordinate conversion utilities
+// Coordinate conversion utilities for vertices
 const convertToApiVertex = (latlng) => {
-  const activeZone = zonesStore.activeZone;
-  if (!activeZone || activeZone.vertices.length === 0) {
-    return {
-      x: Math.round((latlng.lng - baseCoords.value.lng) / SCALE),
-      y: Math.round((latlng.lat - baseCoords.value.lat) / SCALE),
-    };
-  }
-
-  const xs = activeZone.vertices.map(v => v.x);
-  const ys = activeZone.vertices.map(v => v.y);
-  const centroidX = xs.reduce((a, b) => a + b, 0) / xs.length;
-  const centroidY = ys.reduce((a, b) => a + b, 0) / ys.length;
-
   return {
-    x: Math.round(((latlng.lng - baseCoords.value.lng) / SCALE) + centroidX),
-    y: Math.round(((latlng.lat - baseCoords.value.lat) / SCALE) + centroidY),
+    x: Math.round((latlng.lng - baseCoords.value.lng) / SCALE),
+    y: Math.round((latlng.lat - baseCoords.value.lat) / SCALE),
+  };
+};
+
+// Coordinate conversion for devices
+const convertDeviceToLatLng = (device) => {
+  // This conversion can remain relative to the zone's centroid or be simplified.
+  // For consistency, let's align it with the new vertex logic.
+  return {
+    lat: baseCoords.value.lat + device.y * SCALE,
+    lng: baseCoords.value.lng + device.x * SCALE,
   };
 };
 

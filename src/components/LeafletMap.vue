@@ -13,6 +13,7 @@ import L from 'leaflet';
 import MapControls from './MapControls.vue';
 import { useMapManager } from './composables/useMapManager';
 import { useZoneRenderer } from './composables/useZoneRenderer';
+import { useDeviceRenderer } from './composables/useDeviceRenderer';
 
 // Define props
 const props = defineProps({
@@ -35,6 +36,14 @@ const props = defineProps({
   centerLng: {
     type: Number,
     default: -46.6333
+  },
+  devices: {
+    type: Array,
+    default: () => []
+  },
+  conversionFn: {
+    type: Function,
+    required: true
   }
 });
 
@@ -63,12 +72,24 @@ const {
   clearZoneLayers
 } = useZoneRenderer(map, props, emit);
 
+const {
+  drawDevices,
+  clearDeviceMarkers
+} = useDeviceRenderer(map);
+
 // Mode management
 const handleModeChange = (newMode) => {
   mode.value = newMode;
   setMapDragging(newMode !== 'move');
   // Redraw zones to show/hide vertex markers based on mode
   drawZones(props.zones, props.activeZoneId, mode.value);
+
+  // Clear devices when entering an edit mode
+  if (newMode) {
+    clearDeviceMarkers();
+  } else {
+    drawDevices(props.devices, props.conversionFn);
+  }
 };
 
 // Map click handler
@@ -84,11 +105,13 @@ onMounted(async () => {
   if (map.value) {
     map.value.on('click', handleMapClick);
     drawZones(props.zones, props.activeZoneId, mode.value);
+    drawDevices(props.devices, props.conversionFn);
   }
 });
 
 onUnmounted(() => {
   clearZoneLayers();
+  clearDeviceMarkers();
   destroyMap();
 });
 
@@ -96,10 +119,21 @@ onUnmounted(() => {
 watch(() => mode.value, (newMode) => {
   setMapDragging(newMode !== 'move');
   drawZones(props.zones, props.activeZoneId, newMode);
+  if (newMode) {
+    clearDeviceMarkers();
+  } else {
+    drawDevices(props.devices, props.conversionFn);
+  }
 });
 
 watch(() => [props.zones, props.activeZoneId], () => {
   drawZones(props.zones, props.activeZoneId, mode.value);
+}, { deep: true });
+
+watch(() => props.devices, (newDevices) => {
+  if (mode.value === null) { // Only draw if not in edit mode
+    drawDevices(newDevices, props.conversionFn);
+  }
 }, { deep: true });
 
 watch(() => [props.centerLat, props.centerLng], (newCenter) => {

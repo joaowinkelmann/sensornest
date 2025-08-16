@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import apiClient from '@/api';
+import { useDevicesStore } from './devices';
 
 export const useZonesStore = defineStore('zones', {
   state: () => ({
@@ -19,6 +20,8 @@ export const useZonesStore = defineStore('zones', {
     async fetchZones(meshId) {
       if (!meshId) {
         this.zones = [];
+        const devicesStore = useDevicesStore();
+        devicesStore.clearDevices();
         return;
       }
       this.loading = true;
@@ -45,8 +48,14 @@ export const useZonesStore = defineStore('zones', {
     },
     // Action to set the active zone
     setActiveZone(zoneId) {
+      if (this.activeZoneId === zoneId) return; // Avoid re-fetching if already active
+
       this.activeZoneId = zoneId;
       this.isZoneDirty = false; // Reset dirty state when changing zone
+
+      // Fetch devices for the new active zone
+      const devicesStore = useDevicesStore();
+      devicesStore.fetchDevices(zoneId);
     },
     // Action to optimistically update a zone locally
     updateLocalZone(zoneId, zoneData) {
