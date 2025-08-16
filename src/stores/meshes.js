@@ -9,6 +9,11 @@ export const useMeshesStore = defineStore('meshes', {
     loading: false,
     error: null,
   }),
+  getters: {
+    selectedMesh: (state) => {
+      return state.meshes.find(m => m.id === state.selectedMeshId) || null;
+    }
+  },
   actions: {
     async fetchMeshes() {
       this.loading = true;

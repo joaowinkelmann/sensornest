@@ -1,13 +1,9 @@
 <template>
   <div class="leaflet-map-wrapper">
     <div ref="mapContainer" class="leaflet-map-container"></div>
-    
+
     <!-- Map Controls -->
-    <MapControls
-      :mode="mode"
-      :active-zone="activeZone"
-      @mode-changed="handleModeChange"
-    />
+    <MapControls :mode="mode" :active-zone="activeZone" @mode-changed="handleModeChange" />
   </div>
 </template>
 
@@ -20,25 +16,33 @@ import { useZoneRenderer } from './composables/useZoneRenderer';
 
 // Define props
 const props = defineProps({
-  zones: { 
-    type: Array, 
-    required: true 
+  zones: {
+    type: Array,
+    required: true
   },
-  activeZoneId: { 
-    type: String, 
-    default: null 
+  activeZoneId: {
+    type: String,
+    default: null
   },
-  activeZone: { 
-    type: Object, 
-    default: null 
+  activeZone: {
+    type: Object,
+    default: null
   },
+  centerLat: {
+    type: Number,
+    default: -23.5505
+  },
+  centerLng: {
+    type: Number,
+    default: -46.6333
+  }
 });
 
 // Define emits
 const emit = defineEmits([
-  'vertex-added', 
-  'vertex-removed', 
-  'vertex-moved', 
+  'vertex-added',
+  'vertex-removed',
+  'vertex-moved',
 ]);
 
 // Reactive references
@@ -46,17 +50,17 @@ const mapContainer = ref(null);
 const mode = ref(null);
 
 // Use composables for map management
-const { 
-  map, 
-  initializeMap, 
-  destroyMap, 
-  setMapDragging 
+const {
+  map,
+  initializeMap,
+  destroyMap,
+  setMapDragging
 } = useMapManager(mapContainer);
 
-const { 
-  zoneLayers, 
-  drawZones, 
-  clearZoneLayers 
+const {
+  zoneLayers,
+  drawZones,
+  clearZoneLayers
 } = useZoneRenderer(map, props, emit);
 
 // Mode management
@@ -76,7 +80,7 @@ const handleMapClick = (event) => {
 
 // Lifecycle hooks
 onMounted(async () => {
-  await initializeMap();
+  await initializeMap(props.centerLat, props.centerLng);
   if (map.value) {
     map.value.on('click', handleMapClick);
     drawZones(props.zones, props.activeZoneId, mode.value);
@@ -97,6 +101,12 @@ watch(() => mode.value, (newMode) => {
 watch(() => [props.zones, props.activeZoneId], () => {
   drawZones(props.zones, props.activeZoneId, mode.value);
 }, { deep: true });
+
+watch(() => [props.centerLat, props.centerLng], (newCenter) => {
+  if (map.value && newCenter[0] && newCenter[1]) {
+    map.value.setView([newCenter[0], newCenter[1]], 15);
+  }
+});
 
 // Expose methods for parent component
 defineExpose({
@@ -144,7 +154,8 @@ defineExpose({
 @media (max-width: 768px) {
   .leaflet-map-container {
     height: 100vh;
-    height: 100dvh; /* Dynamic viewport height for mobile */
+    height: 100dvh;
+    /* Dynamic viewport height for mobile */
   }
 }
 

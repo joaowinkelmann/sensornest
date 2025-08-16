@@ -3,8 +3,9 @@
     <!-- Map Fullscreen -->
     <div class="map-fullscreen">
       <LeafletMap ref="mapRef" :zones="convertedZones" :active-zone-id="zonesStore.activeZoneId"
-        :active-zone="zonesStore.activeZone" @vertex-added="handleVertexAdded" @vertex-removed="handleVertexRemoved"
-        @vertex-moved="handleVertexMoved" @zone-updated="saveZone" />
+        :active-zone="zonesStore.activeZone" :center-lat="baseCoords.lat" :center-lng="baseCoords.lng"
+        @vertex-added="handleVertexAdded" @vertex-removed="handleVertexRemoved" @vertex-moved="handleVertexMoved"
+        @zone-updated="saveZone" />
     </div>
 
     <!-- Floating Sidebar Component -->
@@ -71,9 +72,16 @@ const showZonesDialog = ref(false);
 const backupVertices = ref(null);
 
 // Map configuration
-const BASE_LAT = -23.5505;
-const BASE_LNG = -46.6333;
 const SCALE = 0.0001;
+
+const baseCoords = computed(() => {
+  const selectedMesh = meshesStore.selectedMesh;
+  if (selectedMesh && selectedMesh.lat && selectedMesh.lon) {
+    return { lat: selectedMesh.lat, lng: selectedMesh.lon };
+  }
+  // Fallback
+  return { lat: -23.5505, lng: -46.6333 };
+});
 
 onMounted(() => {
   if (authStore.isAuthenticated) {
@@ -100,8 +108,8 @@ const convertedZones = computed(() =>
     return {
       ...zone,
       vertices: zone.vertices.map(v => ({
-        lat: BASE_LAT + (v.y - centroidY) * SCALE,
-        lng: BASE_LNG + (v.x - centroidX) * SCALE,
+        lat: baseCoords.value.lat + (v.y - centroidY) * SCALE,
+        lng: baseCoords.value.lng + (v.x - centroidX) * SCALE,
       })),
     };
   })
@@ -112,8 +120,8 @@ const convertToApiVertex = (latlng) => {
   const activeZone = zonesStore.activeZone;
   if (!activeZone || activeZone.vertices.length === 0) {
     return {
-      x: Math.round((latlng.lng - BASE_LNG) / SCALE),
-      y: Math.round((latlng.lat - BASE_LAT) / SCALE),
+      x: Math.round((latlng.lng - baseCoords.value.lng) / SCALE),
+      y: Math.round((latlng.lat - baseCoords.value.lat) / SCALE),
     };
   }
 
@@ -123,8 +131,8 @@ const convertToApiVertex = (latlng) => {
   const centroidY = ys.reduce((a, b) => a + b, 0) / ys.length;
 
   return {
-    x: Math.round(((latlng.lng - BASE_LNG) / SCALE) + centroidX),
-    y: Math.round(((latlng.lat - BASE_LAT) / SCALE) + centroidY),
+    x: Math.round(((latlng.lng - baseCoords.value.lng) / SCALE) + centroidX),
+    y: Math.round(((latlng.lat - baseCoords.value.lat) / SCALE) + centroidY),
   };
 };
 

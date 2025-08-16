@@ -4,14 +4,14 @@ import L from 'leaflet';
 export function useMapManager(mapContainer) {
   const map = ref(null);
 
-  const initializeMap = () => {
+  const initializeMap = (lat, lon) => {
     return new Promise((resolve) => {
       if (map.value) {
         resolve(map.value);
         return;
       }
       map.value = L.map(mapContainer.value, {
-        center: [-23.5505, -46.6333],
+        center: [lat, lon],
         zoom: 15,
         zoomControl: true,
         attributionControl: false,
