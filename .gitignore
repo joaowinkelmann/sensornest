@@ -4,3 +4,8 @@ build/
 # IDE
 .vscode/
 .idea/
+
+
+# Components
+# managed_components/
+# adicionar no futuro quando a gente conseguir tirar a biblioteca do led_strip do idf

@@ -15,6 +15,12 @@
 #include "esp_random.h"
 #include "esp_sntp.h"
 #include "cJSON.h"
+#include "dht.h"
+#include <stdint.h> // added for int16_t
+
+// Pin config
+#define DHT_TYPE DHT_TYPE_DHT11
+#define DHT_GPIO 10
 
 // --- WiFi Configuration ---
 #define WIFI_SSID      "Winkelmann"
@@ -187,7 +193,7 @@ esp_err_t get_auth_token() {
     return return_status;
 }
 
-// --- Function to send the sensor data (unchanged) ---
+// --- Function to send the sensor data (replaced fake data with real DHT11 read) ---
 void send_sensor_data() {
     static const char *DATA_TAG = "DATA_CLIENT";
     char json_payload[512];
@@ -197,11 +203,23 @@ void send_sensor_data() {
     struct tm timeinfo;
     gmtime_r(&now, &timeinfo);
     strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
-    float fake_temp = 20.0 + (esp_random() % 1000) / 100.0;
-    float fake_hum = 50.0 + (esp_random() % 2000) / 100.0;
+
+    // Read DHT11 sensor
+    int16_t humidity = 0;
+    int16_t temperature = 0;
+    esp_err_t res = dht_read_data(DHT_TYPE, DHT_GPIO, &humidity, &temperature);
+    if (res != ESP_OK) {
+        ESP_LOGE(DATA_TAG, "DHT read failed: %s", esp_err_to_name(res));
+        return;
+    }
+
+    // Note: for DHT11 driver returns integer values (no decimal). Adjust if using DHT22.
+    float temp_f = (float)temperature;
+    float hum_f = (float)humidity;
+
     snprintf(json_payload, sizeof(json_payload),
              "{\"data\":[{\"mac\":\"24:58:7C:CC:E5:B4\",\"temp\":%.2f,\"hum\":%.2f,\"lat\":-29.7178,\"lon\":-52.4267,\"readingTime\":\"%s\"}]}",
-             fake_temp, fake_hum, time_buffer);
+             temp_f, hum_f, time_buffer);
     ESP_LOGI(DATA_TAG, "Generated JSON Payload: %s", json_payload);
 
     esp_http_client_config_t config = {
