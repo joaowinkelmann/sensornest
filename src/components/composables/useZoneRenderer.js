@@ -3,7 +3,7 @@ import L from 'leaflet';
 
 export function useZoneRenderer(map, props, emit) {
   const zoneLayers = ref({});
-  
+
   // Zone styling configuration
   const zoneStyles = {
     active: {
@@ -25,7 +25,7 @@ export function useZoneRenderer(map, props, emit) {
       fillOpacity: 0.4
     }
   };
-  
+
   // Vertex marker configurations
   const vertexMarkerConfigs = {
     remove: {
@@ -41,19 +41,19 @@ export function useZoneRenderer(map, props, emit) {
       iconAnchor: [12, 12],
     }
   };
-  
+
   /**
    * Create a vertex marker for editing
    */
   const createVertexMarker = (latlng, index, mode) => {
     const config = vertexMarkerConfigs[mode];
     if (!config) return null;
-    
+
     const marker = L.marker(latlng, {
       draggable: mode === 'move',
       icon: L.divIcon(config)
     });
-    
+
     // Add event handlers based on mode
     if (mode === 'remove') {
       marker.on('click', (e) => {
@@ -72,7 +72,7 @@ export function useZoneRenderer(map, props, emit) {
         marker.getElement().style.transform = 'scale(1.2)';
         marker.getElement().style.zIndex = '1000';
       });
-      
+
       marker.on('dragend', (e) => {
         // Re-enable map interactions
         if (map.value) {
@@ -83,22 +83,22 @@ export function useZoneRenderer(map, props, emit) {
         marker.getElement().style.cursor = 'grab';
         marker.getElement().style.transform = 'scale(1)';
         marker.getElement().style.zIndex = 'auto';
-        
-        emit('vertex-moved', { 
-          index: index, 
-          latlng: e.target.getLatLng() 
+
+        emit('vertex-moved', {
+          index: index,
+          latlng: e.target.getLatLng()
         });
       });
-      
+
       marker.on('drag', (e) => {
         // Optional: emit real-time updates during drag
         // emit('vertex-moving', { index: index, latlng: e.target.getLatLng() });
       });
     }
-    
+
     return marker;
   };
-  
+
   /**
    * Create a zone polygon layer
    */
@@ -106,12 +106,12 @@ export function useZoneRenderer(map, props, emit) {
     if (!zone.vertices || zone.vertices.length === 0) {
       return null;
     }
-    
+
     const latlngs = zone.vertices.map(v => [v.lat, v.lng]);
     const style = isActive ? zoneStyles.active : zoneStyles.inactive;
-    
+
     const polygon = L.polygon(latlngs, style);
-    
+
     // Add popup with zone information
     polygon.bindPopup(`
       <div class="zone-popup">
@@ -121,30 +121,30 @@ export function useZoneRenderer(map, props, emit) {
         ${zone.description ? `<p><strong>Description:</strong> ${zone.description}</p>` : ''}
       </div>
     `);
-    
+
     // Add hover effects
-    polygon.on('mouseover', function(e) {
+    polygon.on('mouseover', function (e) {
       if (!isActive) {
         this.setStyle(zoneStyles.hover);
       }
     });
-    
-    polygon.on('mouseout', function(e) {
+
+    polygon.on('mouseout', function (e) {
       if (!isActive) {
         this.setStyle(zoneStyles.inactive);
       }
     });
-    
+
     // Add click handler for zone selection
-    polygon.on('click', function(e) {
+    polygon.on('click', function (e) {
       if (!isActive) {
         emit('zone-selected', zone.id);
       }
     });
-    
+
     return polygon;
   };
-  
+
   /**
    * Clear all vertex markers for a zone
    */
@@ -159,7 +159,7 @@ export function useZoneRenderer(map, props, emit) {
       zoneLayer._vertexMarkers = [];
     }
   };
-  
+
   /**
    * Add vertex markers for editing
    */
@@ -167,13 +167,13 @@ export function useZoneRenderer(map, props, emit) {
     if (!zone.vertices || zone.vertices.length === 0 || !mode) {
       return;
     }
-    
+
     const zoneLayer = zoneLayers.value[zone.id];
     if (!zoneLayer) return;
-    
+
     // Clear existing markers
     clearVertexMarkers(zone.id);
-    
+
     // Create new markers
     const markers = zone.vertices.map((vertex, index) => {
       const marker = createVertexMarker([vertex.lat, vertex.lng], index, mode);
@@ -182,16 +182,16 @@ export function useZoneRenderer(map, props, emit) {
       }
       return marker;
     }).filter(Boolean);
-    
+
     zoneLayer._vertexMarkers = markers;
   };
-  
+
   /**
    * Update a single zone layer
    */
   const updateZoneLayer = (zone, isActive, mode) => {
     const existingLayer = zoneLayers.value[zone.id];
-    
+
     // Remove existing layer if it exists
     if (existingLayer) {
       clearVertexMarkers(zone.id);
@@ -199,29 +199,29 @@ export function useZoneRenderer(map, props, emit) {
         map.value.removeLayer(existingLayer);
       }
     }
-    
+
     // Create new layer
     const newLayer = createZonePolygon(zone, isActive);
     if (newLayer && map.value) {
       newLayer.addTo(map.value);
       zoneLayers.value[zone.id] = newLayer;
-      
+
       // Add vertex markers if in editing mode and this is the active zone
       if (isActive && (mode === 'remove' || mode === 'move')) {
         addVertexMarkers(zone, mode);
       }
     }
   };
-  
+
   /**
    * Main function to draw/update all zones
    */
   const drawZones = (zones, activeZoneId, mode) => {
     if (!map.value || !zones) return;
-    
+
     const existingZoneIds = Object.keys(zoneLayers.value);
     const newZoneIds = zones.map(z => z.id.toString());
-    
+
     // Remove layers for zones that no longer exist
     existingZoneIds.forEach(zoneId => {
       if (!newZoneIds.includes(zoneId)) {
@@ -235,33 +235,43 @@ export function useZoneRenderer(map, props, emit) {
         }
       }
     });
-    
+
     // Update or create layers for current zones
     zones.forEach(zone => {
       const isActive = zone.id === activeZoneId;
       updateZoneLayer(zone, isActive, mode);
     });
-    
-    // Auto-fit bounds if there are zones
+
+    // Auto-fit bounds if there are zones (pass current mode so fitting can be skipped during edit modes)
     setTimeout(() => {
-      fitToZones(zones);
+      fitToZones(zones, mode);
     }, 100);
   };
-  
+
   /**
    * Fit map view to show all zones
    */
-  const fitToZones = (zones) => {
+  const fitToZones = (zones, mode) => {
     if (!map.value || !zones || zones.length === 0) return;
-    
+
+    // Skip auto-fitting while in interactive edit modes to avoid jumping when the user is moving/removing vertices
+    if (mode === 'move' || mode === 'remove') {
+      return;
+    }
+
+    // If a recent vertex move requested suppression, skip fitting to avoid map jumps.
+    if (map.value && map.value._suppressAutoFit) {
+      return;
+    }
+
     const validLayers = Object.values(zoneLayers.value)
       .filter(layer => layer instanceof L.Polygon && layer.getLatLngs()[0].length > 0);
-    
+
     if (validLayers.length > 0) {
       try {
         const group = new L.featureGroup(validLayers);
         const bounds = group.getBounds();
-        
+
         if (bounds.isValid()) {
           map.value.fitBounds(bounds.pad(0.1), {
             maxZoom: 16,
@@ -274,7 +284,7 @@ export function useZoneRenderer(map, props, emit) {
       }
     }
   };
-  
+
   /**
    * Focus on a specific zone
    */
@@ -295,7 +305,7 @@ export function useZoneRenderer(map, props, emit) {
       }
     }
   };
-  
+
   /**
    * Clear all zone layers
    */
@@ -309,21 +319,21 @@ export function useZoneRenderer(map, props, emit) {
     });
     zoneLayers.value = {};
   };
-  
+
   /**
    * Get zone layer by ID
    */
   const getZoneLayer = (zoneId) => {
     return zoneLayers.value[zoneId];
   };
-  
+
   /**
    * Highlight a specific zone temporarily
    */
   const highlightZone = (zoneId, duration = 2000) => {
     const layer = zoneLayers.value[zoneId];
     if (!layer) return;
-    
+
     const originalStyle = layer.options;
     const highlightStyle = {
       ...originalStyle,
@@ -331,14 +341,14 @@ export function useZoneRenderer(map, props, emit) {
       weight: 4,
       fillOpacity: 0.5
     };
-    
+
     layer.setStyle(highlightStyle);
-    
+
     setTimeout(() => {
       layer.setStyle(originalStyle);
     }, duration);
   };
-  
+
   return {
     zoneLayers,
     drawZones,

@@ -1,4 +1,4 @@
-import './assets/main.css'
+import './css/main.css'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw/dist/leaflet.draw.css'
 import 'quasar/src/css/index.sass'
