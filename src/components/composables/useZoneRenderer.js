@@ -60,16 +60,6 @@ export function useZoneRenderer(map, props, emit) {
         e.originalEvent?.stopPropagation();
         emit('vertex-removed', index);
       });
-      
-      marker.on('mouseover', () => {
-        marker.getElement().style.transform = 'scale(1.2)';
-        marker.getElement().style.background = '#fef2f2';
-      });
-      
-      marker.on('mouseout', () => {
-        marker.getElement().style.transform = 'scale(1)';
-        marker.getElement().style.background = 'white';
-      });
     } else if (mode === 'move') {
       marker.on('dragstart', (e) => {
         // Disable map dragging while moving vertex
