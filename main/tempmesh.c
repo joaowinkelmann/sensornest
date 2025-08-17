@@ -1,4 +1,3 @@
-/* main/tempmesh.c - Final Version with Robust JSON Parsing */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h> // Required for malloc/free
