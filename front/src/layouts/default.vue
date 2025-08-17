@@ -10,7 +10,7 @@
       </v-list>
     </v-navigation-drawer>
 
-    <!--
+    <!-- 
     <v-app-bar app clipped-left color="blue-grey-darken-3">
       <v-app-bar-nav-icon @click="drawer = !drawer" />
       <v-app-bar-title>Dashboard</v-app-bar-title>
