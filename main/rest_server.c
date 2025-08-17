@@ -18,6 +18,7 @@
 #include "nvs.h"
 #include "esp_wifi.h"
 #include "esp_netif.h"
+#include "esp_mac.h"
 
 static const char *TAG = "esp-rest";
 
@@ -224,6 +225,7 @@ static esp_err_t wifi_retry_post_handler(httpd_req_t *req)
 {
     wifi_config_t cfg;
     memset(&cfg, 0, sizeof(cfg));
+
     nvs_handle_t nvs;
     if (nvs_open("wifi", NVS_READONLY, &nvs) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no creds");
@@ -239,19 +241,101 @@ static esp_err_t wifi_retry_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    // Switch WiFi to STA
-    (void)esp_netif_init();
-    (void)esp_event_loop_create_default();
-    esp_netif_create_default_wifi_sta();
-    wifi_init_config_t wcfg = WIFI_INIT_CONFIG_DEFAULT();
-    esp_wifi_init(&wcfg);
-    esp_wifi_set_mode(WIFI_MODE_STA);
+    // Keep AP up while connecting via STA
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
     esp_wifi_set_config(WIFI_IF_STA, &cfg);
     esp_wifi_start();
     esp_wifi_connect();
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"connecting\"}");
+    return ESP_OK;
+}
+
+/* --- NEW: Wi-Fi scan (GET /api/v1/wifi/scan) --- */
+static esp_err_t wifi_scan_get_handler(httpd_req_t *req) {
+    // Ensure we're in APSTA so scan can run without dropping AP
+    wifi_mode_t mode;
+    esp_wifi_get_mode(&mode);
+    if (mode != WIFI_MODE_APSTA) {
+        esp_wifi_set_mode(WIFI_MODE_APSTA);
+    }
+
+    wifi_scan_config_t scan_cfg = {
+        .ssid = NULL,
+        .bssid = NULL,
+        .channel = 0,
+        .show_hidden = false,
+        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+        .scan_time = {
+            .active = { .min = 100, .max = 300 },
+        },
+    };
+
+    esp_err_t err = esp_wifi_scan_start(&scan_cfg, true); // block until done
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "scan failed");
+        return ESP_FAIL;
+    }
+
+    uint16_t ap_num = 0;
+    esp_wifi_scan_get_ap_num(&ap_num);
+    wifi_ap_record_t *ap_records = calloc(ap_num, sizeof(wifi_ap_record_t));
+    if (!ap_records) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no memory");
+        return ESP_FAIL;
+    }
+    esp_wifi_scan_get_ap_records(&ap_num, ap_records);
+
+    cJSON *root = cJSON_CreateArray();
+    for (int i = 0; i < ap_num; ++i) {
+        cJSON *ap = cJSON_CreateObject();
+        cJSON_AddStringToObject(ap, "ssid", (const char *)ap_records[i].ssid);
+        cJSON_AddNumberToObject(ap, "rssi", ap_records[i].rssi);
+        cJSON_AddNumberToObject(ap, "channel", ap_records[i].primary);
+        cJSON_AddNumberToObject(ap, "auth", ap_records[i].authmode);
+        cJSON_AddItemToArray(root, ap);
+    }
+    free(ap_records);
+
+    const char *json = cJSON_PrintUnformatted(root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json);
+    free((void *)json);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+/* --- NEW: Wi-Fi status (GET /api/v1/wifi/status) --- */
+static esp_err_t wifi_status_get_handler(httpd_req_t *req) {
+    bool connected = false;
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        connected = true;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "connected", connected);
+    if (connected) {
+        cJSON_AddStringToObject(root, "ssid", (const char *)ap_info.ssid);
+        cJSON_AddNumberToObject(root, "rssi", ap_info.rssi);
+
+        esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        if (sta) {
+            esp_netif_ip_info_t ip;
+            if (esp_netif_get_ip_info(sta, &ip) == ESP_OK) {
+                char ip_str[16];
+                snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip.ip));
+                cJSON_AddStringToObject(root, "ip", ip_str);
+            }
+        }
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    const char *json = cJSON_PrintUnformatted(root);
+    httpd_resp_sendstr(req, json);
+    free((void *)json);
+    cJSON_Delete(root);
     return ESP_OK;
 }
 
@@ -306,7 +390,7 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &wifi_provision_post_uri);
 
-    /* Provisioning: trigger reconnect */
+    /* Provisioning: trigger reconnect (keeps AP up) */
     httpd_uri_t wifi_retry_post_uri = {
         .uri = "/api/v1/provision/retry",
         .method = HTTP_POST,
@@ -314,6 +398,24 @@ esp_err_t start_rest_server(const char *base_path)
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &wifi_retry_post_uri);
+
+    // --- NEW: Wi-Fi scan endpoint ---
+    httpd_uri_t wifi_scan_get_uri = {
+        .uri = "/api/v1/wifi/scan",
+        .method = HTTP_GET,
+        .handler = wifi_scan_get_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &wifi_scan_get_uri);
+
+    // --- NEW: Wi-Fi status endpoint ---
+    httpd_uri_t wifi_status_get_uri = {
+        .uri = "/api/v1/wifi/status",
+        .method = HTTP_GET,
+        .handler = wifi_status_get_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &wifi_status_get_uri);
 
 #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
     /* URI handler for getting web server files */

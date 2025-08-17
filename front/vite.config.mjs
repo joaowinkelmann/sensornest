@@ -1,8 +1,8 @@
 import { fileURLToPath, URL } from 'node:url'
+import { quasar, transformAssetUrls } from '@quasar/vite-plugin'
 import Vue from '@vitejs/plugin-vue'
 // Plugins
 import AutoImport from 'unplugin-auto-import/vite'
-import Fonts from 'unplugin-fonts/vite'
 import Components from 'unplugin-vue-components/vite'
 import { VueRouterAutoImports } from 'unplugin-vue-router'
 import VueRouter from 'unplugin-vue-router/vite'
@@ -10,7 +10,6 @@ import VueRouter from 'unplugin-vue-router/vite'
 import { defineConfig } from 'vite'
 
 import Layouts from 'vite-plugin-vue-layouts-next'
-import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -20,22 +19,7 @@ export default defineConfig({
     Vue({
       template: { transformAssetUrls },
     }),
-    // https://github.com/vuetifyjs/vuetify-loader/tree/master/packages/vite-plugin#readme
-    Vuetify({
-      autoImport: true,
-      styles: {
-        configFile: 'src/styles/settings.scss',
-      },
-    }),
     Components(),
-    Fonts({
-      google: {
-        families: [{
-          name: 'Roboto',
-          styles: 'wght@100;300;400;500;700;900',
-        }],
-      },
-    }),
     AutoImport({
       imports: [
         'vue',
@@ -49,10 +33,10 @@ export default defineConfig({
       },
       vueTemplate: true,
     }),
+    quasar({ sassVariables: 'src/quasar-variables.sass' }),
   ],
   optimizeDeps: {
     exclude: [
-      'vuetify',
       'vue-router',
       'unplugin-vue-router/runtime',
       'unplugin-vue-router/data-loaders',
@@ -81,7 +65,7 @@ export default defineConfig({
     // IMPORTANT: Also strips large headers (especially cookies) to avoid HTTP 431 errors
     proxy: {
       '/api': {
-        target: 'http://dashboard.local', // Replace with your ESP32's actual IP
+        target: 'http://192.168.4.1',
         changeOrigin: true,
         ws: true,
         // Configure proxy to minimize headers for ESP32 compatibility

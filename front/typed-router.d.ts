@@ -19,8 +19,6 @@ declare module 'vue-router/auto-routes' {
    */
   export interface RouteNamedMap {
     '/': RouteRecordInfo<'/', '/', Record<never, never>, Record<never, never>>,
-    '/chart': RouteRecordInfo<'/chart', '/chart', Record<never, never>, Record<never, never>>,
-    '/light': RouteRecordInfo<'/light', '/light', Record<never, never>, Record<never, never>>,
   }
 
   /**
@@ -36,14 +34,6 @@ declare module 'vue-router/auto-routes' {
   export interface _RouteFileInfoMap {
     'src/pages/index.vue': {
       routes: '/'
-      views: never
-    }
-    'src/pages/chart.vue': {
-      routes: '/chart'
-      views: never
-    }
-    'src/pages/light.vue': {
-      routes: '/light'
       views: never
     }
   }

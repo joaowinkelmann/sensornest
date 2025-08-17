@@ -349,7 +349,9 @@ static void start_softap_and_rest_server(void) {
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+    // Create both AP and STA default interfaces so we can scan/connect while AP is up
     esp_netif_create_default_wifi_ap();
+    esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -360,14 +362,15 @@ static void start_softap_and_rest_server(void) {
     char ap_ssid[32];
     snprintf(ap_ssid, sizeof(ap_ssid), "ESP-%02X%02X%02X", mac[3], mac[4], mac[5]);
 
-    wifi_config_t ap_config = { 0 };
+    wifi_config_t ap_config = (wifi_config_t){ 0 };
     strlcpy((char *)ap_config.ap.ssid, ap_ssid, sizeof(ap_config.ap.ssid));
     ap_config.ap.ssid_len = strlen(ap_ssid);
     ap_config.ap.channel = 1;
     ap_config.ap.max_connection = 4;
-    ap_config.ap.authmode = WIFI_AUTH_OPEN; // open portal for first-time provisioning
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    // IMPORTANT: APSTA so we can scan via STA while AP remains accessible
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
