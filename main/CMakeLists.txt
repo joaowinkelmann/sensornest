@@ -1,7 +1,7 @@
 idf_component_register(SRCS "tempmesh.c"
                             "rest_server.c"
                     INCLUDE_DIRS "."
-                    REQUIRES esp_wifi esp_event nvs_flash esp_netif esp_http_client esp_http_server json dht)
+                    REQUIRES esp_wifi esp_event nvs_flash esp_netif esp_http_client esp_http_server json dht littlefs)
 
 if(CONFIG_EXAMPLE_DEPLOY_WEB_PAGES)
     set(WEB_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../front")

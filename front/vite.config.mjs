@@ -75,7 +75,7 @@ export default defineConfig({
     ],
   },
   server: {
-    port: 3000,
+    port: 7773,
     // Proxy configuration to avoid CORS issues during development
     // All requests to /api/* will be forwarded to the ESP32
     // IMPORTANT: Also strips large headers (especially cookies) to avoid HTTP 431 errors

@@ -16,10 +16,19 @@
 #include "cJSON.h"
 #include "dht.h"
 #include <stdint.h> // added for int16_t
+#include "esp_mac.h"
+#include "esp_littlefs.h"
 
 // Pin config
 #define DHT_TYPE DHT_TYPE_DHT11
 #define DHT_GPIO 10
+
+// --- WiFi connection logic (declarations moved up for visibility) ---
+static EventGroupHandle_t s_wifi_event_group;
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT      BIT1
+static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+
 
 // --- WiFi Configuration ---
 #define WIFI_SSID      "Winkelmann"
@@ -70,14 +79,30 @@ typedef struct {
 esp_err_t get_auth_token();
 void send_sensor_data();
 void authenticated_post_task(void *pvParameters);
-static void wifi_init_sta(void);
+// static void wifi_init_sta(void); // no longer called directly in app_main
+
+// --- NEW: prototypes for boot flow and REST server ---
+esp_err_t start_rest_server(const char *base_path); // from rest_server.c
+static bool wifi_boot_flow(void);
+static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len);
+static bool connect_sta_with(const char *ssid, const char *pass);
+static void start_softap_and_rest_server(void);
+static esp_err_t mount_www_fs(void);
 
 // --- Main Application Entry Point ---
 void app_main(void) {
     nvs_flash_init(); // Simplified NVS init
-    wifi_init_sta();
-    // (Time sync logic will be called inside the task)
-    xTaskCreate(&authenticated_post_task, "authenticated_post_task", 8192, NULL, 5, NULL);
+
+    // NEW: Try STA with saved credentials; if it fails or absent, start SoftAP+REST
+    bool connected = wifi_boot_flow();
+
+    if (connected) {
+        // Network available: continue the existing flow
+        // (Time sync and auth+data sending are already handled inside the task)
+        xTaskCreate(&authenticated_post_task, "authenticated_post_task", 8192, NULL, 5, NULL);
+    } else {
+        ESP_LOGW(TAG, "Provisioning portal started in SoftAP mode. Connect to the AP and open http://192.168.4.1/");
+    }
 }
 
 // --- NEW: Event handler specifically for the authentication request ---
@@ -244,6 +269,134 @@ void send_sensor_data() {
     esp_http_client_cleanup(client);
 }
 
+// --- NEW: Load Wi-Fi credentials from NVS ---
+static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len) {
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open("wifi", NVS_READONLY, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGI(TAG, "No 'wifi' namespace yet in NVS (err=%s)", esp_err_to_name(err));
+        return false;
+    }
+
+    size_t ssz = ssid_len;
+    size_t psz = pass_len;
+    err = nvs_get_str(nvs, "ssid", out_ssid, &ssz);
+    if (err != ESP_OK) {
+        ESP_LOGI(TAG, "SSID not found in NVS");
+        nvs_close(nvs);
+        return false;
+    }
+    err = nvs_get_str(nvs, "pass", out_pass, &psz);
+    if (err != ESP_OK) {
+        ESP_LOGI(TAG, "Password not found in NVS");
+        nvs_close(nvs);
+        return false;
+    }
+    nvs_close(nvs);
+    ESP_LOGI(TAG, "Loaded Wi-Fi creds from NVS: SSID='%s'", out_ssid);
+    return true;
+}
+
+// --- NEW: Try to connect in STA mode with provided credentials ---
+static bool connect_sta_with(const char *ssid, const char *pass) {
+    s_wifi_event_group = xEventGroupCreate();
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    esp_event_handler_instance_t instance_any_id;
+    esp_event_handler_instance_t instance_got_ip;
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_any_id));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
+
+    wifi_config_t wifi_config = { 0 };
+    strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
+    strlcpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "Waiting for WiFi connection (STA)...");
+    EventBits_t bits = xEventGroupWaitBits(
+        s_wifi_event_group,
+        WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+        pdFALSE,
+        pdFALSE,
+        pdMS_TO_TICKS(15000) // 15s timeout
+    );
+
+    bool ok = (bits & WIFI_CONNECTED_BIT);
+    if (ok) {
+        ESP_LOGI(TAG, "WiFi Connected (STA).");
+    } else {
+        ESP_LOGW(TAG, "WiFi connection failed or timed out.");
+        esp_wifi_stop();
+    }
+
+    // Clean up handler instances (optional now, safer later)
+    esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip);
+    esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id);
+    vEventGroupDelete(s_wifi_event_group);
+    return ok;
+}
+
+// --- NEW: Start SoftAP with "ESP-{shortID}" and launch REST server ---
+static void start_softap_and_rest_server(void) {
+    ESP_LOGW(TAG, "Starting SoftAP for provisioning...");
+
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_ap();
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    // Generate AP SSID "ESP-<MAC tail>"
+    uint8_t mac[6] = {0};
+    esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+    char ap_ssid[32];
+    snprintf(ap_ssid, sizeof(ap_ssid), "ESP-%02X%02X%02X", mac[3], mac[4], mac[5]);
+
+    wifi_config_t ap_config = { 0 };
+    strlcpy((char *)ap_config.ap.ssid, ap_ssid, sizeof(ap_config.ap.ssid));
+    ap_config.ap.ssid_len = strlen(ap_ssid);
+    ap_config.ap.channel = 1;
+    ap_config.ap.max_connection = 4;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN; // open portal for first-time provisioning
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGW(TAG, "SoftAP SSID: %s, open auth. DHCP at 192.168.4.1", ap_ssid);
+
+    // Start HTTP REST server (static pages will be wired in next steps)
+    // If you later mount LittleFS at "/www", keep this as "/www"
+    ESP_ERROR_CHECK(mount_www_fs());
+    ESP_ERROR_CHECK(start_rest_server("/www"));
+}
+
+// --- NEW: Boot flow orchestrator ---
+static bool wifi_boot_flow(void) {
+    char ssid[33] = {0};
+    char pass[65] = {0};
+
+    if (load_wifi_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        if (connect_sta_with(ssid, pass)) {
+            return true; // STA connected
+        }
+        ESP_LOGW(TAG, "Saved credentials failed to connect. Falling back to SoftAP provisioning.");
+    } else {
+        ESP_LOGI(TAG, "No saved Wi-Fi credentials found. Starting provisioning SoftAP.");
+    }
+
+    start_softap_and_rest_server();
+    return false;
+}
+
 // --- WiFi connection logic (unchanged) ---
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
@@ -253,23 +406,24 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) { xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT); }
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) { xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT); }
 }
-static void wifi_init_sta(void) {
-    s_wifi_event_group = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
-    wifi_config_t wifi_config = { .sta = { .ssid = WIFI_SSID, .password = WIFI_PASSWORD } };
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_LOGI(TAG, "Waiting for WiFi connection...");
-    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
-    if (bits & WIFI_CONNECTED_BIT) { ESP_LOGI(TAG, "WiFi Connected."); }
-    else { ESP_LOGE(TAG, "WiFi connection failed."); }
+
+// --- NEW: LittleFS mount helper ---
+static esp_err_t mount_www_fs(void) {
+    esp_vfs_littlefs_conf_t conf = {
+        .base_path = "/www",
+        .partition_label = "www",
+        .format_if_mount_failed = true,
+        .dont_mount = false,
+    };
+    esp_err_t ret = esp_vfs_littlefs_register(&conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to mount LittleFS at /www: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    size_t total = 0, used = 0;
+    ret = esp_littlefs_info(conf.partition_label, &total, &used);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "LittleFS mounted: total=%u, used=%u", (unsigned)total, (unsigned)used);
+    }
+    return ESP_OK;
 }

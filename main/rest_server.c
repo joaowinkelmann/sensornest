@@ -13,6 +13,11 @@
 #include "esp_check.h"
 #include "esp_vfs.h"
 #include "cJSON.h"
+#include "esp_event.h"
+#include "nvs_flash.h"
+#include "nvs.h"
+#include "esp_wifi.h"
+#include "esp_netif.h"
 
 static const char *TAG = "esp-rest";
 
@@ -162,6 +167,94 @@ static esp_err_t temperature_data_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* Provisioning handler - save WiFi credentials */
+static esp_err_t wifi_provision_post_handler(httpd_req_t *req)
+{
+    int total_len = req->content_len;
+    char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
+    if (total_len >= SCRATCH_BUFSIZE) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "content too long");
+        return ESP_FAIL;
+    }
+    int received = 0, cur_len = 0;
+    while (cur_len < total_len) {
+        received = httpd_req_recv(req, buf + cur_len, total_len - cur_len);
+        if (received <= 0) {
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv failed");
+            return ESP_FAIL;
+        }
+        cur_len += received;
+    }
+    buf[total_len] = '\0';
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_FAIL;
+    }
+    const cJSON *j_ssid = cJSON_GetObjectItem(root, "ssid");
+    const cJSON *j_pass = cJSON_GetObjectItem(root, "password");
+    if (!cJSON_IsString(j_ssid) || !cJSON_IsString(j_pass)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "ssid/password required");
+        return ESP_FAIL;
+    }
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open("wifi", NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs open failed");
+        return ESP_FAIL;
+    }
+    err = nvs_set_str(nvs, "ssid", j_ssid->valuestring);
+    if (err == ESP_OK) err = nvs_set_str(nvs, "pass", j_pass->valuestring);
+    if (err == ESP_OK) err = nvs_commit(nvs);
+    nvs_close(nvs);
+    cJSON_Delete(root);
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs write failed");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"saved\"}");
+    return ESP_OK;
+}
+
+/* Provisioning handler - retry connection using saved credentials */
+static esp_err_t wifi_retry_post_handler(httpd_req_t *req)
+{
+    wifi_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    nvs_handle_t nvs;
+    if (nvs_open("wifi", NVS_READONLY, &nvs) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no creds");
+        return ESP_FAIL;
+    }
+    size_t ssz = sizeof(cfg.sta.ssid);
+    size_t psz = sizeof(cfg.sta.password);
+    esp_err_t err = nvs_get_str(nvs, "ssid", (char*)cfg.sta.ssid, &ssz);
+    if (err == ESP_OK) err = nvs_get_str(nvs, "pass", (char*)cfg.sta.password, &psz);
+    nvs_close(nvs);
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid creds");
+        return ESP_FAIL;
+    }
+
+    // Switch WiFi to STA
+    (void)esp_netif_init();
+    (void)esp_event_loop_create_default();
+    esp_netif_create_default_wifi_sta();
+    wifi_init_config_t wcfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_wifi_init(&wcfg);
+    esp_wifi_set_mode(WIFI_MODE_STA);
+    esp_wifi_set_config(WIFI_IF_STA, &cfg);
+    esp_wifi_start();
+    esp_wifi_connect();
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"connecting\"}");
+    return ESP_OK;
+}
+
 esp_err_t start_rest_server(const char *base_path)
 {
     esp_err_t ret = ESP_OK;
@@ -203,6 +296,24 @@ esp_err_t start_rest_server(const char *base_path)
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &light_brightness_post_uri);
+
+    /* Provisioning: save WiFi credentials */
+    httpd_uri_t wifi_provision_post_uri = {
+        .uri = "/api/v1/provision/wifi",
+        .method = HTTP_POST,
+        .handler = wifi_provision_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &wifi_provision_post_uri);
+
+    /* Provisioning: trigger reconnect */
+    httpd_uri_t wifi_retry_post_uri = {
+        .uri = "/api/v1/provision/retry",
+        .method = HTTP_POST,
+        .handler = wifi_retry_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &wifi_retry_post_uri);
 
 #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
     /* URI handler for getting web server files */
