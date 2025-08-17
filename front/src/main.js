@@ -5,7 +5,6 @@ import router from './router'
 
 // Quasar styles and icons
 import 'quasar/dist/quasar.css'
-import '@quasar/extras/material-icons/material-icons.css'
 
 import './styles/global.css'
 
