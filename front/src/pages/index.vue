@@ -3,8 +3,8 @@
     <div class="col-12 col-sm-8 col-md-6">
       <q-card flat bordered>
         <q-card-section>
-          <div class="text-h6">Wi‑Fi Setup</div>
-          <div class="text-subtitle2">Connect your device to your Wi‑Fi</div>
+          <div class="text-h6">Device Setup</div>
+          <div class="text-subtitle2">Choose role and connect to Wi‑Fi</div>
         </q-card-section>
 
         <q-linear-progress :value="progressValue" color="primary" class="q-mx-md q-mb-sm" />
@@ -17,7 +17,37 @@
             </template>
           </q-banner>
 
-          <div class="q-gutter-md">
+          <!-- NEW: Role selection -->
+          <div v-if="!role" class="row q-col-gutter-md q-mb-md">
+            <div class="col-12 text-subtitle1">Select the device role</div>
+
+            <div class="col-12 col-sm-6">
+              <q-card flat bordered clickable @click="pickRole('CONTROLLER')" :class="cardClass('CONTROLLER')">
+                <q-card-section class="text-center">
+                  <q-icon name="hub" size="48px" class="q-mb-sm text-primary" />
+                  <div class="text-subtitle1">Controller</div>
+                  <div class="text-caption">
+                    Always on, connected to the internet/AP. Receives sensor data and forwards to the API.
+                  </div>
+                </q-card-section>
+              </q-card>
+            </div>
+
+            <div class="col-12 col-sm-6">
+              <q-card flat bordered clickable @click="pickRole('WORKER')" :class="cardClass('WORKER')">
+                <q-card-section class="text-center">
+                  <q-icon name="sensors" size="48px" class="q-mb-sm text-secondary" />
+                  <div class="text-subtitle1">Worker</div>
+                  <div class="text-caption">
+                    Periodically wakes, reads sensors, and sends data to a Controller. Uses deep sleep to save power.
+                  </div>
+                </q-card-section>
+              </q-card>
+            </div>
+          </div>
+
+          <!-- Existing Wi‑Fi form, shown after role is selected -->
+          <div v-else class="q-gutter-md">
             <q-select
               v-model="ssid"
               :options="ssidOptions"
@@ -79,6 +109,7 @@
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { api } from '../services/api'
 
+const role = ref('')
 const ssid = ref('')
 const password = ref('')
 const ssidList = ref([])
@@ -90,30 +121,41 @@ const pollTimer = ref(null)
 
 const connected = computed(() => !!status.value?.connected)
 const step = computed(() => {
+  if (!role.value) return 0
   if (connected.value) return 3
   if (connecting.value) return 2
   if (ssid.value) return 1
-  return 0
+  return 1
 })
 const progressValue = computed(() => [0, 0.34, 0.67, 1][step.value] || 0)
 const statusText = computed(() => {
+  if (!role.value) return 'Choose a role to begin.'
   if (connected.value) return 'Connected!'
   if (connecting.value) return 'Connecting...'
   if (ssid.value) return 'Network selected. Enter password to continue.'
   return 'Select a network to begin.'
 })
-
 const ssidOptions = computed(() =>
-  ssidList.value.map(ap => ({
-    label: `${ap.ssid}  (RSSI ${ap.rssi})`,
-    value: ap.ssid,
-  }))
+  ssidList.value.map(ap => ({ label: `${ap.ssid}  (RSSI ${ap.rssi})`, value: ap.ssid }))
 )
 
+function cardClass (r) {
+  return role.value === r ? 'bg-grey-2' : ''
+}
+
+async function pickRole (r) {
+  try {
+    await api.setRole(r)
+    role.value = r
+    // After choosing role, start scanning Wi‑Fi
+    scan()
+  } catch (e) {
+    error.value = e.message || 'Failed to save role'
+  }
+}
+
 function filterSSIDs (val, update) {
-  update(() => {
-    if (!val) return
-  })
+  update(() => { if (!val) return })
 }
 
 async function scan () {
@@ -121,15 +163,12 @@ async function scan () {
   error.value = ''
   try {
     const list = await api.scan()
-    // Deduplicate and sort by RSSI desc
-    const unique = Object.values(
-      list.reduce((acc, it) => {
-        const k = it.ssid
-        if (!k) return acc
-        if (!acc[k] || acc[k].rssi < it.rssi) acc[k] = it
-        return acc
-      }, {})
-    )
+    const unique = Object.values(list.reduce((acc, it) => {
+      const k = it.ssid
+      if (!k) return acc
+      if (!acc[k] || acc[k].rssi < it.rssi) acc[k] = it
+      return acc
+    }, {}))
     unique.sort((a, b) => b.rssi - a.rssi)
     ssidList.value = unique
   } catch (e) {
@@ -162,7 +201,7 @@ async function pollStatusOnce () {
       connecting.value = false
     }
   } catch (e) {
-    // Keep polling; user may have switched networks temporarily
+    /* ignore transient errors */
   }
 }
 
@@ -179,13 +218,17 @@ function stopPolling () {
   }
 }
 
-onMounted(() => {
-  scan()
+onMounted(async () => {
+  try {
+    const setup = await api.setupStatus()
+    if (setup?.role) role.value = setup.role
+  } catch (e) {
+    /* ignore */
+  }
+  if (role.value) scan()
 })
 
-onUnmounted(() => {
-  stopPolling()
-})
+onUnmounted(() => { stopPolling() })
 </script>
 
 <style scoped>

@@ -24,6 +24,7 @@ static const char *TAG = "esp-rest";
 
 #define FILE_PATH_MAX (ESP_VFS_PATH_MAX + 128)
 #define SCRATCH_BUFSIZE (10240)
+#define MAX_URI_HANDLERS 32
 
 typedef struct rest_server_context {
     char base_path[ESP_VFS_PATH_MAX + 1];
@@ -168,6 +169,144 @@ static esp_err_t temperature_data_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* --- NEW: Helper to set setup stage in NVS --- */
+static void nvs_set_setup_stage(const char *stage) {
+    nvs_handle_t nvs;
+    if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
+        nvs_set_str(nvs, "setup", stage);
+        nvs_commit(nvs);
+        nvs_close(nvs);
+    }
+}
+
+/* --- NEW: POST /api/v1/device/role --- */
+static esp_err_t device_role_post_handler(httpd_req_t *req) {
+    int total_len = req->content_len;
+    char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
+    if (total_len >= SCRATCH_BUFSIZE) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "content too long");
+        return ESP_FAIL;
+    }
+    int received = 0, cur_len = 0;
+    while (cur_len < total_len) {
+        received = httpd_req_recv(req, buf + cur_len, total_len - cur_len);
+        if (received <= 0) {
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv failed");
+            return ESP_FAIL;
+        }
+        cur_len += received;
+    }
+    buf[total_len] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_FAIL;
+    }
+    const cJSON *j_role = cJSON_GetObjectItem(root, "role");
+    if (!cJSON_IsString(j_role)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "role required");
+        return ESP_FAIL;
+    }
+    const char *role = j_role->valuestring;
+    if (strcmp(role, "CONTROLLER") != 0 && strcmp(role, "WORKER") != 0) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid role");
+        return ESP_FAIL;
+    }
+
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open("device", NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs open failed");
+        return ESP_FAIL;
+    }
+    err = nvs_set_str(nvs, "role", role);
+    if (err == ESP_OK) err = nvs_commit(nvs);
+    nvs_close(nvs);
+    cJSON_Delete(root);
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs write failed");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Device role set to: %s", role);
+
+    nvs_set_setup_stage("role_selected");
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\",\"role_saved\":true}");
+    return ESP_OK;
+}
+
+/* --- NEW: GET /api/v1/setup/status --- */
+static esp_err_t setup_status_get_handler(httpd_req_t *req) {
+    char role[16] = {0};
+    char stage[32] = {0};
+    bool has_wifi = false;
+    bool connected = false;
+    char ssid[33] = {0};
+    char ip_str[16] = {0};
+
+    // Read role and stage from NVS
+    nvs_handle_t nvs_dev;
+    if (nvs_open("device", NVS_READONLY, &nvs_dev) == ESP_OK) {
+        size_t rsz = sizeof(role);
+        size_t ssz = sizeof(stage);
+        nvs_get_str(nvs_dev, "role", role, &rsz);
+        nvs_get_str(nvs_dev, "setup", stage, &ssz);
+        nvs_close(nvs_dev);
+    }
+
+    // Check if Wi-Fi creds exist
+    nvs_handle_t nvs_wifi;
+    if (nvs_open("wifi", NVS_READONLY, &nvs_wifi) == ESP_OK) {
+        size_t ssz = sizeof(ssid);
+        if (nvs_get_str(nvs_wifi, "ssid", ssid, &ssz) == ESP_OK) {
+            has_wifi = true;
+        }
+        nvs_close(nvs_wifi);
+        ssid[0] = '\0'; // don't expose saved SSID here
+    }
+
+    // Connection info
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        connected = true;
+        strncpy((char *)ssid, (const char *)ap_info.ssid, sizeof(ssid) - 1);
+        esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        if (sta) {
+            esp_netif_ip_info_t ip;
+            if (esp_netif_get_ip_info(sta, &ip) == ESP_OK) {
+                snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip.ip));
+            }
+        }
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "role", role[0] ? role : NULL);
+    cJSON_AddStringToObject(root, "stage", stage[0] ? stage : NULL);
+    cJSON_AddBoolToObject(root, "has_wifi", has_wifi);
+    cJSON_AddBoolToObject(root, "connected", connected);
+    if (connected) {
+        cJSON_AddStringToObject(root, "ssid", ssid);
+        cJSON_AddStringToObject(root, "ip", ip_str);
+    }
+
+    const char *json = cJSON_PrintUnformatted(root);
+
+    ESP_LOGI(TAG, "Setup status: role=%s, stage=%s, has_wifi=%d, connected=%d, ssid=%s, ip=%s",
+             role[0] ? role : "N/A", stage[0] ? stage : "N/A", has_wifi, connected, ssid, ip_str);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json);
+    free((void *)json);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
 /* Provisioning handler - save WiFi credentials */
 static esp_err_t wifi_provision_post_handler(httpd_req_t *req)
 {
@@ -215,6 +354,11 @@ static esp_err_t wifi_provision_post_handler(httpd_req_t *req)
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs write failed");
         return ESP_FAIL;
     }
+    // --- NEW: advance setup stage ---
+    nvs_set_setup_stage("wifi_saved");
+
+    ESP_LOGI(TAG, "Wi-Fi credentials saved: SSID=%s", j_ssid->valuestring);
+
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"saved\"}");
     return ESP_OK;
@@ -246,6 +390,11 @@ static esp_err_t wifi_retry_post_handler(httpd_req_t *req)
     esp_wifi_set_config(WIFI_IF_STA, &cfg);
     esp_wifi_start();
     esp_wifi_connect();
+
+    // --- NEW: mark as connecting ---
+    nvs_set_setup_stage("connecting");
+
+    ESP_LOGI(TAG, "Retrying Wi-Fi connection with SSID: %s", cfg.sta.ssid);
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"connecting\"}");
@@ -297,6 +446,8 @@ static esp_err_t wifi_scan_get_handler(httpd_req_t *req) {
         cJSON_AddItemToArray(root, ap);
     }
     free(ap_records);
+
+    ESP_LOGI(TAG, "Wi-Fi scan found %d APs", ap_num);
 
     const char *json = cJSON_PrintUnformatted(root);
     httpd_resp_set_type(req, "application/json");
@@ -350,6 +501,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
+    config.max_uri_handlers = MAX_URI_HANDLERS;
 
     ESP_LOGI(TAG, "Starting HTTP Server");
     ESP_GOTO_ON_ERROR(httpd_start(&server, &config), err, TAG, "Failed to start http server");
@@ -398,6 +550,23 @@ esp_err_t start_rest_server(const char *base_path)
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &wifi_retry_post_uri);
+
+    /* --- NEW: Role and Setup endpoints --- */
+    httpd_uri_t device_role_post_uri = {
+        .uri = "/api/v1/device/role",
+        .method = HTTP_POST,
+        .handler = device_role_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &device_role_post_uri);
+
+    httpd_uri_t setup_status_get_uri = {
+        .uri = "/api/v1/setup/status",
+        .method = HTTP_GET,
+        .handler = setup_status_get_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &setup_status_get_uri);
 
     // --- NEW: Wi-Fi scan endpoint ---
     httpd_uri_t wifi_scan_get_uri = {

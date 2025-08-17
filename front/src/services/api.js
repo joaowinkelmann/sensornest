@@ -47,7 +47,6 @@
 //       console.error('API Error:', error)
 //       throw error
 //     },
-//   },
 // })
 
 // // API endpoints
@@ -70,29 +69,35 @@
 // }
 
 // filepath: front/src/services/api.js
-const base = ''
+const base = "";
 
-async function handle (res) {
+async function handle(res) {
   if (!res.ok) {
-    const t = await res.text()
-    throw new Error(`HTTP ${res.status}: ${t}`)
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `HTTP ${res.status}`);
   }
-  const ct = res.headers.get('content-type') || ''
-  if (ct.includes('application/json')) {
-    return res.json()
-  }
-  return res.text()
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("application/json") ? res.json() : res.text();
 }
 
 export const api = {
   scan: () => fetch(`${base}/api/v1/wifi/scan`).then(handle),
   saveCreds: ({ ssid, password }) =>
     fetch(`${base}/api/v1/provision/wifi`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ssid, password }),
     }).then(handle),
   retryConnect: () =>
-    fetch(`${base}/api/v1/provision/retry`, { method: 'POST' }).then(handle),
+    fetch(`${base}/api/v1/provision/retry`, { method: "POST" }).then(handle),
   status: () => fetch(`${base}/api/v1/wifi/status`).then(handle),
-}
+
+  // --- NEW: setup/role endpoints ---
+  setupStatus: () => fetch(`${base}/api/v1/setup/status`).then(handle),
+  setRole: (role) =>
+    fetch(`${base}/api/v1/device/role`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    }).then(handle),
+};

@@ -18,6 +18,10 @@
 #include <stdint.h> // added for int16_t
 #include "esp_mac.h"
 #include "esp_littlefs.h"
+#include "nvs.h"
+#include "driver/gpio.h"
+#include "esp_system.h"
+#include "esp_timer.h"
 
 // Pin config
 #define DHT_TYPE DHT_TYPE_DHT11
@@ -33,6 +37,19 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 // --- WiFi Configuration ---
 #define WIFI_SSID      "Winkelmann"
 #define WIFI_PASSWORD  "jr173806"
+
+// Factory reset declarations START
+#define BOOT_BTN_GPIO           GPIO_NUM_0     // BOOT button (IO0)
+#define RESET_HOLD_MS           5000           // hold BOOT for 5s to reset
+#define DOUBLE_RESET_WINDOW_MS  5000           // two resets within 5s
+
+RTC_DATA_ATTR static uint32_t dr_count = 0;
+RTC_DATA_ATTR static int64_t  dr_last_ms = 0;
+
+static void check_double_reset(void);
+static void factory_reset_button_task(void *pvParameters);
+static void do_factory_reset(void);
+// Factory reset declarations END
 
 static const char *TAG = "MAIN_APP";
 static char access_token[512] = {0};
@@ -79,6 +96,7 @@ typedef struct {
 esp_err_t get_auth_token();
 void send_sensor_data();
 void authenticated_post_task(void *pvParameters);
+static void set_setup_stage(const char *stage);
 // static void wifi_init_sta(void); // no longer called directly in app_main
 
 // --- NEW: prototypes for boot flow and REST server ---
@@ -92,6 +110,12 @@ static esp_err_t mount_www_fs(void);
 // --- Main Application Entry Point ---
 void app_main(void) {
     nvs_flash_init(); // Simplified NVS init
+
+    // +++ ADD: run double-reset detector early
+    check_double_reset();
+
+    // +++ ADD: start BOOT long-press watcher
+    xTaskCreate(factory_reset_button_task, "factory_reset_btn", 2048, NULL, 3, NULL);
 
     // NEW: Try STA with saved credentials; if it fails or absent, start SoftAP+REST
     bool connected = wifi_boot_flow();
@@ -232,9 +256,16 @@ void send_sensor_data() {
     int16_t humidity = 0;
     int16_t temperature = 0;
     esp_err_t res = dht_read_data(DHT_TYPE, DHT_GPIO, &humidity, &temperature);
+
+    // Divide by 10, because dht_read_data returns temp and hum * 10
+    temperature /= 10;
+    humidity /= 10;
+
     if (res != ESP_OK) {
         ESP_LOGE(DATA_TAG, "DHT read failed: %s", esp_err_to_name(res));
         return;
+    } else {
+        ESP_LOGI(DATA_TAG, "DHT Read - Humidity: %d%%, Temperature: %dC", humidity, temperature);
     }
 
     // Note: for DHT11 driver returns integer values (no decimal). Adjust if using DHT22.
@@ -331,6 +362,8 @@ static bool connect_sta_with(const char *ssid, const char *pass) {
     bool ok = (bits & WIFI_CONNECTED_BIT);
     if (ok) {
         ESP_LOGI(TAG, "WiFi Connected (STA).");
+        // --- NEW: mark connected ---
+        set_setup_stage("connected");
     } else {
         ESP_LOGW(TAG, "WiFi connection failed or timed out.");
         esp_wifi_stop();
@@ -376,8 +409,10 @@ static void start_softap_and_rest_server(void) {
 
     ESP_LOGW(TAG, "SoftAP SSID: %s, open auth. DHCP at 192.168.4.1", ap_ssid);
 
-    // Start HTTP REST server (static pages will be wired in next steps)
-    // If you later mount LittleFS at "/www", keep this as "/www"
+    // --- NEW: mark provisioning stage ---
+    set_setup_stage("provisioning");
+
+    // Start HTTP REST server
     ESP_ERROR_CHECK(mount_www_fs());
     ESP_ERROR_CHECK(start_rest_server("/www"));
 }
@@ -391,8 +426,12 @@ static bool wifi_boot_flow(void) {
         if (connect_sta_with(ssid, pass)) {
             return true; // STA connected
         }
+        // --- NEW: fall through to provisioning if failed ---
+        set_setup_stage("provisioning");
         ESP_LOGW(TAG, "Saved credentials failed to connect. Falling back to SoftAP provisioning.");
     } else {
+        // --- NEW: no creds yet
+        set_setup_stage("provisioning");
         ESP_LOGI(TAG, "No saved Wi-Fi credentials found. Starting provisioning SoftAP.");
     }
 
@@ -429,4 +468,72 @@ static esp_err_t mount_www_fs(void) {
         ESP_LOGI(TAG, "LittleFS mounted: total=%u, used=%u", (unsigned)total, (unsigned)used);
     }
     return ESP_OK;
+}
+
+// --- NEW: persist setup stage helper ---
+static void set_setup_stage(const char *stage) {
+    nvs_handle_t nvs;
+    if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
+        nvs_set_str(nvs, "setup", stage);
+        nvs_commit(nvs);
+        nvs_close(nvs);
+    }
+}
+
+// +++ ADD: factory reset implementation
+static void do_factory_reset(void) {
+    ESP_LOGW(TAG, "Factory reset requested: erasing NVS and restarting...");
+    // Option A: erase all NVS (clears Wi-Fi, device setup, etc.)
+    // Note: PHY will recalibrate on next boot.
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ESP_ERROR_CHECK(nvs_flash_init());
+    set_setup_stage("factory_reset");
+    vTaskDelay(pdMS_TO_TICKS(100));
+    esp_restart();
+}
+
+// +++ ADD: detect two resets within a short window
+static void check_double_reset(void) {
+    esp_reset_reason_t r = esp_reset_reason();
+    int64_t now_ms = esp_timer_get_time() / 1000;
+    if (r == ESP_RST_EXT || r == ESP_RST_SW || r == ESP_RST_BROWNOUT) {
+        if ((now_ms - dr_last_ms) < DOUBLE_RESET_WINDOW_MS) {
+            dr_count++;
+        } else {
+            dr_count = 1;
+        }
+        dr_last_ms = now_ms;
+        if (dr_count >= 2) {
+            do_factory_reset();
+        }
+    } else {
+        dr_count = 0;
+        dr_last_ms = now_ms;
+    }
+}
+
+// +++ ADD: long-press BOOT button to reset
+static void factory_reset_button_task(void *pv) {
+    gpio_config_t io = {
+        .pin_bit_mask = 1ULL << BOOT_BTN_GPIO,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io);
+
+    for (;;) {
+        if (gpio_get_level(BOOT_BTN_GPIO) == 0) { // pressed = low
+            int64_t start_ms = esp_timer_get_time() / 1000;
+            while (gpio_get_level(BOOT_BTN_GPIO) == 0) {
+                if (((esp_timer_get_time() / 1000) - start_ms) >= RESET_HOLD_MS) {
+                    ESP_LOGW(TAG, "BOOT held for %d ms -> factory reset", RESET_HOLD_MS);
+                    do_factory_reset();
+                }
+                vTaskDelay(pdMS_TO_TICKS(50));
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
 }

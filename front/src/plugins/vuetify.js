@@ -10,36 +10,36 @@ import {
   mdiHome,
   mdiLightbulb,
   mdiMenu,
-} from '@mdi/js'
+} from "@mdi/js";
 
 // Composables
-import { createVuetify } from 'vuetify'
+import { createVuetify } from "vuetify";
 
 // Icons
-import { aliases, mdi } from 'vuetify/iconsets/mdi-svg'
+import { aliases, mdi } from "vuetify/iconsets/mdi-svg";
 // Styles
-import 'vuetify/styles'
+import "vuetify/styles";
 
 // Custom icon aliases for on-demand loading
 const customAliases = {
   ...aliases,
-  'home': mdiHome,
-  'chart-line': mdiChartLine,
-  'lightbulb': mdiLightbulb,
-  'check': mdiCheck,
-  'menu': mdiMenu,
-}
+  home: mdiHome,
+  "chart-line": mdiChartLine,
+  lightbulb: mdiLightbulb,
+  check: mdiCheck,
+  menu: mdiMenu,
+};
 
 // https://vuetifyjs.com/en/introduction/why-vuetify/#feature-guides
 export default createVuetify({
   icons: {
-    defaultSet: 'mdi',
+    defaultSet: "mdi",
     aliases: customAliases,
     sets: {
       mdi,
     },
   },
   theme: {
-    defaultTheme: 'light',
+    defaultTheme: "light",
   },
-})
+});
