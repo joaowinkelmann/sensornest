@@ -97,6 +97,7 @@ esp_err_t get_auth_token();
 void send_sensor_data();
 void authenticated_post_task(void *pvParameters);
 static void set_setup_stage(const char *stage);
+extern void captive_dns_task(void *pv); // from main/captive_dns.c
 // static void wifi_init_sta(void); // no longer called directly in app_main
 
 // --- NEW: prototypes for boot flow and REST server ---
@@ -415,6 +416,12 @@ static void start_softap_and_rest_server(void) {
     // Start HTTP REST server
     ESP_ERROR_CHECK(mount_www_fs());
     ESP_ERROR_CHECK(start_rest_server("/www"));
+
+    // Start captive DNS so all hostnames resolve to AP IP and probes hit our server
+    xTaskCreate(captive_dns_task, "captive_dns", 8192, NULL, 5, NULL);
+
+    // --- NEW: mark provisioning stage ---
+    set_setup_stage("provisioning");
 }
 
 // --- NEW: Boot flow orchestrator ---
