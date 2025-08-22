@@ -13,6 +13,8 @@
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_netif.h"
+#include <errno.h>   // <--- ADD (uses errno)
+#include "esp_timer.h"
 
 static const char *TAG = "CAPTIVE_DNS";
 
@@ -172,6 +174,25 @@ static size_t create_dns_response(const uint8_t *query_packet, size_t query_len,
     return query_len + sizeof(dns_answer_t);
 }
 
+// --- ADD: simple rate limit & single-instance guard ---
+#define DNS_MAX_RESP_PER_SEC 40
+
+static uint32_t rl_window_start_ms = 0;
+static uint16_t rl_count_in_window = 0;
+static TaskHandle_t dns_task_handle = NULL;
+
+// Helper to decide if we should answer (drops excess to reduce load)
+static bool dns_rate_allowed(void) {
+    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000); // current time in ms
+    if (rl_window_start_ms == 0 || (now - rl_window_start_ms) >= 1000) {
+        rl_window_start_ms = now;
+        rl_count_in_window = 0;
+    }
+    if (rl_count_in_window >= DNS_MAX_RESP_PER_SEC) return false;
+    rl_count_in_window++;
+    return true;
+}
+
 // Main DNS server function
 static void dns_server_task(void *pvParameters) {
     struct sockaddr_in server_addr, client_addr;
@@ -208,6 +229,9 @@ static void dns_server_task(void *pvParameters) {
         ESP_LOGE(TAG, "Failed to bind DNS socket: errno=%d", errno);
         goto cleanup;
     }
+    
+    struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
+    setsockopt(dns_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     
     ESP_LOGI(TAG, "DNS server bound to port %d, redirecting all queries to " IPSTR, 
              DNS_PORT, IP2STR((esp_ip4_addr_t*)&ap_ip));
@@ -251,6 +275,11 @@ static void dns_server_task(void *pvParameters) {
             continue;
         }
         
+        if (!dns_rate_allowed()) {
+            ESP_LOGD(TAG, "DNS rate limit drop for '%s'", domain_name);
+            continue;
+        }
+        
         // Create response packet
         size_t response_len = create_dns_response(packet_buffer, packet_len, 
                                                   response_buffer, sizeof(response_buffer), ap_ip);
@@ -281,15 +310,21 @@ cleanup:
         close(dns_socket);
         dns_socket = -1;
     }
+    dns_task_handle = NULL;   // <--- mark free
     ESP_LOGI(TAG, "DNS server task ended");
     vTaskDelete(NULL);
 }
 
 // Public function to start the captive DNS server (called from main app)
 void captive_dns_task(void *pv) {
-    // Small delay to ensure WiFi AP is fully up
+    if (dns_task_handle) {
+        ESP_LOGW(TAG, "Captive DNS already running");
+        return;
+    }
+    // Launch actual server in this same task context (original behavior) OR create new task.
+    // Keep original behavior (blocking) but mark handle:
+    dns_task_handle = xTaskGetCurrentTaskHandle();
     vTaskDelay(pdMS_TO_TICKS(2000));
-    
     ESP_LOGI(TAG, "Initializing captive DNS server...");
     dns_server_task(pv);
 }
@@ -298,6 +333,7 @@ void captive_dns_task(void *pv) {
 void captive_dns_stop(void) {
     if (dns_socket >= 0) {
         ESP_LOGI(TAG, "Stopping captive DNS server...");
+        shutdown(dns_socket, SHUT_RDWR);
         close(dns_socket);
         dns_socket = -1;
     }

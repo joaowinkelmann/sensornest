@@ -1,6 +1,8 @@
-idf_component_register(SRCS "tempmesh.c"
+idf_component_register(SRCS "rest_client.c" "tempmesh.c"
                             "rest_server.c"
+                            "rest_client.c"
                             "captive_dns.c"
+                            "certs.c"
                     INCLUDE_DIRS "."
                     PRIV_REQUIRES esp_timer
                     REQUIRES esp_wifi esp_event nvs_flash esp_netif esp_http_client esp_http_server json dht littlefs)

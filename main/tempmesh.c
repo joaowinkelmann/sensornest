@@ -22,6 +22,10 @@
 #include "driver/gpio.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "rest_client.h"
+
+// Cert
+#include "certs.h"
 
 // Pin config
 #define DHT_TYPE DHT_TYPE_DHT11
@@ -33,7 +37,6 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_FAIL_BIT      BIT1
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
-
 // --- WiFi Configuration ---
 #define WIFI_SSID      "Winkelmann"
 #define WIFI_PASSWORD  "jr173806"
@@ -41,49 +44,18 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 // Factory reset declarations START
 #define BOOT_BTN_GPIO           GPIO_NUM_0     // BOOT button (IO0)
 #define RESET_HOLD_MS           5000           // hold BOOT for 5s to reset
-#define DOUBLE_RESET_WINDOW_MS  5000           // two resets within 5s
 
 RTC_DATA_ATTR static uint32_t dr_count = 0;
 RTC_DATA_ATTR static int64_t  dr_last_ms = 0;
 
-static void check_double_reset(void);
 static void factory_reset_button_task(void *pvParameters);
 static void do_factory_reset(void);
 // Factory reset declarations END
 
 static const char *TAG = "MAIN_APP";
-static char access_token[512] = {0};
 
-static const char *winkels_root_ca_pem = \
-"-----BEGIN CERTIFICATE-----\n" \
-"MIIFBTCCAu2gAwIBAgIQS6hSk/eaL6JzBkuoBI110DANBgkqhkiG9w0BAQsFADBP\n" \
-"MQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJuZXQgU2VjdXJpdHkgUmVzZWFy\n" \
-"Y2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBYMTAeFw0yNDAzMTMwMDAwMDBa\n" \
-"Fw0yNzAzMTIyMzU5NTlaMDMxCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1MZXQncyBF\n" \
-"bmNyeXB0MQwwCgYDVQQDEwNSMTAwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEK\n" \
-"AoIBAQDPV+XmxFQS7bRH/sknWHZGUCiMHT6I3wWd1bUYKb3dtVq/+vbOo76vACFL\n" \
-"YlpaPAEvxVgD9on/jhFD68G14BQHlo9vH9fnuoE5CXVlt8KvGFs3Jijno/QHK20a\n" \
-"/6tYvJWuQP/py1fEtVt/eA0YYbwX51TGu0mRzW4Y0YCF7qZlNrx06rxQTOr8IfM4\n" \
-"FpOUurDTazgGzRYSespSdcitdrLCnF2YRVxvYXvGLe48E1KGAdlX5jgc3421H5KR\n" \
-"mudKHMxFqHJV8LDmowfs/acbZp4/SItxhHFYyTr6717yW0QrPHTnj7JHwQdqzZq3\n" \
-"DZb3EoEmUVQK7GH29/Xi8orIlQ2NAgMBAAGjgfgwgfUwDgYDVR0PAQH/BAQDAgGG\n" \
-"MB0GA1UdJQQWMBQGCCsGAQUFBwMCBggrBgEFBQcDATASBgNVHRMBAf8ECDAGAQH/\n" \
-"AgEAMB0GA1UdDgQWBBS7vMNHpeS8qcbDpHIMEI2iNeHI6DAfBgNVHSMEGDAWgBR5\n" \
-"tFnme7bl5AFzgAiIyBpY9umbbjAyBggrBgEFBQcBAQQmMCQwIgYIKwYBBQUHMAKG\n" \
-"Fmh0dHA6Ly94MS5pLmxlbmNyLm9yZy8wEwYDVR0gBAwwCjAIBgZngQwBAgEwJwYD\n" \
-"VR0fBCAwHjAcoBqgGIYWaHR0cDovL3gxLmMubGVuY3Iub3JnLzANBgkqhkiG9w0B\n" \
-"AQsFAAOCAgEAkrHnQTfreZ2B5s3iJeE6IOmQRJWjgVzPw139vaBw1bGWKCIL0vIo\n" \
-"zwzn1OZDjCQiHcFCktEJr59L9MhwTyAWsVrdAfYf+B9haxQnsHKNY67u4s5Lzzfd\n" \
-"u6PUzeetUK29v+PsPmI2cJkxp+iN3epi4hKu9ZzUPSwMqtCceb7qPVxEbpYxY1p9\n" \
-"1n5PJKBLBX9eb9LU6l8zSxPWV7bK3lG4XaMJgnT9x3ies7msFtpKK5bDtotij/l0\n" \
-"GaKeA97pb5uwD9KgWvaFXMIEt8jVTjLEvwRdvCn294GPDF08U8lAkIv7tghluaQh\n" \
-"1QnlE4SEN4LOECj8dsIGJXpGUk3aU3KkJz9icKy+aUgA+2cP21uh6NcDIS3XyfaZ\n" \
-"QjmDQ993ChII8SXWupQZVBiIpcWO4RqZk3lr7Bz5MUCwzDIA359e57SSq5CCkY0N\n" \
-"4B6Vulk7LktfwrdGNVI5BsC9qqxSwSKgRJeZ9wygIaehbHFHFhcBaMDKpiZlBHyz\n" \
-"rsnnlFXCb5s8HKn5LsUgGvB24L7sGNZP2CX7dhHov+YhD+jozLW2p9W4959Bz2Ei\n" \
-"RmqDtmiXLnzqTpXbI+suyCsohKRg6Un0RC47+cpiVwHiXZAW+cn8eiNIjqbVgXLx\n" \
-"KPpdzvvtTnOPlC7SQZSYmdunr3Bf9b77AiC/ZidstK36dRILKz7OA54=\n" \
-"-----END CERTIFICATE-----\n";
+// Declaration of the root CA certificate for HTTPS connections
+extern const char *winkels_root_ca_pem;
 
 // --- NEW: Struct to hold response data for the event handler ---
 typedef struct {
@@ -93,12 +65,10 @@ typedef struct {
 } http_response_data_t;
 
 // --- Function Prototypes ---
-esp_err_t get_auth_token();
 void send_sensor_data();
 void authenticated_post_task(void *pvParameters);
 static void set_setup_stage(const char *stage);
 extern void captive_dns_task(void *pv); // from main/captive_dns.c
-// static void wifi_init_sta(void); // no longer called directly in app_main
 
 // --- NEW: prototypes for boot flow and REST server ---
 esp_err_t start_rest_server(const char *base_path); // from rest_server.c
@@ -111,9 +81,6 @@ static esp_err_t mount_www_fs(void);
 // --- Main Application Entry Point ---
 void app_main(void) {
     nvs_flash_init(); // Simplified NVS init
-
-    // +++ ADD: run double-reset detector early
-    check_double_reset();
 
     // +++ ADD: start BOOT long-press watcher
     xTaskCreate(factory_reset_button_task, "factory_reset_btn", 2048, NULL, 3, NULL);
@@ -168,7 +135,10 @@ void authenticated_post_task(void *pvParameters) {
     }
 
     // Step 1: Authenticate and get the token
-    esp_err_t auth_status = get_auth_token();
+    // esp_err_t auth_status = get_auth_token();
+    const char *user_email = "test@example.com";
+    const char *user_pass  = "password123";
+    esp_err_t auth_status = rc_login(user_email, user_pass);
 
     // Step 2: If authentication was successful, send the sensor data
     if (auth_status == ESP_OK) {
@@ -180,66 +150,6 @@ void authenticated_post_task(void *pvParameters) {
 
     ESP_LOGI(TAG, "--- Authenticated POST Task Finished ---");
     vTaskDelete(NULL);
-}
-
-// --- REVISED: Function to perform the authentication request ---
-esp_err_t get_auth_token() {
-    static const char *AUTH_TAG = "AUTH_CLIENT";
-    const char *login_url = "https://winkels.com.br/tempmesh/api/auth/login/";
-    const char *post_data = "{\"email\": \"test@example.com\", \"password\": \"password123\"}";
-    
-    // Prepare a buffer for the response
-    http_response_data_t response_data = {0};
-    response_data.buffer_size = 1024; // Allocate a 1KB buffer for the response
-    response_data.buffer = malloc(response_data.buffer_size);
-    if (response_data.buffer == NULL) {
-        ESP_LOGE(AUTH_TAG, "Failed to allocate memory for response buffer");
-        return ESP_FAIL;
-    }
-
-    esp_http_client_config_t config = {
-        .url = login_url,
-        .cert_pem = winkels_root_ca_pem,
-        .event_handler = _auth_http_event_handler, // Use our new event handler
-        .user_data = &response_data,             // Pass our buffer struct to the handler
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    
-    esp_http_client_set_method(client, HTTP_METHOD_POST);
-    esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_post_field(client, post_data, strlen(post_data));
-
-    esp_err_t err = esp_http_client_perform(client);
-    esp_err_t return_status = ESP_FAIL;
-
-    if (err == ESP_OK) {
-        int status_code = esp_http_client_get_status_code(client);
-        ESP_LOGI(AUTH_TAG, "Auth request status = %d", status_code);
-
-        if (status_code == 201 || status_code == 200) {
-            ESP_LOGI(AUTH_TAG, "Auth response body: %s", response_data.buffer);
-            cJSON *json = cJSON_Parse(response_data.buffer);
-            if (json) {
-                cJSON *token_item = cJSON_GetObjectItem(json, "access_token");
-                if (token_item && cJSON_IsString(token_item)) {
-                    strncpy(access_token, token_item->valuestring, sizeof(access_token) - 1);
-                    ESP_LOGI(AUTH_TAG, "Successfully extracted access token.");
-                    return_status = ESP_OK;
-                } else {
-                    ESP_LOGE(AUTH_TAG, "Failed to find 'access_token' in JSON response.");
-                }
-                cJSON_Delete(json);
-            } else {
-                ESP_LOGE(AUTH_TAG, "Failed to parse JSON response.");
-            }
-        }
-    } else {
-        ESP_LOGE(AUTH_TAG, "Authentication request failed: %s", esp_err_to_name(err));
-    }
-    
-    esp_http_client_cleanup(client);
-    free(response_data.buffer); // Clean up the response buffer
-    return return_status;
 }
 
 // --- Function to send the sensor data (replaced fake data with real DHT11 read) ---
@@ -278,27 +188,13 @@ void send_sensor_data() {
              temp_f, hum_f, time_buffer);
     ESP_LOGI(DATA_TAG, "Generated JSON Payload: %s", json_payload);
 
-    esp_http_client_config_t config = {
-        .url = "https://winkels.com.br/tempmesh/api/readings/add/",
-        .cert_pem = winkels_root_ca_pem,
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    esp_http_client_set_method(client, HTTP_METHOD_POST);
-    char bearer_header[600];
-    snprintf(bearer_header, sizeof(bearer_header), "Bearer %s", access_token);
-    esp_http_client_set_header(client, "Authorization", bearer_header);
-    esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_post_field(client, json_payload, strlen(json_payload));
-
-    ESP_LOGI(DATA_TAG, "Performing authenticated HTTPS POST...");
-    esp_err_t err = esp_http_client_perform(client);
+    // OLD direct HTTP code removed; now delegate to rest_client
+    esp_err_t err = rc_post_readings(json_payload);
     if (err == ESP_OK) {
-        ESP_LOGI(DATA_TAG, "✅ HTTPS POST successful, status = %d", esp_http_client_get_status_code(client));
+        ESP_LOGI(DATA_TAG, "Readings POST success");
     } else {
-        ESP_LOGE(DATA_TAG, "❌ HTTPS POST failed: %s", esp_err_to_name(err));
+        ESP_LOGE(DATA_TAG, "Readings POST failed: %s", esp_err_to_name(err));
     }
-
-    esp_http_client_cleanup(client);
 }
 
 // --- NEW: Load Wi-Fi credentials from NVS ---
@@ -497,26 +393,6 @@ static void do_factory_reset(void) {
     set_setup_stage("factory_reset");
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_restart();
-}
-
-// +++ ADD: detect two resets within a short window
-static void check_double_reset(void) {
-    esp_reset_reason_t r = esp_reset_reason();
-    int64_t now_ms = esp_timer_get_time() / 1000;
-    if (r == ESP_RST_EXT || r == ESP_RST_SW || r == ESP_RST_BROWNOUT) {
-        if ((now_ms - dr_last_ms) < DOUBLE_RESET_WINDOW_MS) {
-            dr_count++;
-        } else {
-            dr_count = 1;
-        }
-        dr_last_ms = now_ms;
-        if (dr_count >= 2) {
-            do_factory_reset();
-        }
-    } else {
-        dr_count = 0;
-        dr_last_ms = now_ms;
-    }
 }
 
 // +++ ADD: long-press BOOT button to reset

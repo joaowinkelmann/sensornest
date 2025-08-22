@@ -1,7 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2010-2025 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: CC0-1.0
+ * Exposes routes for the front-end to use internally
  */
 
 #include <string.h>
@@ -20,22 +18,30 @@
 #include "esp_netif.h"
 #include "esp_mac.h"
 
+// Cert
+#include "certs.h"
+#include "rest_client.h"   // <--- ADD for rc_login / rc_get_device_by_mac
+
 static const char *TAG = "esp-rest";
 
 #define FILE_PATH_MAX (ESP_VFS_PATH_MAX + 128)
 #define SCRATCH_BUFSIZE (10240)
 #define MAX_URI_HANDLERS 32
 
+// Move struct definition before using its type in prototype
 typedef struct rest_server_context {
     char base_path[ESP_VFS_PATH_MAX + 1];
     char scratch[SCRATCH_BUFSIZE];
 } rest_server_context_t;
 
+// Forward declaration (after struct so the type is known)
+static void register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx);
+
 #define CHECK_FILE_EXTENSION(filename, ext) (strcasecmp(&filename[strlen(filename) - strlen(ext)], ext) == 0)
 
 #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
 /* Set HTTP response content type according to file extension */
-static esp_err_t set_content_type_from_file(httpd_req_t *req, const char *filepath)
+static esp_err_t rs_set_content_type_from_file(httpd_req_t *req, const char *filepath)
 {
     const char *type = "text/plain";
     if (CHECK_FILE_EXTENSION(filepath, ".html")) {
@@ -55,7 +61,7 @@ static esp_err_t set_content_type_from_file(httpd_req_t *req, const char *filepa
 }
 
 /* Send HTTP response with the contents of the requested file */
-static esp_err_t rest_common_get_handler(httpd_req_t *req)
+static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
 {
     char filepath[FILE_PATH_MAX];
 
@@ -76,7 +82,8 @@ static esp_err_t rest_common_get_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    set_content_type_from_file(req, filepath);
+    // FIX: call correct helper name (had missing rs_ prefix)
+    rs_set_content_type_from_file(req, filepath);
 
     char *chunk = rest_context->scratch;
     ssize_t read_bytes;
@@ -108,7 +115,7 @@ static esp_err_t rest_common_get_handler(httpd_req_t *req)
 #endif // CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
 
 /* Simple handler for light brightness control */
-static esp_err_t light_brightness_post_handler(httpd_req_t *req)
+static esp_err_t rs_light_brightness_post_handler(httpd_req_t *req)
 {
     int total_len = req->content_len;
     int cur_len = 0;
@@ -141,7 +148,7 @@ static esp_err_t light_brightness_post_handler(httpd_req_t *req)
 }
 
 /* Simple handler for getting system handler */
-static esp_err_t system_info_get_handler(httpd_req_t *req)
+static esp_err_t rs_system_info_get_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
@@ -158,7 +165,7 @@ static esp_err_t system_info_get_handler(httpd_req_t *req)
 }
 
 /* Simple handler for getting temperature data */
-static esp_err_t temperature_data_get_handler(httpd_req_t *req)
+static esp_err_t rs_temperature_data_get_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "application/json");
     cJSON *root = cJSON_CreateObject();
@@ -182,7 +189,7 @@ static void nvs_set_setup_stage(const char *stage) {
 }
 
 /* --- NEW: POST /api/v1/device/role --- */
-static esp_err_t device_role_post_handler(httpd_req_t *req) {
+static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
     int total_len = req->content_len;
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
     if (total_len >= SCRATCH_BUFSIZE) {
@@ -244,7 +251,7 @@ static esp_err_t device_role_post_handler(httpd_req_t *req) {
 }
 
 /* --- NEW: GET /api/v1/setup/status --- */
-static esp_err_t setup_status_get_handler(httpd_req_t *req) {
+static esp_err_t rs_setup_status_get_handler(httpd_req_t *req) {
     char role[16] = {0};
     char stage[32] = {0};
     bool has_wifi = false;
@@ -310,7 +317,7 @@ static esp_err_t setup_status_get_handler(httpd_req_t *req) {
 }
 
 /* Provisioning handler - save WiFi credentials */
-static esp_err_t wifi_provision_post_handler(httpd_req_t *req)
+static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req)
 {
     int total_len = req->content_len;
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
@@ -367,7 +374,7 @@ static esp_err_t wifi_provision_post_handler(httpd_req_t *req)
 }
 
 /* Provisioning handler - retry connection using saved credentials */
-static esp_err_t wifi_retry_post_handler(httpd_req_t *req)
+static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req)
 {
     wifi_config_t cfg;
     memset(&cfg, 0, sizeof(cfg));
@@ -404,7 +411,7 @@ static esp_err_t wifi_retry_post_handler(httpd_req_t *req)
 }
 
 /* --- NEW: Wi-Fi scan (GET /api/v1/wifi/scan) --- */
-static esp_err_t wifi_scan_get_handler(httpd_req_t *req) {
+static esp_err_t rs_wifi_scan_get_handler(httpd_req_t *req) {
     // Ensure we're in APSTA so scan can run without dropping AP
     wifi_mode_t mode;
     esp_wifi_get_mode(&mode);
@@ -460,7 +467,7 @@ static esp_err_t wifi_scan_get_handler(httpd_req_t *req) {
 }
 
 /* --- NEW: Wi-Fi status (GET /api/v1/wifi/status) --- */
-static esp_err_t wifi_status_get_handler(httpd_req_t *req) {
+static esp_err_t rs_wifi_status_get_handler(httpd_req_t *req) {
     bool connected = false;
     wifi_ap_record_t ap_info;
     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
@@ -493,7 +500,7 @@ static esp_err_t wifi_status_get_handler(httpd_req_t *req) {
 }
 
 /* Add handlers to make mobile OSes trigger captive portal UI */
-static esp_err_t probe_generate_204_handler(httpd_req_t *req)
+static esp_err_t rs_probe_generate_204_handler(httpd_req_t *req)
 {
     char host[64] = {0}, ua[128] = {0};
     httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
@@ -505,7 +512,7 @@ static esp_err_t probe_generate_204_handler(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);
 }
 
-static esp_err_t probe_hotspot_detect_handler(httpd_req_t *req)
+static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req)
 {
     char host[64] = {0}, ua[128] = {0};
     httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
@@ -518,8 +525,7 @@ static esp_err_t probe_hotspot_detect_handler(httpd_req_t *req)
 }
 
 /* catch-all GET -> redirect to landing page (index.html) */
-/* catch-all GET -> redirect to landing page (index.html) */
-static esp_err_t captive_redirect_handler(httpd_req_t *req)
+static esp_err_t rs_captive_redirect_handler(httpd_req_t *req)
 {
     char host[128] = {0}, ua[128] = {0}, referer[128] = {0};
     httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
@@ -544,7 +550,7 @@ static esp_err_t captive_redirect_handler(httpd_req_t *req)
             
             // Forward to the file server handler
             #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
-            return rest_common_get_handler(req);
+            return rs_rest_common_get_handler(req);
             #else
             httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "File not found");
             return ESP_FAIL;
@@ -568,7 +574,7 @@ static esp_err_t captive_redirect_handler(httpd_req_t *req)
                     return ESP_FAIL;
                 }
                 /* set content type and stream file like rest_common_get_handler */
-                set_content_type_from_file(req, filepath);
+                rs_set_content_type_from_file(req, filepath);
                 char *chunk = rest_context->scratch;
                 ssize_t read_bytes;
                 do {
@@ -617,44 +623,100 @@ static esp_err_t captive_redirect_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* Register handlers (add near existing URI registrations) */
-static void register_captive_handlers(httpd_handle_t server, void *ctx)
-{
-    static bool captive_handlers_registered = false;
-    if (captive_handlers_registered) {
-        ESP_LOGI(TAG, "captive handlers already registered, skipping");
-        return;
+// --- NEW: helper to read JSON body safely (used by cloud handlers) ---
+static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap) {
+    int total = req->content_len;
+    if (total <= 0 || total >= (int)cap) return false;
+    int off = 0;
+    while (off < total) {
+        int r = httpd_req_recv(req, buf + off, total - off);
+        if (r <= 0) return false;
+        off += r;
     }
-    captive_handlers_registered = true;
+    buf[total] = 0;
+    return true;
+}
 
-    httpd_uri_t gen204 = {
-        .uri = "/generate_204",
-        .method = HTTP_GET,
-        .handler = probe_generate_204_handler,
-        .user_ctx = ctx
-    };
-    httpd_register_uri_handler(server, &gen204);
+// --- NEW: POST /api/v1/cloud/login (reuses rc_login + rc_get_device_by_mac) ---
+static esp_err_t rs_cloud_login_post_handler(httpd_req_t *req) {
+    rest_server_context_t *ctx = (rest_server_context_t*)req->user_ctx;
+    if (!rs_read_body(req, ctx->scratch, sizeof(ctx->scratch))) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
+        return ESP_FAIL;
+    }
+    cJSON *root = cJSON_Parse(ctx->scratch);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_FAIL;
+    }
+    cJSON *j_email = cJSON_GetObjectItem(root, "email");
+    cJSON *j_pass  = cJSON_GetObjectItem(root, "password");
+    if (!cJSON_IsString(j_email) || !cJSON_IsString(j_pass)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "email/password required");
+        return ESP_FAIL;
+    }
+    esp_err_t err = rc_login(j_email->valuestring, j_pass->valuestring);
+    if (err != ESP_OK) {
+        cJSON_Delete(root);
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"error\":\"login_failed\"}");
+        return ESP_OK;
+    }
+    // Optionally fetch device metadata immediately
+    char *device_json = NULL;
+    esp_err_t derr = rc_get_device_by_mac(NULL, &device_json);
+    httpd_resp_set_type(req, "application/json");
+    if (derr == ESP_OK && device_json) {
+        size_t resp_len = strlen(device_json) + 32;
+        char *resp = malloc(resp_len);
+        if (!resp) {
+            free(device_json);
+            httpd_resp_sendstr(req, "{\"status\":\"ok\",\"device\":null}");
+            cJSON_Delete(root);
+            return ESP_OK;
+        }
+        snprintf(resp, resp_len, "{\"status\":\"ok\",\"device\":%s}", device_json);
+        httpd_resp_sendstr(req, resp);
+        free(resp);
+        free(device_json);
+    } else {
+        httpd_resp_sendstr(req, "{\"status\":\"ok\",\"device\":null}");
+        if (device_json) free(device_json);
+    }
+    cJSON_Delete(root);
+    return ESP_OK;
+}
 
-    // Some clients use a short path /gen_204 — handle it too
-    httpd_uri_t gen204_short = {
-        .uri = "/gen_204",
-        .method = HTTP_GET,
-        .handler = probe_generate_204_handler,
-        .user_ctx = ctx
-    };
-    httpd_register_uri_handler(server, &gen204_short);
-
-    httpd_uri_t apple = {
-        .uri = "/hotspot-detect.html",
-        .method = HTTP_GET,
-        .handler = probe_hotspot_detect_handler,
-        .user_ctx = ctx
-    };
-    httpd_register_uri_handler(server, &apple);
-
-    // IMPORTANT: Don't register the catch-all wildcard here anymore
-    // The file server wildcard will be registered later and handle assets properly
-    // We'll only register a catch-all for unknown hosts/domains
+// --- NEW: GET /api/v1/cloud/device?mac=AA:BB:CC:DD:EE:FF ---
+static esp_err_t rs_cloud_device_get_handler(httpd_req_t *req) {
+    char query[128] = {0};
+    char mac[32] = {0};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        httpd_query_key_value(query, "mac", mac, sizeof(mac));
+    }
+    char *device_json = NULL;
+    esp_err_t err = rc_get_device_by_mac(mac[0] ? mac : NULL, &device_json);
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK && device_json) {
+        httpd_resp_sendstr(req, device_json);
+        free(device_json);
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_INVALID_STATE) {
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_sendstr(req, "{\"error\":\"unauthorized\"}");
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_NOT_FOUND) {
+        httpd_resp_set_status(req, "404 Not Found");
+        httpd_resp_sendstr(req, "{\"error\":\"device_not_found\"}");
+        return ESP_OK;
+    }
+    httpd_resp_set_status(req, "502 Bad Gateway");
+    httpd_resp_sendstr(req, "{\"error\":\"cloud_error\"}");
+    return ESP_OK;
 }
 
 esp_err_t start_rest_server(const char *base_path)
@@ -680,7 +742,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_uri_t system_info_get_uri = {
         .uri = "/api/v1/system/info",
         .method = HTTP_GET,
-        .handler = system_info_get_handler,
+        .handler = rs_system_info_get_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &system_info_get_uri);
@@ -688,7 +750,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_uri_t temperature_data_get_uri = {
         .uri = "/api/v1/temp/raw",
         .method = HTTP_GET,
-        .handler = temperature_data_get_handler,
+        .handler = rs_temperature_data_get_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &temperature_data_get_uri);
@@ -696,7 +758,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_uri_t light_brightness_post_uri = {
         .uri = "/api/v1/light/brightness",
         .method = HTTP_POST,
-        .handler = light_brightness_post_handler,
+        .handler = rs_light_brightness_post_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &light_brightness_post_uri);
@@ -704,7 +766,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_uri_t wifi_provision_post_uri = {
         .uri = "/api/v1/provision/wifi",
         .method = HTTP_POST,
-        .handler = wifi_provision_post_handler,
+        .handler = rs_wifi_provision_post_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &wifi_provision_post_uri);
@@ -712,7 +774,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_uri_t wifi_retry_post_uri = {
         .uri = "/api/v1/provision/retry",
         .method = HTTP_POST,
-        .handler = wifi_retry_post_handler,
+        .handler = rs_wifi_retry_post_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &wifi_retry_post_uri);
@@ -720,7 +782,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_uri_t device_role_post_uri = {
         .uri = "/api/v1/device/role",
         .method = HTTP_POST,
-        .handler = device_role_post_handler,
+        .handler = rs_device_role_post_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &device_role_post_uri);
@@ -728,7 +790,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_uri_t setup_status_get_uri = {
         .uri = "/api/v1/setup/status",
         .method = HTTP_GET,
-        .handler = setup_status_get_handler,
+        .handler = rs_setup_status_get_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &setup_status_get_uri);
@@ -736,7 +798,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_uri_t wifi_scan_get_uri = {
         .uri = "/api/v1/wifi/scan",
         .method = HTTP_GET,
-        .handler = wifi_scan_get_handler,
+        .handler = rs_wifi_scan_get_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &wifi_scan_get_uri);
@@ -744,17 +806,34 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_uri_t wifi_status_get_uri = {
         .uri = "/api/v1/wifi/status",
         .method = HTTP_GET,
-        .handler = wifi_status_get_handler,
+        .handler = rs_wifi_status_get_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &wifi_status_get_uri);
+
+    // --- NEW registrations for cloud integration ---
+    httpd_uri_t cloud_login_post_uri = {
+        .uri = "/api/v1/cloud/login",
+        .method = HTTP_POST,
+        .handler = rs_cloud_login_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &cloud_login_post_uri);
+
+    httpd_uri_t cloud_device_get_uri = {
+        .uri = "/api/v1/cloud/device",
+        .method = HTTP_GET,
+        .handler = rs_cloud_device_get_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &cloud_device_get_uri);
 
     #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
     /* Register file server for static assets - this should come BEFORE the captive redirect */
     httpd_uri_t common_get_uri = {
         .uri = "/*",
         .method = HTTP_GET,
-        .handler = rest_common_get_handler,
+        .handler = rs_rest_common_get_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &common_get_uri);
@@ -763,7 +842,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_uri_t wildcard = {
         .uri = "/*",
         .method = HTTP_GET,
-        .handler = captive_redirect_handler,
+        .handler = rs_captive_redirect_handler,
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &wildcard);
@@ -775,4 +854,46 @@ err:
         free(rest_context);
     }
     return ret;
+}
+
+//  --- ADD forward declarations for captive probe handlers & registrar ---
+static esp_err_t rs_probe_generate_204_handler(httpd_req_t *req);
+static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req);
+static esp_err_t rs_captive_redirect_handler(httpd_req_t *req);
+
+// Registrar to fix implicit declaration error
+static void register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx) {
+    httpd_uri_t probe_generate_204 = {
+        .uri      = "/generate_204",          // Android
+        .method   = HTTP_GET,
+        .handler  = rs_probe_generate_204_handler,
+        .user_ctx = ctx
+    };
+    httpd_register_uri_handler(server, &probe_generate_204);
+
+    httpd_uri_t probe_hotspot_detect = {
+        .uri      = "/hotspot-detect.html",   // iOS / macOS
+        .method   = HTTP_GET,
+        .handler  = rs_probe_hotspot_detect_handler,
+        .user_ctx = ctx
+    };
+    httpd_register_uri_handler(server, &probe_hotspot_detect);
+
+    // Windows NCSI
+    httpd_uri_t probe_ncsi = {
+        .uri      = "/ncsi.txt",
+        .method   = HTTP_GET,
+        .handler  = rs_probe_generate_204_handler,
+        .user_ctx = ctx
+    };
+    httpd_register_uri_handler(server, &probe_ncsi);
+
+    // Generic catch for some OEMs
+    httpd_uri_t probe_fwlink = {
+        .uri      = "/fwlink",
+        .method   = HTTP_GET,
+        .handler  = rs_probe_generate_204_handler,
+        .user_ctx = ctx
+    };
+    httpd_register_uri_handler(server, &probe_fwlink);
 }
