@@ -248,7 +248,12 @@ static void dns_server_task(void *pvParameters) {
             if (errno == EINTR) {
                 continue; // Interrupted, try again
             }
-            ESP_LOGE(TAG, "DNS recvfrom error: errno=%d", errno);
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // Timeout (SO_RCVTIMEO). Not a fatal error; just loop again.
+                // Could add housekeeping here if needed.
+                continue;
+            }
+            ESP_LOGE(TAG, "DNS recvfrom fatal error: errno=%d", errno);
             break;
         }
         

@@ -27,6 +27,7 @@ static const char *TAG = "esp-rest";
 #define FILE_PATH_MAX (ESP_VFS_PATH_MAX + 128)
 #define SCRATCH_BUFSIZE (10240)
 #define MAX_URI_HANDLERS 32
+static inline void rs_add_close_hdr(httpd_req_t *req);
 
 // Move struct definition before using its type in prototype
 typedef struct rest_server_context {
@@ -84,6 +85,7 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
 
     // FIX: call correct helper name (had missing rs_ prefix)
     rs_set_content_type_from_file(req, filepath);
+    rs_add_close_hdr(req);   // <--- ensure client won't keep socket alive
 
     char *chunk = rest_context->scratch;
     ssize_t read_bytes;
@@ -509,6 +511,7 @@ static esp_err_t rs_probe_generate_204_handler(httpd_req_t *req)
 
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/index.html");
+    rs_add_close_hdr(req);
     return httpd_resp_send(req, NULL, 0);
 }
 
@@ -732,6 +735,13 @@ esp_err_t start_rest_server(const char *base_path)
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.max_uri_handlers = MAX_URI_HANDLERS;
 
+    /* --- NEW: socket lifecycle tuning to mitigate ENFILE/EMFILE (accept error 23) --- */
+    config.lru_purge_enable = true;      // Reclaim least‑recently used session if max sockets reached
+    config.enable_so_linger = true;      // Enable SO_LINGER on closed sockets
+    config.linger_timeout = 0;           // 0 => send RST on close (frees TIME_WAIT immediately). Use 1–2 if you prefer graceful FIN.
+    // Optionally raise if you increased lwIP limits:
+    // config.max_open_sockets = 8;
+
     ESP_LOGI(TAG, "Starting HTTP Server");
     ESP_GOTO_ON_ERROR(httpd_start(&server, &config), err, TAG, "Failed to start http server");
 
@@ -896,4 +906,8 @@ static void register_captive_handlers(httpd_handle_t server, rest_server_context
         .user_ctx = ctx
     };
     httpd_register_uri_handler(server, &probe_fwlink);
+}
+
+static inline void rs_add_close_hdr(httpd_req_t *req) {
+    httpd_resp_set_hdr(req, "Connection", "close");
 }
