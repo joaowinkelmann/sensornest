@@ -24,6 +24,47 @@
 #include "esp_timer.h"
 #include "esp_sleep.h"
 #include "rest_client.h"
+#include <stdarg.h>
+#include "esp_log.h"
+
+// #ifndef LOG_COLOR_RESET
+// #define LOG_COLOR_BLACK   "30"
+// #define LOG_COLOR_RED     "31"
+// #define LOG_COLOR_GREEN   "32"
+// #define LOG_COLOR_YELLOW  "33"
+// #define LOG_COLOR_BLUE    "34"
+// #define LOG_COLOR_MAGENTA "35"
+// #define LOG_COLOR_CYAN    "36"
+// #define LOG_COLOR_WHITE   "37"
+// #define LOG_COLOR(COLOR)  "\033[0;" COLOR "m"
+// #define LOG_RESET_COLOR   "\033[0m"
+// #define LOG_COLOR_E       LOG_COLOR(LOG_COLOR_RED)
+// #define LOG_COLOR_W       LOG_COLOR(LOG_COLOR_YELLOW)
+// #define LOG_COLOR_I       LOG_COLOR(LOG_COLOR_GREEN)
+// #define LOG_COLOR_D
+// #define LOG_COLOR_V
+// #endif
+
+static int custom_log_vprintf(const char *format, va_list arg) {
+    // Default color
+    const char* color = LOG_RESET_COLOR;
+
+    // Check for specific tags and assign colors
+    if (strstr(format, "(REST_SERVER)")) {
+        color = LOG_COLOR(LOG_COLOR_CYAN);
+    } else if (strstr(format, "(REST_client)")) {
+        color = LOG_COLOR(LOG_COLOR_YELLOW);
+    } else if (strstr(format, "(MAIN_APP)")) {
+        color = LOG_COLOR(LOG_COLOR_GREEN);
+    }
+
+    // Print with color, then the original formatted log message
+    printf("%s", color);
+    int ret = vprintf(format, arg);
+    printf(LOG_RESET_COLOR); // Reset to default color
+    return ret;
+}
+// --- END NEW ---
 
 // Constants
 #define us_PER_SECOND 1000000ULL  /* Conversion factor for micro seconds to seconds */
@@ -269,11 +310,20 @@ static void send_batched_data() {
 
 
 // --- Main Application Entry Point ---
-void app_main(void) {
-    nvs_flash_init();
+void app_main(void)
+{
+    esp_log_set_vprintf(custom_log_vprintf);
+
+    // Initialize NVS
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 
     // Tarefa para monitorar a ação de factory reset (segurar o botão BOOT por 5s)
-    xTaskCreate(factory_reset_button_task, "factory_reset_btn", 2048, NULL, 3, NULL);
+    xTaskCreate(factory_reset_button_task, "factory_reset_btn", 4096, NULL, 3, NULL);
 
     // O boot flow tenta conectar ao Wi-Fi ou inicia o modo de provisionamento.
     bool connected = wifi_boot_flow();

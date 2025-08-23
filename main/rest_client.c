@@ -16,7 +16,7 @@
 #include "cJSON.h"
 #include "certs.h"
 
-static const char *RC_TAG = "rest_client";
+static const char *RC_TAG = "REST_client";
 extern const char *winkels_root_ca_pem;
 
 #define CLOUD_BASE_URL          "https://winkels.com.br/tempmesh/api"

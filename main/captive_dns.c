@@ -13,7 +13,7 @@
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_netif.h"
-#include <errno.h>   // <--- ADD (uses errno)
+#include <errno.h>
 #include "esp_timer.h"
 
 static const char *TAG = "CAPTIVE_DNS";

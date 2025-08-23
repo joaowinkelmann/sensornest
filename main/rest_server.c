@@ -1,7 +1,6 @@
 /*
  * Exposes routes for the front-end to use internally
- */
-
+*/
 #include <string.h>
 #include <fcntl.h>
 #include "esp_http_server.h"
@@ -17,12 +16,13 @@
 #include "esp_wifi.h"
 #include "esp_netif.h"
 #include "esp_mac.h"
+#include <errno.h>
 
 // Cert
 #include "certs.h"
-#include "rest_client.h"   // <--- ADD for rc_login / rc_get_device_by_mac
+#include "rest_client.h"
 
-static const char *TAG = "esp-rest";
+static const char *TAG = "REST_SERVER";
 
 #define FILE_PATH_MAX (ESP_VFS_PATH_MAX + 128)
 #define SCRATCH_BUFSIZE (10240)
@@ -66,6 +66,30 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
 {
     char filepath[FILE_PATH_MAX];
 
+    // --- NEW: Detect old captive portal UAs and serve a fallback page ---
+    char ua[128] = {0};
+    httpd_req_get_hdr_value_str(req, "User-Agent", ua, sizeof(ua));
+    if (strstr(ua, "Chrome/60.") || strstr(ua, "CaptivePortal")) {
+        // This UA is from an old Android captive portal WebView.
+        // Serve a simple HTML page asking the user to open in a real browser.
+        ESP_LOGW(TAG, "Old captive portal UA detected: '%s'. Serving fallback page.", ua);
+        httpd_resp_set_type(req, "text/html");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+        const char *fallback_html =
+            "<!DOCTYPE html><html><head><title>Wi-Fi Setup</title>"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+            "<style>"
+            " body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0f0f0; text-align: center; }"
+            " div { padding: 20px; border: 1px solid #ccc; border-radius: 8px; background: #fff; }"
+            " a { display: inline-block; padding: 15px 25px; font-size: 18px; color: white; background-color: #007bff; text-decoration: none; border-radius: 5px; }"
+            "</style></head><body><div>"
+            "<h1>Please open in browser</h1>"
+            "<p>This network requires configuration in your main web browser.</p><br>"
+            "<a href=\"http://192.168.4.1/\">Open Setup Page</a>"
+            "</div></body></html>";
+        return httpd_resp_send(req, fallback_html, HTTPD_RESP_USE_STRLEN);
+    }
+
     rest_server_context_t *rest_context = (rest_server_context_t *)req->user_ctx;
     strlcpy(filepath, rest_context->base_path, sizeof(filepath));
     if (req->uri[strlen(req->uri) - 1] == '/') {
@@ -97,6 +121,13 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
         } else if (read_bytes > 0) {
             /* Send the buffer contents as HTTP response chunk */
             if (httpd_resp_send_chunk(req, chunk, read_bytes) != ESP_OK) {
+                // --- NEW: Add a small delay on EAGAIN to allow client to catch up ---
+                if (httpd_get_global_transport_ctx(req->handle) && errno == EAGAIN) {
+                    vTaskDelay(pdMS_TO_TICKS(50)); // Wait 50ms
+                    if (httpd_resp_send_chunk(req, chunk, read_bytes) == ESP_OK) {
+                        continue; // Retry succeeded
+                    }
+                }
                 fclose(fd);
                 ESP_LOGE(TAG, "File sending failed!");
                 /* Abort sending file */
@@ -109,7 +140,7 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
     } while (read_bytes > 0);
     /* Close file after sending complete */
     fclose(fd);
-    ESP_LOGI(TAG, "File sending complete");
+    ESP_LOGI(TAG, "File sending complete: %s", filepath);
     /* Respond with an empty chunk to signal HTTP response completion */
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
@@ -510,7 +541,7 @@ static esp_err_t rs_probe_generate_204_handler(httpd_req_t *req)
     ESP_LOGI(TAG, "probe /generate_204 from %s UA='%s'", host[0] ? host : "(no host)", ua);
 
     httpd_resp_set_status(req, "302 Found");
-    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/index.html");
+    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
     rs_add_close_hdr(req);
     return httpd_resp_send(req, NULL, 0);
 }
@@ -523,7 +554,7 @@ static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req)
     ESP_LOGI(TAG, "probe /hotspot-detect.html from %s UA='%s'", host[0] ? host : "(no host)", ua);
 
     httpd_resp_set_status(req, "302 Found");
-    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/index.html");
+    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
     return httpd_resp_send(req, NULL, 0);
 }
 
@@ -534,95 +565,27 @@ static esp_err_t rs_captive_redirect_handler(httpd_req_t *req)
     httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
     httpd_req_get_hdr_value_str(req, "User-Agent", ua, sizeof(ua));
     httpd_req_get_hdr_value_str(req, "Referer", referer, sizeof(referer));
-    
+
     ESP_LOGI(TAG, "captive redirect: uri=%s host=%s UA='%s' Referer='%s'", 
              req->uri, host[0]?host:"(no host)", ua, referer);
 
-    // Don't redirect if already accessing the AP IP directly AND it's not an asset request
-    if (host[0] && (strcmp(host, "192.168.4.1") == 0)) {
-        // Check if this is a request for static assets
-        if (strstr(req->uri, "/assets/") != NULL || 
-            strstr(req->uri, ".js") != NULL || 
-            strstr(req->uri, ".css") != NULL ||
-            strstr(req->uri, ".png") != NULL ||
-            strstr(req->uri, ".ico") != NULL ||
-            strstr(req->uri, ".svg") != NULL ||
-            strstr(req->uri, ".html") != NULL) {
-            
-            ESP_LOGI(TAG, "Asset request detected: %s - forwarding to file server", req->uri);
-            
-            // Forward to the file server handler
-            #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
-            return rs_rest_common_get_handler(req);
-            #else
-            httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "File not found");
-            return ESP_FAIL;
-            #endif
-        }
-        
-        // This is a direct access to root or other non-asset paths, serve the landing page
-        if (strcmp(req->uri, "/") == 0) {
-            ESP_LOGI(TAG, "Root access to AP IP, serving index.html");
-            #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
-            /* Serve index.html directly without modifying req->uri */
-            {
-                rest_server_context_t *rest_context = (rest_server_context_t *)req->user_ctx;
-                char filepath[FILE_PATH_MAX];
-                strlcpy(filepath, rest_context->base_path, sizeof(filepath));
-                strlcat(filepath, "/index.html", sizeof(filepath));
-                FILE *fd = fopen(filepath, "rb");
-                if (!fd) {
-                    ESP_LOGW(TAG, "Failed to open index file: %s", filepath);
-                    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to read index file");
-                    return ESP_FAIL;
-                }
-                /* set content type and stream file like rest_common_get_handler */
-                rs_set_content_type_from_file(req, filepath);
-                char *chunk = rest_context->scratch;
-                ssize_t read_bytes;
-                do {
-                    read_bytes = fread(chunk, 1, SCRATCH_BUFSIZE, fd);
-                    if (read_bytes == -1) {
-                        ESP_LOGE(TAG, "Failed to read file : %s", filepath);
-                    } else if (read_bytes > 0) {
-                        if (httpd_resp_send_chunk(req, chunk, read_bytes) != ESP_OK) {
-                            fclose(fd);
-                            ESP_LOGE(TAG, "File sending failed!");
-                            httpd_resp_sendstr_chunk(req, NULL);
-                            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to send file");
-                            return ESP_FAIL;
-                        }
-                    }
-                } while (read_bytes > 0);
-                fclose(fd);
-                httpd_resp_send_chunk(req, NULL, 0);
-                return ESP_OK;
-            }
-            #else
-            httpd_resp_set_type(req, "text/html");
-            httpd_resp_sendstr(req, "<html><body><h1>ESP32 Setup</h1><p>Web files not deployed</p></body></html>");
-            return ESP_OK;
-            #endif
-        }
-    }
-    
-    // For external domains that got DNS-redirected here, redirect to our landing page
+    // This handler should only be active when web pages are NOT deployed.
+    // The main file server will handle redirects and fallbacks otherwise.
+    #if !CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
     const char *target = "/";
     char location[256];
-    
-    if (host[0]) {
-        // Use explicit AP IP to avoid confusion
-        snprintf(location, sizeof(location), "http://192.168.4.1%s", target);
-    } else {
-        // Fallback to explicit AP IP
-        snprintf(location, sizeof(location), "http://192.168.4.1%s", target);
-    }
+    snprintf(location, sizeof(location), "http://192.168.4.1%s", target);
 
     ESP_LOGI(TAG, "External domain redirect: %s -> %s", req->uri, location);
 
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", location);
     httpd_resp_sendstr(req, "");
+    #else
+    // If web pages are deployed, the common_get_handler will catch everything.
+    // This handler shouldn't be reached, but if it is, forward to the file server.
+    return rs_rest_common_get_handler(req);
+    #endif
     return ESP_OK;
 }
 
@@ -745,9 +708,6 @@ esp_err_t start_rest_server(const char *base_path)
     ESP_LOGI(TAG, "Starting HTTP Server");
     ESP_GOTO_ON_ERROR(httpd_start(&server, &config), err, TAG, "Failed to start http server");
 
-    /* Register captive portal probe handlers first (specific paths) */
-    register_captive_handlers(server, rest_context);
-
     /* Register API endpoints (specific paths) */
     httpd_uri_t system_info_get_uri = {
         .uri = "/api/v1/system/info",
@@ -838,8 +798,11 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &cloud_device_get_uri);
 
+    /* Register captive portal probe handlers (specific paths) */
+    register_captive_handlers(server, rest_context);
+
     #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
-    /* Register file server for static assets - this should come BEFORE the captive redirect */
+    /* Register file server for static assets LAST, so it acts as a fallback for non-API/probe routes */
     httpd_uri_t common_get_uri = {
         .uri = "/*",
         .method = HTTP_GET,
@@ -848,7 +811,7 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &common_get_uri);
     #else
-    /* If no web files, register a catch-all captive redirect */
+    /* If no web files, register a catch-all captive redirect as the last resort */
     httpd_uri_t wildcard = {
         .uri = "/*",
         .method = HTTP_GET,
@@ -906,6 +869,8 @@ static void register_captive_handlers(httpd_handle_t server, rest_server_context
         .user_ctx = ctx
     };
     httpd_register_uri_handler(server, &probe_fwlink);
+
+    // The main "/*" handler in start_rest_server will now handle general captive redirects.
 }
 
 static inline void rs_add_close_hdr(httpd_req_t *req) {
