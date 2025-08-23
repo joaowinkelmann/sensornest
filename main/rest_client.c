@@ -289,37 +289,46 @@ esp_err_t rc_get_device_by_mac(const char *mac, char **out_json) {
     char url[256];
     snprintf(url, sizeof(url), "%s%s", CLOUD_DEVICE_MAC_URL, mac);
 
+    rc_resp_accum_t acc = { .buf = malloc(4096), .cap = 4096, .len = 0 };
+    if (!acc.buf) return ESP_ERR_NO_MEM;
+
     esp_http_client_config_t cfg = {
         .url = url,
         .method = HTTP_METHOD_GET,
         .cert_pem = winkels_root_ca_pem,
-        .timeout_ms = 10000
+        .timeout_ms = 10000,
+        .event_handler = rc_http_event_handler,
+        .user_data = &acc,
     };
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    if (!client) return ESP_FAIL;
+    if (!client) {
+        free(acc.buf);
+        return ESP_FAIL;
+    }
 
     char auth[600];
     snprintf(auth, sizeof(auth), "Bearer %s", token);
     esp_http_client_set_header(client, "Authorization", auth);
 
-    char *resp = NULL;
-    int rlen = 0;
-    esp_err_t err = rc_http_fetch(client, &resp, &rlen, 4096);
+    esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
+    
+    if (acc.len < acc.cap) acc.buf[acc.len] = 0; else acc.buf[acc.cap - 1] = 0;
+
     esp_http_client_cleanup(client);
 
     if (err != ESP_OK) {
         ESP_LOGE(RC_TAG, "device fetch HTTP error: %s", esp_err_to_name(err));
-        free(resp);
+        free(acc.buf);
         return err;
     }
     if (status == 200) {
-        *out_json = resp;
-        ESP_LOGI(RC_TAG, "device fetch success (%d bytes)", rlen);
+        *out_json = acc.buf;
+        ESP_LOGI(RC_TAG, "device fetch success (%d bytes)", (int)acc.len);
         return ESP_OK;
     }
-    ESP_LOGW(RC_TAG, "device fetch status=%d body=%s", status, resp ? resp : "");
-    free(resp);
+    ESP_LOGW(RC_TAG, "device fetch status=%d body=%s", status, acc.buf ? acc.buf : "");
+    free(acc.buf);
     if (status == 404) return ESP_ERR_NOT_FOUND;
     if (status == 401) return ESP_ERR_INVALID_STATE;
     return ESP_FAIL;

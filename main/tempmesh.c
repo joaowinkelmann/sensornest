@@ -29,7 +29,7 @@
 
 // Pin config
 #define DHT_TYPE DHT_TYPE_DHT11
-#define DHT_GPIO 10
+#define DHT_GPIO 4
 
 // --- WiFi connection logic (declarations moved up for visibility) ---
 static EventGroupHandle_t s_wifi_event_group;
@@ -53,8 +53,6 @@ static void do_factory_reset(void);
 // Factory reset declarations END
 
 static const char *TAG = "MAIN_APP";
-
-// Declaration of the root CA certificate for HTTPS connections
 extern const char *winkels_root_ca_pem;
 
 // --- NEW: Struct to hold response data for the event handler ---
@@ -134,16 +132,38 @@ void authenticated_post_task(void *pvParameters) {
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
 
-    // Step 1: Authenticate and get the token
-    // esp_err_t auth_status = get_auth_token();
     const char *user_email = "test@example.com";
     const char *user_pass  = "password123";
     esp_err_t auth_status = rc_login(user_email, user_pass);
 
-    // Step 2: If authentication was successful, send the sensor data
+    // Step 2: If authentication was successful, fetch device config and start data loop
     if (auth_status == ESP_OK) {
-        ESP_LOGI(TAG, "Authentication successful, proceeding to send sensor data.");
-        send_sensor_data();
+        ESP_LOGI(TAG, "Authentication successful, fetching device configuration...");
+        char *device_json = NULL;
+        esp_err_t err = rc_get_device_by_mac(NULL, &device_json);
+
+        if (err == ESP_OK && device_json) {
+            ESP_LOGI(TAG, "Device config fetched: %s", device_json);
+            int readingsPerBatch = 1; // Default
+            int wakeUpInterval = 300; // Default (5 minutes)
+            
+            rc_extract_device_config(device_json, &readingsPerBatch, &wakeUpInterval);
+            ESP_LOGI(TAG, "Device parameters: wakeUpInterval=%d, readingsPerBatch=%d", wakeUpInterval, readingsPerBatch);
+            free(device_json);
+
+            // Main operational loop: send data, then wait/sleep.
+            while (1) {
+                send_sensor_data();
+                ESP_LOGI(TAG, "Next sensor reading in %d seconds...", wakeUpInterval);
+                // For a prototype, we use vTaskDelay. For power saving, this would be replaced
+                // with esp_deep_sleep_start() and RTC logic to wake up.
+                vTaskDelay(pdMS_TO_TICKS(wakeUpInterval * 1000));
+            }
+        } else {
+            ESP_LOGE(TAG, "Failed to get device config: %s. Using defaults and sending once.", esp_err_to_name(err));
+            // Fallback for unregistered devices: send data once.
+            send_sensor_data();
+        }
     } else {
         ESP_LOGE(TAG, "Authentication failed. Aborting task.");
     }
@@ -163,10 +183,32 @@ void send_sensor_data() {
     gmtime_r(&now, &timeinfo);
     strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
 
-    // Read DHT11 sensor
+    // Initialize GPIO for DHT
+    gpio_config_t io_conf = {
+        .pin_bit_mask = 1ULL << DHT_GPIO,
+        .mode = GPIO_MODE_INPUT_OUTPUT_OD,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    // Add a small delay before reading
+    vTaskDelay(pdMS_TO_TICKS(2000));
+
+    // Read DHT11 sensor with retry
     int16_t humidity = 0;
     int16_t temperature = 0;
-    esp_err_t res = dht_read_data(DHT_TYPE, DHT_GPIO, &humidity, &temperature);
+    esp_err_t res = ESP_FAIL;
+    
+    for (int retry = 0; retry < 3; retry++) {
+        res = dht_read_data(DHT_TYPE, DHT_GPIO, &humidity, &temperature);
+        if (res == ESP_OK) {
+            break;
+        }
+        ESP_LOGW(DATA_TAG, "DHT read attempt %d failed: %s", retry + 1, esp_err_to_name(res));
+        vTaskDelay(pdMS_TO_TICKS(2000)); // Wait 2 seconds between attempts
+    }
 
     // Divide by 10, because dht_read_data returns temp and hum * 10
     temperature /= 10;
