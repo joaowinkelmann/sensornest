@@ -22,7 +22,11 @@
 #include "driver/gpio.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "esp_sleep.h"
 #include "rest_client.h"
+
+// Constants
+#define us_PER_SECOND 1000000ULL  /* Conversion factor for micro seconds to seconds */
 
 // Cert
 #include "certs.h"
@@ -76,22 +80,211 @@ static bool connect_sta_with(const char *ssid, const char *pass);
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 
+
+
+
+
+
+
+
+////////////////////////////// REFACTOR DEEP SLEEP START //////////////////////////////
+
+// Estrutura para uma única leitura de sensor
+typedef struct {
+    float temperature;
+    float humidity;
+    time_t timestamp; // Usaremos time_t para o carimbo de data/hora
+} sensor_reading_t;
+
+// O número máximo de leituras que podemos armazenar.
+// Ajuste conforme necessário, mas cuidado com o limite da memória RTC (~8KB).
+#define MAX_READINGS_IN_BATCH 50 
+
+// Variáveis que irão persistir durante o deep sleep
+RTC_DATA_ATTR static int readings_count = 0; // Contador de leituras atuais no lote
+RTC_DATA_ATTR static sensor_reading_t sensor_readings_batch[MAX_READINGS_IN_BATCH]; // Array para armazenar o lote
+
+
+// --- NOVO: Protótipos para a nova lógica ---
+void collect_and_send_task(void);
+static void perform_sensor_reading(void);
+static void send_batched_data(void);
+static void go_to_sleep(uint64_t sleep_time_seconds);
+
+static void go_to_sleep(uint64_t sleep_time_seconds) {
+    ESP_LOGI(TAG, "Entrando em deep sleep por %llu segundos.", sleep_time_seconds);
+    
+    // Desliga o Wi-Fi para economizar energia
+    esp_wifi_stop();
+
+    // Configura o timer de despertar
+    esp_sleep_enable_timer_wakeup(sleep_time_seconds * us_PER_SECOND);
+    
+    // Inicia o deep sleep
+    esp_deep_sleep_start();
+}
+
+
+void collect_and_send_task(void) {
+    ESP_LOGI(TAG, "--- Iniciando Tarefa de Coleta e Envio ---");
+    ESP_LOGI(TAG, "Leituras coletadas até agora: %d", readings_count);
+
+    // Variáveis para configuração do dispositivo (com valores padrão)
+    int readingsPerBatch = 5;
+    int wakeUpInterval = 300; // 5 minutos
+
+    // Passo 1: Sincronizar a hora. Essencial para timestamps corretos.
+    ESP_LOGI(TAG, "Sincronizando a hora com o NTP...");
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_init();
+    setenv("TZ", "GMT+3", 1);
+    tzset();
+    int retry = 0;
+    while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 15) {
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
+    if (retry == 15) {
+        ESP_LOGE(TAG, "Falha ao sincronizar a hora. Usando hora do sistema.");
+        // Em um caso real, poderíamos tentar reiniciar ou dormir por mais tempo.
+    }
+
+    perform_sensor_reading();
+
+    const char *user_email = "test@example.com";
+    const char *user_pass  = "password123";
+    if (rc_login(user_email, user_pass) == ESP_OK) {
+        char *device_json = NULL;
+        if (rc_get_device_by_mac(NULL, &device_json) == ESP_OK && device_json) {
+            rc_extract_device_config(device_json, &readingsPerBatch, &wakeUpInterval);
+            ESP_LOGI(TAG, "Configuração do dispositivo: wakeUpInterval=%d, readingsPerBatch=%d", wakeUpInterval, readingsPerBatch);
+            free(device_json);
+        } else {
+            ESP_LOGW(TAG, "Falha ao obter configuração do dispositivo. Usando padrões.");
+        }
+    } else {
+        ESP_LOGE(TAG, "Falha na autenticação. Usando padrões e tentando enviar mesmo assim.");
+    }
+
+    // Passo 4: Decidir se o lote está cheio
+    if (readings_count >= readingsPerBatch) {
+        ESP_LOGI(TAG, "Lote de leituras completo (%d/%d). Enviando para o servidor.", readings_count, readingsPerBatch);
+        send_batched_data(); // Envia todos os dados acumulados
+        readings_count = 0; // Zera o contador para o próximo lote
+    } else {
+        ESP_LOGI(TAG, "Lote incompleto (%d/%d). Voltando a dormir.", readings_count, readingsPerBatch);
+    }
+    
+    // Passo 5: Voltar a dormir
+    go_to_sleep(wakeUpInterval);
+}
+
+// --- NOVO: Função para ler o sensor e armazenar na memória RTC ---
+static void perform_sensor_reading() {
+    if (readings_count >= MAX_READINGS_IN_BATCH) {
+        ESP_LOGW(TAG, "O lote de leituras está cheio. Descartando nova leitura.");
+        return;
+    }
+
+    // A lógica de leitura do DHT11 é a mesma de antes
+    int16_t humidity = 0, temperature = 0;
+    esp_err_t res = dht_read_data(DHT_TYPE, DHT_GPIO, &humidity, &temperature);
+
+    if (res != ESP_OK) {
+        ESP_LOGE(TAG, "Falha na leitura do DHT: %s", esp_err_to_name(res));
+        // Poderíamos armazenar um valor de erro, como -999, se quiséssemos.
+        // Por enquanto, apenas não incrementamos o contador.
+        return;
+    }
+
+    // Armazena os dados no nosso array na memória RTC
+    sensor_readings_batch[readings_count].temperature = (float)temperature / 10.0f;
+    sensor_readings_batch[readings_count].humidity = (float)humidity / 10.0f;
+    time(&sensor_readings_batch[readings_count].timestamp); // Pega o timestamp atual
+
+    ESP_LOGI(TAG, "Leitura #%d armazenada: Temp=%.1fC, Hum=%.1f%%", 
+             readings_count + 1, 
+             sensor_readings_batch[readings_count].temperature, 
+             sensor_readings_batch[readings_count].humidity);
+    
+    // Incrementa o contador de leituras
+    readings_count++;
+}
+
+// --- NOVO: Função para construir o JSON com o lote de dados e enviá-lo ---
+static void send_batched_data() {
+    static const char *DATA_TAG = "DATA_SENDER";
+    char mac_str[18];
+    uint8_t mac_addr[6];
+    esp_efuse_mac_get_default(mac_addr);
+    sprintf(mac_str, "%02X:%02X:%02X:%02X:%02X:%02X", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+
+    // Usando cJSON para construir o payload de forma segura
+    cJSON *root = cJSON_CreateObject();
+    cJSON *data_array = cJSON_CreateArray();
+    cJSON_AddItemToObject(root, "data", data_array);
+
+    for (int i = 0; i < readings_count; i++) {
+        cJSON *reading_obj = cJSON_CreateObject();
+        
+        char time_buffer[30];
+        struct tm timeinfo;
+        gmtime_r(&sensor_readings_batch[i].timestamp, &timeinfo);
+        strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+
+        cJSON_AddStringToObject(reading_obj, "mac", mac_str);
+        cJSON_AddNumberToObject(reading_obj, "temp", sensor_readings_batch[i].temperature);
+        cJSON_AddNumberToObject(reading_obj, "hum", sensor_readings_batch[i].humidity);
+        cJSON_AddNumberToObject(reading_obj, "lat", -29.7178);
+        cJSON_AddNumberToObject(reading_obj, "lon", -52.4267);
+        cJSON_AddStringToObject(reading_obj, "readingTime", time_buffer);
+        
+        cJSON_AddItemToArray(data_array, reading_obj);
+    }
+
+    char *json_payload = cJSON_Print(root);
+    ESP_LOGI(DATA_TAG, "Payload JSON do lote gerado: %s", json_payload);
+
+    esp_err_t err = rc_post_readings(json_payload);
+    if (err == ESP_OK) {
+        ESP_LOGI(DATA_TAG, "Lote de leituras enviado com sucesso!");
+    } else {
+        ESP_LOGE(DATA_TAG, "Falha ao enviar o lote de leituras: %s", esp_err_to_name(err));
+        // Aqui, poderíamos implementar uma lógica de nova tentativa ou salvar os dados em flash.
+    }
+
+    // Liberar memória alocada pelo cJSON
+    cJSON_Delete(root);
+    free(json_payload);
+}
+
+
+////////////////////////////// REFACTOR DEEP SLEEP END //////////////////////////////
+
+
+
+
+
+
+
+
 // --- Main Application Entry Point ---
 void app_main(void) {
-    nvs_flash_init(); // Simplified NVS init
+    nvs_flash_init();
 
-    // +++ ADD: start BOOT long-press watcher
+    // Tarefa para monitorar a ação de factory reset (segurar o botão BOOT por 5s)
     xTaskCreate(factory_reset_button_task, "factory_reset_btn", 2048, NULL, 3, NULL);
 
-    // NEW: Try STA with saved credentials; if it fails or absent, start SoftAP+REST
+    // O boot flow tenta conectar ao Wi-Fi ou inicia o modo de provisionamento.
     bool connected = wifi_boot_flow();
 
     if (connected) {
-        // Network available: continue the existing flow
-        // (Time sync and auth+data sending are already handled inside the task)
-        xTaskCreate(&authenticated_post_task, "authenticated_post_task", 8192, NULL, 5, NULL);
+        // Se conectado, inicia a lógica principal de coleta e envio.
+        // Esta função não retornará, pois colocará o dispositivo para dormir.
+        collect_and_send_task();
     } else {
-        ESP_LOGW(TAG, "Provisioning portal started in SoftAP mode. Connect to the AP and open http://192.168.4.1/");
+        ESP_LOGW(TAG, "Modo de provisionamento iniciado. Conecte-se ao AP e acesse http://192.168.4.1/");
+        // O dispositivo permanecerá acordado no modo de provisionamento.
     }
 }
 
