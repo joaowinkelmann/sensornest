@@ -3,8 +3,8 @@
     <div class="col-12 col-sm-8 col-md-6">
       <q-card flat bordered>
         <q-card-section>
-          <div class="text-h6">Device Setup</div>
-          <div class="text-subtitle2">Choose role and connect to Wi‑Fi</div>
+          <div class="text-h6">{{ $t("deviceSetup") }}</div>
+          <div class="text-subtitle2">{{ $t("setupSubtitle") }}</div>
         </q-card-section>
 
         <q-linear-progress :value="progressValue" color="primary" class="q-mx-md q-mb-sm" />
@@ -13,222 +13,271 @@
           <q-banner v-if="error" class="q-mb-md" dense rounded inline-actions type="negative">
             {{ error }}
             <template #action>
-              <q-btn flat color="white" label="Dismiss" @click="error = ''" />
+              <q-btn flat color="white" :label="$t('dismiss')" @click="error = ''" />
             </template>
           </q-banner>
 
-          <!-- NEW: Role selection -->
-          <div v-if="!role" class="row q-col-gutter-md q-mb-md">
-            <div class="col-12 text-subtitle1">Select the device role</div>
+          <!-- NEW: Language switcher -->
+          <div class="row justify-end q-mb-md">
+            <q-select
+              v-model="locale"
+              :options="localeOptions"
+              :label="$t('language')"
+              dense
+              borderless
+              emit-value
+              map-options
+              options-dense
+              style="min-width: 150px"
+            />
+          </div>
 
-            <div class="col-12 col-sm-6">
-              <q-card flat bordered clickable @click="pickRole('CONTROLLER')" :class="cardClass('CONTROLLER')">
-                <q-card-section class="text-center">
-                  <q-icon name="hub" size="48px" class="q-mb-sm text-primary" />
-                  <div class="text-subtitle1">Controller</div>
-                  <div class="text-caption">
-                    Always on, connected to the internet/AP. Receives sensor data and forwards to the API.
-                  </div>
+          <!-- Role selection -->
+          <div v-if="!role" class="row q-col-gutter-md q-mb-md">
+            <div class="col-12 text-subtitle1">{{ $t("selectRole") }}</div>
+            <div class="col-12 col-md-6">
+              <q-card :class="cardClass('CONTROLLER')" @click="pickRole('CONTROLLER')">
+                <q-card-section>
+                  <div class="text-bold">{{ $t("controller") }}</div>
+                  <div>{{ $t("controllerDescription") }}</div>
                 </q-card-section>
               </q-card>
             </div>
-
-            <div class="col-12 col-sm-6">
-              <q-card flat bordered clickable @click="pickRole('WORKER')" :class="cardClass('WORKER')">
-                <q-card-section class="text-center">
-                  <q-icon name="sensors" size="48px" class="q-mb-sm text-secondary" />
-                  <div class="text-subtitle1">Worker</div>
-                  <div class="text-caption">
-                    Periodically wakes, reads sensors, and sends data to a Controller. Uses deep sleep to save power.
-                  </div>
+            <div class="col-12 col-md-6">
+              <q-card :class="cardClass('WORKER')" @click="pickRole('WORKER')">
+                <q-card-section>
+                  <div class="text-bold">{{ $t("worker") }}</div>
+                  <div>{{ $t("workerDescription") }}</div>
                 </q-card-section>
               </q-card>
             </div>
           </div>
 
-          <!-- Existing Wi‑Fi form, shown after role is selected -->
-          <div v-else class="q-gutter-md">
+          <!-- Wi-Fi setup -->
+          <div v-if="role && !connected">
             <q-select
               v-model="ssid"
+              filled
+              :label="$t('selectNetwork')"
               :options="ssidOptions"
-              label="Select Wi‑Fi network"
-              :loading="loadingScan"
-              use-input
-              input-debounce="0"
-              fill-input
               emit-value
               map-options
+              :loading="loadingScan"
+              use-input
               @filter="filterSSIDs"
             >
-              <template #after>
-                <q-btn flat round dense icon="refresh" @click="scan" :loading="loadingScan" />
+              <template #append>
+                <q-btn round dense flat icon="refresh" @click="scan" />
               </template>
             </q-select>
 
             <q-input
+              v-if="ssid"
               v-model="password"
+              class="q-mt-md"
+              filled
+              :label="$t('enterPassword')"
               type="password"
-              label="Password"
-              :disable="!ssid"
-              :rules="[val => (val && val.length) || 'Password required']"
-              clearable
             />
 
-            <div class="row items-center q-gutter-sm">
-              <q-btn
-                color="primary"
-                label="Connect"
-                :disable="!ssid || !password"
-                :loading="connecting"
-                @click="connect"
-              />
-              <q-btn
-                flat
-                color="secondary"
-                label="Rescan"
-                :disable="connecting"
-                @click="scan"
-              />
-            </div>
+            <q-btn
+              class="q-mt-md"
+              color="primary"
+              :label="$t('connect')"
+              :disable="!ssid || !password"
+              :loading="connecting"
+              @click="connect"
+            />
+          </div>
 
-            <q-banner v-if="statusText" class="q-mt-sm" dense rounded type="info">
-              {{ statusText }}
-            </q-banner>
+          <!-- Connection status -->
+          <div v-if="connected">
+            <q-icon name="check_circle" color="positive" size="xl" />
+            <div class="text-h6">{{ $t("connected") }}</div>
+            <div>{{ $t("ipAddress") }} {{ status.ip }}</div>
+            <div>{{ $t("ssid") }} {{ status.ssid }}</div>
+          </div>
 
-            <q-banner v-if="connected" class="q-mt-sm" dense rounded type="positive">
-              Connected to {{ status?.ssid }} with IP {{ status?.ip || 'DHCP pending' }}
-            </q-banner>
+          <!-- Retry button -->
+          <div v-if="status?.error">
+            <q-btn color="negative" :label="$t('retry')" @click="retry" />
           </div>
         </q-card-section>
+
+        <q-card-actions align="around" class="bg-grey-1">
+          <div class="text-caption">{{ statusText }}</div>
+        </q-card-actions>
       </q-card>
     </div>
   </q-page>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref, computed } from 'vue'
-import { api } from '../services/api'
+import { api } from "@/services/api";
+import { useI18n } from "vue-i18n";
 
-const role = ref('')
-const ssid = ref('')
-const password = ref('')
-const ssidList = ref([])
-const loadingScan = ref(false)
-const connecting = ref(false)
-const error = ref('')
-const status = ref(null)
-const pollTimer = ref(null)
+const { t, locale } = useI18n();
 
-const connected = computed(() => !!status.value?.connected)
+const localeOptions = [
+  { value: "en-US", label: "English" },
+  { value: "es-ES", label: "Español" },
+  { value: "pt-BR", label: "Português (BR)" },
+];
+
+const role = ref(null); // 'CONTROLLER' or 'WORKER'
+const ssid = ref("");
+const password = ref("");
+const ssidList = ref([]);
+const loadingScan = ref(false);
+const connecting = ref(false);
+const error = ref("");
+const status = ref(null);
+const pollTimer = ref(null);
+
+const connected = computed(() => !!status.value?.connected);
 const step = computed(() => {
-  if (!role.value) return 0
-  if (connected.value) return 3
-  if (connecting.value) return 2
-  if (ssid.value) return 1
-  return 1
-})
-const progressValue = computed(() => [0, 0.34, 0.67, 1][step.value] || 0)
+  if (!role.value) return 0;
+  if (connected.value) return 3;
+  if (connecting.value) return 2;
+  if (ssid.value) return 1;
+  return 1;
+});
+const progressValue = computed(() => [0, 0.34, 0.67, 1][step.value] || 0);
 const statusText = computed(() => {
-  if (!role.value) return 'Choose a role to begin.'
-  if (connected.value) return 'Connected!'
-  if (connecting.value) return 'Connecting...'
-  if (ssid.value) return 'Network selected. Enter password to continue.'
-  return 'Select a network to begin.'
-})
+  if (!role.value) return t("status_chooseRole");
+  if (connected.value) return t("status_connected");
+  if (connecting.value) return t("status_connecting");
+  if (ssid.value) return t("status_enterPassword");
+  return t("status_selectNetwork");
+});
 const ssidOptions = computed(() =>
-  ssidList.value.map(ap => ({ label: `${ap.ssid}  (RSSI ${ap.rssi})`, value: ap.ssid }))
-)
+  ssidList.value.map((ap) => ({
+    label: `${ap.ssid}  (RSSI ${ap.rssi})`,
+    value: ap.ssid,
+  }))
+);
 
-function cardClass (r) {
-  return role.value === r ? 'bg-grey-2' : ''
+function cardClass(r) {
+  return role.value === r ? "bg-grey-2" : "";
 }
 
-async function pickRole (r) {
+async function pickRole(r) {
   try {
-    await api.setRole(r)
-    role.value = r
-    // After choosing role, start scanning Wi‑Fi
-    scan()
+    await api.setRole(r);
+    role.value = r;
+    // After choosing role, start scanning Wi-Fi
+    scan();
   } catch (e) {
-    error.value = e.message || 'Failed to save role'
+    error.value = e.message || t("failedToSaveRole");
   }
 }
 
-function filterSSIDs (val, update) {
-  update(() => { if (!val) return })
+function filterSSIDs(val, update) {
+  update(() => {
+    if (!val) return;
+  });
 }
 
-async function scan () {
-  loadingScan.value = true
-  error.value = ''
+async function scan() {
+  loadingScan.value = true;
+  error.value = "";
   try {
-    const list = await api.scan()
-    const unique = Object.values(list.reduce((acc, it) => {
-      const k = it.ssid
-      if (!k) return acc
-      if (!acc[k] || acc[k].rssi < it.rssi) acc[k] = it
-      return acc
-    }, {}))
-    unique.sort((a, b) => b.rssi - a.rssi)
-    ssidList.value = unique
+    const list = await api.scan();
+    const unique = Object.values(
+      list.reduce((acc, it) => {
+        const k = it.ssid;
+        if (!k) return acc;
+        if (!acc[k] || acc[k].rssi < it.rssi) acc[k] = it;
+        return acc;
+      }, {})
+    );
+    ssidList.value = unique.sort((a, b) => b.rssi - a.rssi);
   } catch (e) {
-    error.value = e.message || 'Scan failed'
+    error.value = e.message || t("failedToScan");
   } finally {
-    loadingScan.value = false
+    loadingScan.value = false;
   }
 }
 
-async function connect () {
-  error.value = ''
-  status.value = null
-  connecting.value = true
+async function connect() {
+  connecting.value = true;
+  error.value = "";
   try {
-    await api.saveCreds({ ssid: ssid.value, password: password.value })
-    await api.retryConnect()
-    startPolling()
+    await api.saveCreds({ ssid: ssid.value, password: password.value });
+    await api.retryConnect();
+    startPolling();
   } catch (e) {
-    connecting.value = false
-    error.value = e.message || 'Failed to start connection'
+    error.value = e.message || t("failedToConnect");
+    connecting.value = false;
   }
 }
 
-async function pollStatusOnce () {
+async function retry() {
+  connecting.value = true;
+  error.value = "";
   try {
-    const st = await api.status()
-    status.value = st
-    if (st.connected) {
-      stopPolling()
-      connecting.value = false
+    await api.retryConnect();
+    startPolling();
+  } catch (e) {
+    error.value = e.message || t("failedToConnect");
+    connecting.value = false;
+  }
+}
+
+async function checkStatus() {
+  try {
+    const newStatus = await api.status();
+    status.value = newStatus;
+    if (newStatus.connected) {
+      stopPolling();
+      connecting.value = false;
     }
   } catch (e) {
-    /* ignore transient errors */
+    // Ignore poll errors
   }
 }
 
-function startPolling () {
-  stopPolling()
-  pollStatusOnce()
-  pollTimer.value = setInterval(pollStatusOnce, 1000)
+function startPolling() {
+  stopPolling();
+  pollTimer.value = setInterval(checkStatus, 2000);
+  checkStatus(); // immediate check
 }
 
-function stopPolling () {
+function stopPolling() {
   if (pollTimer.value) {
-    clearInterval(pollTimer.value)
-    pollTimer.value = null
+    clearInterval(pollTimer.value);
+    pollTimer.value = null;
   }
 }
 
-onMounted(async () => {
+async function fetchInitialStatus() {
   try {
-    const setup = await api.setupStatus()
-    if (setup?.role) role.value = setup.role
+    const setupStatus = await api.setupStatus();
+    role.value = setupStatus.role;
+    if (setupStatus.connected) {
+      status.value = {
+        connected: true,
+        ip: setupStatus.ip,
+        ssid: setupStatus.ssid,
+      };
+    } else if (setupStatus.stage === "connecting") {
+      connecting.value = true;
+      startPolling();
+    } else if (setupStatus.role) {
+      scan();
+    }
   } catch (e) {
-    /* ignore */
+    error.value = e.message || "Failed to get initial status";
   }
-  if (role.value) scan()
-})
+}
 
-onUnmounted(() => { stopPolling() })
+onMounted(() => {
+  fetchInitialStatus();
+});
+
+onUnmounted(() => {
+  stopPolling();
+});
 </script>
 
 <style scoped>

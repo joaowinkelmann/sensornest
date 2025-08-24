@@ -9,9 +9,27 @@ idf_component_register(SRCS "rest_client.c" "tempmesh.c"
 
 if(CONFIG_EXAMPLE_DEPLOY_WEB_PAGES)
     set(WEB_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../front")
-    if(EXISTS ${WEB_SRC_DIR}/dist)
-        littlefs_create_partition_image(www ${WEB_SRC_DIR}/dist FLASH_IN_PROJECT)
+    set(WEB_DIST_DIR "${WEB_SRC_DIR}/dist")
+
+    execute_process(
+        COMMAND bun --version
+        WORKING_DIRECTORY ${WEB_SRC_DIR}
+        RESULT_VARIABLE BUN_FOUND
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
+    if(BUN_FOUND EQUAL 0)
+        set(FRONT_BUILD_CMD bun run build)
     else()
-        message(FATAL_ERROR "'${WEB_SRC_DIR}/dist' doesn't exist. Please run 'pnpm build' under '${WEB_SRC_DIR}'")
+        set(FRONT_BUILD_CMD npm run build)
     endif()
+
+    add_custom_target(build_frontend ALL
+        COMMAND ${FRONT_BUILD_CMD}
+        WORKING_DIRECTORY ${WEB_SRC_DIR}
+        COMMENT "Building frontend assets..."
+        VERBATIM
+    )
+
+    littlefs_create_partition_image(www ${WEB_DIST_DIR} FLASH_IN_PROJECT DEPENDS build_frontend)
 endif()

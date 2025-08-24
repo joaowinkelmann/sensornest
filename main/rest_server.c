@@ -376,6 +376,7 @@ static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req)
     const cJSON *j_ssid = cJSON_GetObjectItem(root, "ssid");
     const cJSON *j_pass = cJSON_GetObjectItem(root, "password");
     if (!cJSON_IsString(j_ssid) || !cJSON_IsString(j_pass)) {
+        ESP_LOGE(TAG, "Invalid Wi-Fi provision data: %s", buf);
         cJSON_Delete(root);
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "ssid/password required");
         return ESP_FAIL;
