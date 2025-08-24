@@ -120,6 +120,7 @@ static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pas
 static bool connect_sta_with(const char *ssid, const char *pass);
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
+const char* get_esp_model(void);
 
 
 
@@ -276,8 +277,6 @@ static void send_batched_data() {
         cJSON_AddStringToObject(reading_obj, "mac", mac_str);
         cJSON_AddNumberToObject(reading_obj, "temp", sensor_readings_batch[i].temperature);
         cJSON_AddNumberToObject(reading_obj, "hum", sensor_readings_batch[i].humidity);
-        cJSON_AddNumberToObject(reading_obj, "lat", -29.7178);
-        cJSON_AddNumberToObject(reading_obj, "lon", -52.4267);
         cJSON_AddStringToObject(reading_obj, "readingTime", time_buffer);
         
         cJSON_AddItemToArray(data_array, reading_obj);
@@ -571,11 +570,12 @@ static void start_softap_and_rest_server(void) {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    // Generate AP SSID "ESP-<MAC tail>"
+    // Generate AP SSID "ESP-{MODEL}-{6 char from MAC}"
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     char ap_ssid[32];
-    snprintf(ap_ssid, sizeof(ap_ssid), "ESP-%02X%02X%02X", mac[3], mac[4], mac[5]);
+    const char* model = get_esp_model();
+    snprintf(ap_ssid, sizeof(ap_ssid), "ESP-%s-%02X%02X%02X", model, mac[3], mac[4], mac[5]);
 
     wifi_config_t ap_config = (wifi_config_t){ 0 };
     strlcpy((char *)ap_config.ap.ssid, ap_ssid, sizeof(ap_config.ap.ssid));
@@ -704,4 +704,26 @@ static void factory_reset_button_task(void *pv) {
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
+}
+
+const char* get_esp_model(void) {
+#if CONFIG_IDF_TARGET_ESP32S3
+    return "S3";
+#elif CONFIG_IDF_TARGET_ESP32C3
+    return "C3";
+#elif CONFIG_IDF_TARGET_ESP32S2
+    return "S2";
+#elif CONFIG_IDF_TARGET_ESP32C2
+    return "C2";
+#elif CONFIG_IDF_TARGET_ESP32C6
+    return "C6";
+#elif CONFIG_IDF_TARGET_ESP32H2
+    return "H2";
+#elif CONFIG_IDF_TARGET_ESP32P4
+    return "P4";
+#elif CONFIG_IDF_TARGET_ESP32
+    return "ESP32";
+#else
+    return "UNKNOWN";
+#endif
 }
