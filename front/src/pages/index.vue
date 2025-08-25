@@ -7,7 +7,7 @@
           <div class="text-subtitle2">{{ $t("setupSubtitle") }}</div>
         </q-card-section>
 
-        <q-linear-progress :value="progressValue" color="primary" class="q-mx-md q-mb-sm" />
+        <q-linear-progress :value="progressValue" color="primary" class="q-mb-sm" />
 
         <q-card-section class="q-pt-none">
           <q-banner v-if="error" class="q-mb-md" dense rounded inline-actions type="negative">
@@ -16,21 +16,6 @@
               <q-btn flat color="white" :label="$t('dismiss')" @click="error = ''" />
             </template>
           </q-banner>
-
-          <!-- NEW: Language switcher -->
-          <div class="row justify-end q-mb-md">
-            <q-select
-              v-model="locale"
-              :options="localeOptions"
-              :label="$t('language')"
-              dense
-              borderless
-              emit-value
-              map-options
-              options-dense
-              style="min-width: 150px"
-            />
-          </div>
 
           <!-- Role selection -->
           <div v-if="!role" class="row q-col-gutter-md q-mb-md">
@@ -116,13 +101,7 @@
 import { api } from "@/services/api";
 import { useI18n } from "vue-i18n";
 
-const { t, locale } = useI18n();
-
-const localeOptions = [
-  { value: "en-US", label: "English" },
-  { value: "es-ES", label: "Español" },
-  { value: "pt-BR", label: "Português (BR)" },
-];
+const { t } = useI18n();
 
 const role = ref(null); // 'CONTROLLER' or 'WORKER'
 const ssid = ref("");

@@ -53,7 +53,7 @@ static int custom_log_vprintf(const char *format, va_list arg) {
 // Config do sensor
 #define DHT_TYPE DHT_TYPE_DHT11
 #define DHT_GPIO 4
-#define DHT_PULLUP_MS 1000 // Tempo de espera antes de realizar a leitura do sensor DHT em millissegundos
+#define DHT_PULLUP_MS 1500 // Tempo de espera antes de realizar a leitura do sensor DHT em millissegundos
 
 // --- WiFi connection logic (declarations moved up for visibility) ---
 static EventGroupHandle_t s_wifi_event_group;
@@ -77,12 +77,11 @@ typedef struct {
 } http_response_data_t;
 
 // --- Function Prototypes ---
-void send_sensor_data();
 static void set_setup_stage(const char *stage);
-extern void captive_dns_task(void *pv); // from main/captive_dns.c
+extern void captive_dns_task(void *pv);
 
 // --- NEW: prototypes for boot flow and REST server ---
-esp_err_t start_rest_server(const char *base_path); // from rest_server.c
+esp_err_t start_rest_server(const char *base_path);
 static bool wifi_boot_flow(void);
 static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len);
 static bool connect_sta_with(const char *ssid, const char *pass);
@@ -296,6 +295,9 @@ void app_main(void)
 {
     esp_log_set_vprintf(custom_log_vprintf);
 
+    // Log Levels
+    esp_log_level_set("wifi", ESP_LOG_WARN);
+
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -339,73 +341,6 @@ esp_err_t _auth_http_event_handler(esp_http_client_event_t *evt) {
             break;
     }
     return ESP_OK;
-}
-
-// --- Function to send the sensor data (replaced fake data with real DHT11 read) ---
-void send_sensor_data() {
-    static const char *DATA_TAG = "DATA_CLIENT";
-    char json_payload[512];
-    char time_buffer[30];
-    time_t now;
-    time(&now);
-    struct tm timeinfo;
-    gmtime_r(&now, &timeinfo);
-    strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
-
-    // Initialize GPIO for DHT
-    gpio_config_t io_conf = {
-        .pin_bit_mask = 1ULL << DHT_GPIO,
-        .mode = GPIO_MODE_INPUT_OUTPUT_OD,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&io_conf);
-
-    // Add a small delay before reading
-    vTaskDelay(pdMS_TO_TICKS(2000));
-
-    // Read DHT11 sensor with retry
-    int16_t humidity = 0;
-    int16_t temperature = 0;
-    esp_err_t res = ESP_FAIL;
-    
-    for (int retry = 0; retry < 3; retry++) {
-        res = dht_read_data(DHT_TYPE, DHT_GPIO, &humidity, &temperature);
-        if (res == ESP_OK) {
-            break;
-        }
-        ESP_LOGW(DATA_TAG, "DHT read attempt %d failed: %s", retry + 1, esp_err_to_name(res));
-        vTaskDelay(pdMS_TO_TICKS(2000)); // Wait 2 seconds between attempts
-    }
-
-    // Divide by 10, because dht_read_data returns temp and hum * 10
-    temperature /= 10;
-    humidity /= 10;
-
-    if (res != ESP_OK) {
-        ESP_LOGE(DATA_TAG, "DHT read failed: %s", esp_err_to_name(res));
-        return;
-    } else {
-        ESP_LOGI(DATA_TAG, "DHT Read - Humidity: %d%%, Temperature: %dC", humidity, temperature);
-    }
-
-    // Note: for DHT11 driver returns integer values (no decimal). Adjust if using DHT22.
-    float temp_f = (float)temperature;
-    float hum_f = (float)humidity;
-
-    snprintf(json_payload, sizeof(json_payload),
-             "{\"data\":[{\"mac\":\"24:58:7C:CC:E5:B4\",\"temp\":%.2f,\"hum\":%.2f,\"lat\":-29.7178,\"lon\":-52.4267,\"readingTime\":\"%s\"}]}",
-             temp_f, hum_f, time_buffer);
-    ESP_LOGI(DATA_TAG, "Generated JSON Payload: %s", json_payload);
-
-    // OLD direct HTTP code removed; now delegate to rest_client
-    esp_err_t err = rc_post_readings(json_payload);
-    if (err == ESP_OK) {
-        ESP_LOGI(DATA_TAG, "Readings POST success");
-    } else {
-        ESP_LOGE(DATA_TAG, "Readings POST failed: %s", esp_err_to_name(err));
-    }
 }
 
 static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len) {
