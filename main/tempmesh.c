@@ -25,25 +25,7 @@
 #include "esp_sleep.h"
 #include "rest_client.h"
 #include <stdarg.h>
-#include "esp_log.h"
-
-// #ifndef LOG_COLOR_RESET
-// #define LOG_COLOR_BLACK   "30"
-// #define LOG_COLOR_RED     "31"
-// #define LOG_COLOR_GREEN   "32"
-// #define LOG_COLOR_YELLOW  "33"
-// #define LOG_COLOR_BLUE    "34"
-// #define LOG_COLOR_MAGENTA "35"
-// #define LOG_COLOR_CYAN    "36"
-// #define LOG_COLOR_WHITE   "37"
-// #define LOG_COLOR(COLOR)  "\033[0;" COLOR "m"
-// #define LOG_RESET_COLOR   "\033[0m"
-// #define LOG_COLOR_E       LOG_COLOR(LOG_COLOR_RED)
-// #define LOG_COLOR_W       LOG_COLOR(LOG_COLOR_YELLOW)
-// #define LOG_COLOR_I       LOG_COLOR(LOG_COLOR_GREEN)
-// #define LOG_COLOR_D
-// #define LOG_COLOR_V
-// #endif
+#include "certs.h"
 
 static int custom_log_vprintf(const char *format, va_list arg) {
     // Default color
@@ -69,9 +51,6 @@ static int custom_log_vprintf(const char *format, va_list arg) {
 // Constants
 #define us_PER_SECOND 1000000ULL  /* Conversion factor for micro seconds to seconds */
 
-// Cert
-#include "certs.h"
-
 // Pin config
 #define DHT_TYPE DHT_TYPE_DHT11
 #define DHT_GPIO 4
@@ -82,20 +61,11 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_FAIL_BIT      BIT1
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
-// --- WiFi Configuration ---
-#define WIFI_SSID      "Winkelmann"
-#define WIFI_PASSWORD  "jr173806"
-
-// Factory reset declarations START
+// Factory reset (só funciona ao usar o botão RESET, e então segurar BOOT por 5s)
 #define BOOT_BTN_GPIO           GPIO_NUM_0     // BOOT button (IO0)
 #define RESET_HOLD_MS           5000           // hold BOOT for 5s to reset
-
-RTC_DATA_ATTR static uint32_t dr_count = 0;
-RTC_DATA_ATTR static int64_t  dr_last_ms = 0;
-
 static void factory_reset_button_task(void *pvParameters);
 static void do_factory_reset(void);
-// Factory reset declarations END
 
 static const char *TAG = "MAIN_APP";
 extern const char *winkels_root_ca_pem;
@@ -139,12 +109,13 @@ typedef struct {
 } sensor_reading_t;
 
 // O número máximo de leituras que podemos armazenar.
-// Ajuste conforme necessário, mas cuidado com o limite da memória RTC (~8KB).
-#define MAX_READINGS_IN_BATCH 50 
+// Cuidar limite de memória RTC (Baseline de 8KB para S3 e C3)
+#define MAX_READINGS_IN_BATCH 50
 
 // Variáveis que irão persistir durante o deep sleep
 RTC_DATA_ATTR static int readings_count = 0; // Contador de leituras atuais no lote
 RTC_DATA_ATTR static sensor_reading_t sensor_readings_batch[MAX_READINGS_IN_BATCH]; // Array para armazenar o lote
+RTC_DATA_ATTR static bool time_is_set = false;
 
 
 // --- NOVO: Protótipos para a nova lógica ---
@@ -169,26 +140,32 @@ static void go_to_sleep(uint64_t sleep_time_seconds) {
 
 void collect_and_send_task(void) {
     ESP_LOGI(TAG, "--- Iniciando Tarefa de Coleta e Envio ---");
-    ESP_LOGI(TAG, "Leituras coletadas até agora: %d", readings_count);
+    ESP_LOGI(TAG, "Leituras coletadas até agora no lote atual: %d", readings_count);
 
     // Variáveis para configuração do dispositivo (com valores padrão)
     int readingsPerBatch = 5;
     int wakeUpInterval = 300; // 5 minutos
 
-    // Passo 1: Sincronizar a hora. Essencial para timestamps corretos.
-    ESP_LOGI(TAG, "Sincronizando a hora com o NTP...");
-    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, "pool.ntp.org");
-    esp_sntp_init();
-    setenv("TZ", "GMT+3", 1);
-    tzset();
-    int retry = 0;
-    while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 15) {
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-    }
-    if (retry == 15) {
-        ESP_LOGE(TAG, "Falha ao sincronizar a hora. Usando hora do sistema.");
-        // Em um caso real, poderíamos tentar reiniciar ou dormir por mais tempo.
+    if (!time_is_set) {
+        ESP_LOGI(TAG, "Sincronizando a hora com o NTP...");
+        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+        esp_sntp_setservername(0, "pool.ntp.org");
+        esp_sntp_init();
+        setenv("TZ", "GMT+3", 1);
+        tzset();
+        int retry = 0;
+        while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 15) {
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
+        }
+        if (retry < 15) {
+            time_is_set = true;
+            ESP_LOGI(TAG, "Hora sincronizada com sucesso.");
+        } else {
+            ESP_LOGE(TAG, "Falha ao sincronizar a hora. Usando hora do sistema.");
+            // Em um caso real, poderíamos tentar reiniciar ou dormir por mais tempo.
+        }
+    } else {
+        ESP_LOGI(TAG, "A hora já está sincronizada. Pulando a etapa de NTP.");
     }
 
     perform_sensor_reading();
@@ -228,9 +205,22 @@ static void perform_sensor_reading() {
         return;
     }
 
-    // A lógica de leitura do DHT11 é a mesma de antes
     int16_t humidity = 0, temperature = 0;
-    esp_err_t res = dht_read_data(DHT_TYPE, DHT_GPIO, &humidity, &temperature);
+    
+    // Reinicializa o GPIO após acordar novamente
+    gpio_set_direction(DHT_GPIO, GPIO_MODE_INPUT_OUTPUT_OD);
+    gpio_set_pull_mode(DHT_GPIO, GPIO_PULLUP_ONLY);
+
+    esp_err_t res = ESP_FAIL;
+    for (int retry = 0; retry < 3; retry++) {
+        // Delay antes de puxar os dados
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        res = dht_read_data(DHT_TYPE, DHT_GPIO, &humidity, &temperature);
+        if (res == ESP_OK) {
+            break;
+        }
+        ESP_LOGW(TAG, "Falha na leitura do DHT (tentativa %d): %s", retry + 1, esp_err_to_name(res));
+    }
 
     if (res != ESP_OK) {
         ESP_LOGE(TAG, "Falha na leitura do DHT: %s", esp_err_to_name(res));
