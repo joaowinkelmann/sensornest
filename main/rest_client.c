@@ -16,6 +16,9 @@
 #include "cJSON.h"
 #include "certs.h"
 
+bool rc_get_token(char *out, size_t len);
+bool rc_has_token(void);
+
 static const char *RC_TAG = "REST_client";
 extern const char *winkels_root_ca_pem;
 
@@ -27,36 +30,56 @@ extern const char *winkels_root_ca_pem;
 #define NVS_NS_AUTH             "auth"
 #define NVS_KEY_TOKEN           "token"
 #define NVS_KEY_EMAIL           "email"
+#define NVS_KEY_PASS            "pass"
 
-/* --- NVS helpers --- */
-static bool rc_store_token(const char *email, const char *token) {
-    if (!token || !token[0]) return false;
+/* --- NVS helpers (UPDATED) --- */
+static bool rc_store_auth(const char *email, const char *password, const char *token) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS_AUTH, NVS_READWRITE, &h) != ESP_OK) return false;
-    esp_err_t err = nvs_set_str(h, NVS_KEY_TOKEN, token);
+    esp_err_t err = ESP_OK;
+    if (token && token[0]) err = nvs_set_str(h, NVS_KEY_TOKEN, token);
     if (err == ESP_OK && email && email[0]) err = nvs_set_str(h, NVS_KEY_EMAIL, email);
+    if (err == ESP_OK && password && password[0]) err = nvs_set_str(h, NVS_KEY_PASS, password);
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     return err == ESP_OK;
 }
 
-bool rc_get_token(char *out, size_t len) {
-    if (!out || !len) return false;
-    out[0] = 0;
+static bool rc_load_creds(char *email, size_t e_len, char *pass, size_t p_len) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS_AUTH, NVS_READONLY, &h) != ESP_OK) return false;
-    size_t sz = len;
-    if (nvs_get_str(h, NVS_KEY_TOKEN, out, &sz) != ESP_OK) {
-        nvs_close(h);
-        return false;
+    bool ok = true;
+    if (email && e_len) {
+        size_t sz = e_len;
+        if (nvs_get_str(h, NVS_KEY_EMAIL, email, &sz) != ESP_OK) ok = false;
+    }
+    if (pass && p_len) {
+        size_t sz = p_len;
+        if (nvs_get_str(h, NVS_KEY_PASS, pass, &sz) != ESP_OK) ok = false;
     }
     nvs_close(h);
+    return ok;
+}
+
+bool rc_get_token(char *out, size_t len) {
+    if (!out || len == 0) return false;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS_AUTH, NVS_READONLY, &h) != ESP_OK) return false;
+    size_t need = len;
+    esp_err_t err = nvs_get_str(h, NVS_KEY_TOKEN, out, &need);
+    nvs_close(h);
+    if (err != ESP_OK) return false;
+    out[len - 1] = 0;
     return true;
 }
 
 bool rc_has_token(void) {
-    char tmp[16];
-    return rc_get_token(tmp, sizeof(tmp));
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS_AUTH, NVS_READONLY, &h) != ESP_OK) return false;
+    size_t need = 0;
+    esp_err_t err = nvs_get_str(h, NVS_KEY_TOKEN, NULL, &need);
+    nvs_close(h);
+    return (err == ESP_OK && need > 1);
 }
 
 /* --- Generic HTTP response accumulation (simple blocking) --- */
@@ -161,92 +184,79 @@ static void rc_log_cert_snippet(void) {
     ESP_LOGI(RC_TAG, "Root CA first %u chars:\n%s", (unsigned)n, snippet);
 }
 
+static esp_err_t rc_perform_login(const char *email, const char *password, bool store_creds);
+
 esp_err_t rc_login(const char *email, const char *password) {
+    if (rc_has_token()) {
+        ESP_LOGI(RC_TAG, "login: using cached token");
+        /* Optionally refresh stored creds if provided (no network) */
+        if (email && password) rc_store_auth(email, password, NULL);
+        return ESP_OK;
+    }
+    return rc_perform_login(email, password, true);
+}
+
+static esp_err_t rc_force_reauth(void) {
+    char email[128] = {0};
+    char pass[128]  = {0};
+    if (!rc_load_creds(email, sizeof(email), pass, sizeof(pass))) {
+        ESP_LOGE(RC_TAG, "force_reauth: stored credentials missing");
+        return ESP_ERR_INVALID_STATE;
+    }
+    ESP_LOGW(RC_TAG, "force_reauth: performing login with stored credentials");
+    return rc_perform_login(email, pass, false);
+}
+
+static esp_err_t rc_perform_login(const char *email, const char *password, bool store_creds) {
     if (!email || !password) return ESP_ERR_INVALID_ARG;
-
     rc_log_cert_snippet();
-
-    /* Allocate response buffer (enough for current login JSON ~ <512B) */
-    rc_resp_accum_t acc = {
-        .cap = 1024,
-        .len = 0
-    };
+    rc_resp_accum_t acc = { .cap = 1024, .len = 0 };
     acc.buf = calloc(1, acc.cap);
     if (!acc.buf) return ESP_ERR_NO_MEM;
-
     esp_http_client_config_t cfg = {
         .url = CLOUD_LOGIN_URL,
         .method = HTTP_METHOD_POST,
-        .cert_pem = winkels_root_ca_pem,   // using extern from certs.c
+        .cert_pem = winkels_root_ca_pem,
         .event_handler = rc_http_event_handler,
         .user_data = &acc,
         .timeout_ms = 10000,
-        .buffer_size = 1024,      // RX internal buffer
-        .buffer_size_tx = 1024    // TX internal buffer
+        .buffer_size = 1024,
+        .buffer_size_tx = 1024
     };
-
     ESP_LOGI(RC_TAG, "login: POST %s", CLOUD_LOGIN_URL);
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    if (!client) {
-        free(acc.buf);
-        return ESP_FAIL;
-    }
-
+    if (!client) { free(acc.buf); return ESP_FAIL; }
     char body[256];
     snprintf(body, sizeof(body), "{\"email\":\"%s\",\"password\":\"%s\"}", email, password);
     ESP_LOGI(RC_TAG, "login: request body (%d bytes): %s", (int)strlen(body), body);
-
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, body, strlen(body));
-
     esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
     int64_t cl = esp_http_client_get_content_length(client);
     bool chunked = esp_http_client_is_chunked_response(client);
     ESP_LOGI(RC_TAG, "login: perform status=%s http_status=%d content_len=%lld chunked=%d",
              esp_err_to_name(err), status, (long long)cl, chunked);
-
-    /* Force termination if handler didn't receive FINISH (defensive) */
     if (acc.len < acc.cap) acc.buf[acc.len] = 0; else acc.buf[acc.cap - 1] = 0;
-
     if (err != ESP_OK) {
         ESP_LOGE(RC_TAG, "login: perform failed: %s", esp_err_to_name(err));
         esp_http_client_cleanup(client);
         free(acc.buf);
         return err;
     }
-
-    /* Log raw response (truncate if large) */
-    if (acc.len == 0) {
-        ESP_LOGW(RC_TAG, "login: response body empty (status=%d)", status);
-    } else {
-        int shown = acc.len < 400 ? acc.len : 400;
-        ESP_LOGI(RC_TAG, "login: raw response (%d bytes, showing %d): %.*s",
-                 (int)acc.len, shown, shown, acc.buf);
-    }
-
     if (status != 200 && status != 201) {
         ESP_LOGW(RC_TAG, "login: unexpected HTTP status=%d", status);
         esp_http_client_cleanup(client);
         free(acc.buf);
         return ESP_FAIL;
     }
-
-    if (acc.len == 0) {
-        ESP_LOGE(RC_TAG, "login: empty body on 200 -> server anomaly or read issue");
-        esp_http_client_cleanup(client);
-        free(acc.buf);
-        return ESP_FAIL;
-    }
-
     cJSON *root = cJSON_Parse(acc.buf);
     if (!root) {
-        ESP_LOGE(RC_TAG, "login: JSON parse failed (len=%d)", (int)acc.len);
+        ESP_LOGE(RC_TAG, "login: JSON parse failed");
         esp_http_client_cleanup(client);
         free(acc.buf);
         return ESP_FAIL;
     }
-
     cJSON *acc_tok = cJSON_GetObjectItem(root, "access_token");
     if (!cJSON_IsString(acc_tok)) {
         ESP_LOGE(RC_TAG, "login: access_token missing");
@@ -255,15 +265,12 @@ esp_err_t rc_login(const char *email, const char *password) {
         free(acc.buf);
         return ESP_FAIL;
     }
-
-    bool stored = rc_store_token(email, acc_tok->valuestring);
+    bool stored = rc_store_auth(email, store_creds ? password : NULL, acc_tok->valuestring);
     ESP_LOGI(RC_TAG, "login: token length=%d stored=%d",
              (int)strlen(acc_tok->valuestring), stored);
-
     cJSON_Delete(root);
     esp_http_client_cleanup(client);
     free(acc.buf);
-
     return stored ? ESP_OK : ESP_FAIL;
 }
 
@@ -276,10 +283,10 @@ esp_err_t rc_get_device_by_mac(const char *mac, char **out_json) {
 
     char token[512];
     if (!rc_get_token(token, sizeof(token))) {
-        ESP_LOGW(RC_TAG, "no token stored");
+        ESP_LOGW(RC_TAG, "device fetch: no token (call rc_login first)");
         return ESP_ERR_INVALID_STATE;
     }
-
+retry_once:
     char mac_buf[32];
     if (!mac || !mac[0]) {
         if (!rc_format_own_mac(mac_buf, sizeof(mac_buf))) return ESP_FAIL;
@@ -312,11 +319,8 @@ esp_err_t rc_get_device_by_mac(const char *mac, char **out_json) {
 
     esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
-    
     if (acc.len < acc.cap) acc.buf[acc.len] = 0; else acc.buf[acc.cap - 1] = 0;
-
     esp_http_client_cleanup(client);
-
     if (err != ESP_OK) {
         ESP_LOGE(RC_TAG, "device fetch HTTP error: %s", esp_err_to_name(err));
         free(acc.buf);
@@ -326,6 +330,15 @@ esp_err_t rc_get_device_by_mac(const char *mac, char **out_json) {
         *out_json = acc.buf;
         ESP_LOGI(RC_TAG, "device fetch success (%d bytes)", (int)acc.len);
         return ESP_OK;
+    }
+    if (status == 401) {
+        ESP_LOGW(RC_TAG, "device fetch 401 -> re-auth & retry");
+        free(acc.buf);
+        if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
+            /* refresh token header & retry */
+            goto retry_once;
+        }
+        return ESP_ERR_INVALID_STATE;
     }
     ESP_LOGW(RC_TAG, "device fetch status=%d body=%s", status, acc.buf ? acc.buf : "");
     free(acc.buf);
@@ -382,7 +395,8 @@ esp_err_t rc_post_readings(const char *json_payload) {
         ESP_LOGE(RC_TAG, "post_readings: no stored token");
         return ESP_ERR_INVALID_STATE;
     }
-
+    int retry = 0;
+retry_send:
     esp_http_client_config_t cfg = {
         .url = CLOUD_READINGS_URL,
         .method = HTTP_METHOD_POST,
@@ -391,23 +405,14 @@ esp_err_t rc_post_readings(const char *json_payload) {
     };
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
     if (!client) return ESP_FAIL;
-
     char auth[600];
     snprintf(auth, sizeof(auth), "Bearer %s", token);
     esp_http_client_set_header(client, "Authorization", auth);
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, json_payload, strlen(json_payload));
-
     ESP_LOGI(RC_TAG, "post_readings: POST %s len=%d", CLOUD_READINGS_URL, (int)strlen(json_payload));
     esp_err_t err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
-
-    if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "post_readings: perform err=%s", esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        return err;
-    }
-
     int content_len = esp_http_client_get_content_length(client);
     if (content_len < 0) content_len = 0;
     int read_cap = content_len > 0 && content_len < 512 ? content_len : 512;
@@ -415,12 +420,21 @@ esp_err_t rc_post_readings(const char *json_payload) {
     int r = esp_http_client_read_response(client, resp, read_cap);
     if (r < 0) r = 0;
     resp[r] = 0;
-
     ESP_LOGI(RC_TAG, "post_readings: http_status=%d resp_snippet='%s'", status, resp);
-
     esp_http_client_cleanup(client);
-
+    if (err != ESP_OK) {
+        ESP_LOGE(RC_TAG, "post_readings: perform err=%s", esp_err_to_name(err));
+        return err;
+    }
     if (status == 200 || status == 201) return ESP_OK;
+    if (status == 401 && retry == 0) {
+        ESP_LOGW(RC_TAG, "post_readings: 401 -> re-auth & retry");
+        if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
+            retry++;
+            goto retry_send;
+        }
+        return ESP_ERR_INVALID_STATE;
+    }
     if (status == 401) return ESP_ERR_INVALID_STATE;
     return ESP_FAIL;
 }

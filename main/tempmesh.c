@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h> // Required for malloc/free
+#include <stdlib.h>
 #include "time.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -37,7 +37,7 @@ static int custom_log_vprintf(const char *format, va_list arg) {
     } else if (strstr(format, "(REST_client)")) {
         color = LOG_COLOR(LOG_COLOR_YELLOW);
     } else if (strstr(format, "(MAIN_APP)")) {
-        color = LOG_COLOR(LOG_COLOR_GREEN);
+        color = LOG_COLOR(LOG_COLOR_BLUE);
     }
 
     // Print with color, then the original formatted log message
@@ -46,14 +46,14 @@ static int custom_log_vprintf(const char *format, va_list arg) {
     printf(LOG_RESET_COLOR); // Reset to default color
     return ret;
 }
-// --- END NEW ---
 
 // Constants
 #define us_PER_SECOND 1000000ULL  /* Conversion factor for micro seconds to seconds */
 
-// Pin config
+// Config do sensor
 #define DHT_TYPE DHT_TYPE_DHT11
 #define DHT_GPIO 4
+#define DHT_PULLUP_MS 1000 // Tempo de espera antes de realizar a leitura do sensor DHT em millissegundos
 
 // --- WiFi connection logic (declarations moved up for visibility) ---
 static EventGroupHandle_t s_wifi_event_group;
@@ -61,9 +61,8 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_FAIL_BIT      BIT1
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
-// Factory reset (só funciona ao usar o botão RESET, e então segurar BOOT por 5s)
 #define BOOT_BTN_GPIO           GPIO_NUM_0     // BOOT button (IO0)
-#define RESET_HOLD_MS           5000           // hold BOOT for 5s to reset
+#define BOOT_BTN_HOLD_RESET_MS  3000           // segurar BOOT por 3 segundos para reset de fábrica
 static void factory_reset_button_task(void *pvParameters);
 static void do_factory_reset(void);
 
@@ -79,7 +78,6 @@ typedef struct {
 
 // --- Function Prototypes ---
 void send_sensor_data();
-void authenticated_post_task(void *pvParameters);
 static void set_setup_stage(const char *stage);
 extern void captive_dns_task(void *pv); // from main/captive_dns.c
 
@@ -92,14 +90,6 @@ static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 const char* get_esp_model(void);
 
-
-
-
-
-
-
-
-////////////////////////////// REFACTOR DEEP SLEEP START //////////////////////////////
 
 // Estrutura para uma única leitura de sensor
 typedef struct {
@@ -116,9 +106,11 @@ typedef struct {
 RTC_DATA_ATTR static int readings_count = 0; // Contador de leituras atuais no lote
 RTC_DATA_ATTR static sensor_reading_t sensor_readings_batch[MAX_READINGS_IN_BATCH]; // Array para armazenar o lote
 RTC_DATA_ATTR static bool time_is_set = false;
+RTC_DATA_ATTR static bool device_config_initialized = false;
+RTC_DATA_ATTR static int device_readingsPerBatch = 2;
+RTC_DATA_ATTR static int device_wakeUpInterval   = 10;
 
 
-// --- NOVO: Protótipos para a nova lógica ---
 void collect_and_send_task(void);
 static void perform_sensor_reading(void);
 static void send_batched_data(void);
@@ -142,9 +134,8 @@ void collect_and_send_task(void) {
     ESP_LOGI(TAG, "--- Iniciando Tarefa de Coleta e Envio ---");
     ESP_LOGI(TAG, "Leituras coletadas até agora no lote atual: %d", readings_count);
 
-    // Variáveis para configuração do dispositivo (com valores padrão)
-    int readingsPerBatch = 5;
-    int wakeUpInterval = 300; // 5 minutos
+    int readingsPerBatch = device_readingsPerBatch;
+    int wakeUpInterval   = device_wakeUpInterval;
 
     if (!time_is_set) {
         ESP_LOGI(TAG, "Sincronizando a hora com o NTP...");
@@ -168,37 +159,51 @@ void collect_and_send_task(void) {
         ESP_LOGI(TAG, "A hora já está sincronizada. Pulando a etapa de NTP.");
     }
 
-    perform_sensor_reading();
-
     const char *user_email = "test@example.com";
     const char *user_pass  = "password123";
-    if (rc_login(user_email, user_pass) == ESP_OK) {
-        char *device_json = NULL;
-        if (rc_get_device_by_mac(NULL, &device_json) == ESP_OK && device_json) {
-            rc_extract_device_config(device_json, &readingsPerBatch, &wakeUpInterval);
-            ESP_LOGI(TAG, "Configuração do dispositivo: wakeUpInterval=%d, readingsPerBatch=%d", wakeUpInterval, readingsPerBatch);
-            free(device_json);
+
+    bool starting_new_batch = (readings_count == 0 || !device_config_initialized);
+
+    if (starting_new_batch) {
+        if (rc_login(user_email, user_pass) == ESP_OK) {
+            char *device_json = NULL;
+            if (rc_get_device_by_mac(NULL, &device_json) == ESP_OK && device_json) {
+                rc_extract_device_config(device_json, &readingsPerBatch, &wakeUpInterval);
+                ESP_LOGI(TAG, "Buscada configuração do dispositivo do server: wakeUpInterval=%d, readingsPerBatch=%d",
+                         wakeUpInterval, readingsPerBatch);
+                free(device_json);
+                if (readingsPerBatch > 0) device_readingsPerBatch = readingsPerBatch;
+                if (wakeUpInterval > 0)   device_wakeUpInterval   = wakeUpInterval;
+                device_config_initialized = true;
+            } else {
+                ESP_LOGW(TAG, "Falha ao obter configuração do dispositivo. Usando cache/padrões.");
+            }
         } else {
-            ESP_LOGW(TAG, "Falha ao obter configuração do dispositivo. Usando padrões.");
+            ESP_LOGE(TAG, "Falha na autenticação. Usando cache/padrões.");
         }
+        // Recarrega os valores possivelmente atualizados
+        readingsPerBatch = device_readingsPerBatch;
+        wakeUpInterval   = device_wakeUpInterval;
     } else {
-        ESP_LOGE(TAG, "Falha na autenticação. Usando padrões e tentando enviar mesmo assim.");
+        ESP_LOGI(TAG, "Config do dispositivo reutilizada (wakeUpInterval=%d, readingsPerBatch=%d)",
+                 wakeUpInterval, readingsPerBatch);
     }
 
-    // Passo 4: Decidir se o lote está cheio
+    // Só agora fazemos a leitura (para não perder a chance de login no início do lote)
+    perform_sensor_reading();
+
     if (readings_count >= readingsPerBatch) {
         ESP_LOGI(TAG, "Lote de leituras completo (%d/%d). Enviando para o servidor.", readings_count, readingsPerBatch);
-        send_batched_data(); // Envia todos os dados acumulados
-        readings_count = 0; // Zera o contador para o próximo lote
+        // Mantém a lógica existente
+        send_batched_data();
+        readings_count = 0;
     } else {
         ESP_LOGI(TAG, "Lote incompleto (%d/%d). Voltando a dormir.", readings_count, readingsPerBatch);
     }
-    
-    // Passo 5: Voltar a dormir
+
     go_to_sleep(wakeUpInterval);
 }
 
-// --- NOVO: Função para ler o sensor e armazenar na memória RTC ---
 static void perform_sensor_reading() {
     if (readings_count >= MAX_READINGS_IN_BATCH) {
         ESP_LOGW(TAG, "O lote de leituras está cheio. Descartando nova leitura.");
@@ -213,8 +218,7 @@ static void perform_sensor_reading() {
 
     esp_err_t res = ESP_FAIL;
     for (int retry = 0; retry < 3; retry++) {
-        // Delay antes de puxar os dados
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(DHT_PULLUP_MS));
         res = dht_read_data(DHT_TYPE, DHT_GPIO, &humidity, &temperature);
         if (res == ESP_OK) {
             break;
@@ -288,17 +292,6 @@ static void send_batched_data() {
     free(json_payload);
 }
 
-
-////////////////////////////// REFACTOR DEEP SLEEP END //////////////////////////////
-
-
-
-
-
-
-
-
-// --- Main Application Entry Point ---
 void app_main(void)
 {
     esp_log_set_vprintf(custom_log_vprintf);
@@ -346,62 +339,6 @@ esp_err_t _auth_http_event_handler(esp_http_client_event_t *evt) {
             break;
     }
     return ESP_OK;
-}
-
-// --- Main Task to Orchestrate Auth and Data Sending ---
-void authenticated_post_task(void *pvParameters) {
-    ESP_LOGI(TAG, "--- Starting Authenticated POST Task ---");
-    
-    // Time Sync Logic
-    ESP_LOGI(TAG, "Synchronizing time with NTP...");
-    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, "pool.ntp.org");
-    esp_sntp_init();
-    setenv("TZ", "GMT+3", 1);
-    tzset();
-    int retry = 0;
-    while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 15) {
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-    }
-
-    const char *user_email = "test@example.com";
-    const char *user_pass  = "password123";
-    esp_err_t auth_status = rc_login(user_email, user_pass);
-
-    // Step 2: If authentication was successful, fetch device config and start data loop
-    if (auth_status == ESP_OK) {
-        ESP_LOGI(TAG, "Authentication successful, fetching device configuration...");
-        char *device_json = NULL;
-        esp_err_t err = rc_get_device_by_mac(NULL, &device_json);
-
-        if (err == ESP_OK && device_json) {
-            ESP_LOGI(TAG, "Device config fetched: %s", device_json);
-            int readingsPerBatch = 1; // Default
-            int wakeUpInterval = 300; // Default (5 minutes)
-            
-            rc_extract_device_config(device_json, &readingsPerBatch, &wakeUpInterval);
-            ESP_LOGI(TAG, "Device parameters: wakeUpInterval=%d, readingsPerBatch=%d", wakeUpInterval, readingsPerBatch);
-            free(device_json);
-
-            // Main operational loop: send data, then wait/sleep.
-            while (1) {
-                send_sensor_data();
-                ESP_LOGI(TAG, "Next sensor reading in %d seconds...", wakeUpInterval);
-                // For a prototype, we use vTaskDelay. For power saving, this would be replaced
-                // with esp_deep_sleep_start() and RTC logic to wake up.
-                vTaskDelay(pdMS_TO_TICKS(wakeUpInterval * 1000));
-            }
-        } else {
-            ESP_LOGE(TAG, "Failed to get device config: %s. Using defaults and sending once.", esp_err_to_name(err));
-            // Fallback for unregistered devices: send data once.
-            send_sensor_data();
-        }
-    } else {
-        ESP_LOGE(TAG, "Authentication failed. Aborting task.");
-    }
-
-    ESP_LOGI(TAG, "--- Authenticated POST Task Finished ---");
-    vTaskDelete(NULL);
 }
 
 // --- Function to send the sensor data (replaced fake data with real DHT11 read) ---
@@ -471,7 +408,6 @@ void send_sensor_data() {
     }
 }
 
-// --- NEW: Load Wi-Fi credentials from NVS ---
 static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len) {
     nvs_handle_t nvs;
     esp_err_t err = nvs_open("wifi", NVS_READONLY, &nvs);
@@ -670,7 +606,6 @@ static void do_factory_reset(void) {
     esp_restart();
 }
 
-// +++ ADD: long-press BOOT button to reset
 static void factory_reset_button_task(void *pv) {
     gpio_config_t io = {
         .pin_bit_mask = 1ULL << BOOT_BTN_GPIO,
@@ -685,8 +620,8 @@ static void factory_reset_button_task(void *pv) {
         if (gpio_get_level(BOOT_BTN_GPIO) == 0) { // pressed = low
             int64_t start_ms = esp_timer_get_time() / 1000;
             while (gpio_get_level(BOOT_BTN_GPIO) == 0) {
-                if (((esp_timer_get_time() / 1000) - start_ms) >= RESET_HOLD_MS) {
-                    ESP_LOGW(TAG, "BOOT held for %d ms -> factory reset", RESET_HOLD_MS);
+                if (((esp_timer_get_time() / 1000) - start_ms) >= BOOT_BTN_HOLD_RESET_MS) {
+                    ESP_LOGW(TAG, "BOOT held for %d ms -> factory reset", BOOT_BTN_HOLD_RESET_MS);
                     do_factory_reset();
                 }
                 vTaskDelay(pdMS_TO_TICKS(50));

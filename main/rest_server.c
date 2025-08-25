@@ -17,8 +17,6 @@
 #include "esp_netif.h"
 #include "esp_mac.h"
 #include <errno.h>
-
-// Cert
 #include "certs.h"
 #include "rest_client.h"
 
@@ -258,6 +256,10 @@ static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
+
+    char role_buf[16] = {0};
+    strlcpy(role_buf, role, sizeof(role_buf));
+
     nvs_handle_t nvs;
     esp_err_t err = nvs_open("device", NVS_READWRITE, &nvs);
     if (err != ESP_OK) {
@@ -274,7 +276,7 @@ static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Device role set to: %s", role);
+    ESP_LOGI(TAG, "Device role set to: %s", role_buf);
 
     nvs_set_setup_stage("role_selected");
 
