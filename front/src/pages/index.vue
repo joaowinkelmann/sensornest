@@ -36,7 +36,7 @@
                 </q-card-section>
               </q-card>
             </div>
-            <!-- NEW: Debug mode toggle -->
+            <!-- DEBUG TOGGLE -->
             <div class="col-12 q-mt-md">
               <q-toggle
                 v-model="debugEnabled"
@@ -72,8 +72,16 @@
               class="q-mt-md"
               filled
               :label="$t('enterPassword')"
-              type="password"
-            />
+              :type="passwordVisible ? 'text' : 'password'"
+            >
+              <template #append>
+                <q-icon
+                  :name="passwordVisible ? 'visibility_off' : 'visibility'"
+                  class="cursor-pointer"
+                  @click="passwordVisible = !passwordVisible"
+                />
+              </template>
+            </q-input>
 
             <q-btn
               class="q-mt-md"
@@ -91,6 +99,57 @@
             <div class="text-h6">{{ $t("connected") }}</div>
             <div>{{ $t("ipAddress") }} {{ status.ip }}</div>
             <div>{{ $t("ssid") }} {{ status.ssid }}</div>
+          </div>
+
+          <!-- NEW: Login Form -->
+          <div v-if="connected && !loggedIn">
+            <div class="text-h6 q-mt-lg">{{ $t("cloudLogin") }}</div>
+            <q-input
+              v-model="userEmail"
+              class="q-mt-md"
+              filled
+              :label="$t('email')"
+              type="email"
+              :disable="loginLoading"
+            />
+            <q-input
+              v-model="userPassword"
+              class="q-mt-md"
+              filled
+              :label="$t('password')"
+              :type="loginPasswordVisible ? 'text' : 'password'"
+              :disable="loginLoading"
+            >
+              <template #append>
+                <q-icon
+                  :name="loginPasswordVisible ? 'visibility_off' : 'visibility'"
+                  class="cursor-pointer"
+                  @click="loginPasswordVisible = !loginPasswordVisible"
+                />
+              </template>
+            </q-input>
+            <div class="row q-mt-md q-gutter-sm">
+              <q-btn
+                color="primary"
+                :label="$t('login')"
+                :disable="!userEmail || !userPassword"
+                :loading="loginLoading"
+                @click="doLogin"
+              />
+              <q-btn
+                color="secondary"
+                outline
+                :label="$t('register')"
+                disable
+              />
+            </div>
+          </div>
+
+          <!-- Final Status -->
+          <div v-if="loggedIn">
+             <q-icon name="cloud_done" color="positive" size="xl" class="q-mt-lg"/>
+             <div class="text-h6">{{ $t('setupComplete') }}</div>
+             <div class="text-subtitle2">{{ $t('deviceWillRestart') }}</div>
           </div>
 
           <!-- Retry button -->
@@ -119,13 +178,21 @@ const role = ref(null); // 'CONTROLLER' or 'WORKER'
 const ssid = ref("");
 const password = ref("");
 const ssidList = ref([]);
+const passwordVisible = ref(false);
 const loadingScan = ref(false);
 const connecting = ref(false);
 const error = ref("");
 const status = ref(null);
 const pollTimer = ref(null);
-// NEW: Debug mode state
 const debugEnabled = ref(false);
+
+// --- NEW: Login state ---
+const userEmail = ref("");
+const userPassword = ref("");
+const loginPasswordVisible = ref(false);
+const loginLoading = ref(false);
+const loggedIn = ref(false);
+
 
 const connected = computed(() => !!status.value?.connected);
 const step = computed(() => {
@@ -138,7 +205,8 @@ const step = computed(() => {
 const progressValue = computed(() => [0, 0.34, 0.67, 1][step.value] || 0);
 const statusText = computed(() => {
   if (!role.value) return t("status_chooseRole");
-  if (connected.value) return t("status_connected");
+  if (loggedIn.value) return t("status_complete");
+  if (connected.value) return t("status_login");
   if (connecting.value) return t("status_connecting");
   if (ssid.value) return t("status_enterPassword");
   return t("status_selectNetwork");
@@ -212,6 +280,29 @@ async function scan() {
   }
 }
 
+async function doLogin() {
+  loginLoading.value = true;
+  error.value = "";
+  try {
+    await api.saveUserCreds(userEmail.value, userPassword.value);
+    loggedIn.value = true;
+    $q.notify({
+      type: "positive",
+      message: t("loginSuccess"),
+      caption: t("deviceWillRestartShort"),
+    });
+    // The device will restart on its own after this
+  } catch (e) {
+    if (e.response?.status === 401) {
+      error.value = t("invalidCredentials");
+    } else {
+      error.value = e.message || t("loginFailed");
+    }
+  } finally {
+    loginLoading.value = false;
+  }
+}
+
 async function connect() {
   connecting.value = true;
   error.value = "";
@@ -268,6 +359,9 @@ async function fetchInitialStatus() {
     const setupStatus = await api.setupStatus();
     role.value = setupStatus.role;
     debugEnabled.value = setupStatus.debug || false;
+    if (setupStatus.stage === 'user_saved') {
+        loggedIn.value = true;
+    }
     if (setupStatus.connected) {
       status.value = {
         connected: true,

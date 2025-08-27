@@ -100,6 +100,13 @@ export const api = {
       body: JSON.stringify({ role }),
     }).then(handle),
 
+  saveUserCreds: (email, password) =>
+    fetch(`${base}/api/v1/provision/user`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    }).then(handle),
+
   setDebug: (enabled) =>
     fetch(`${base}/api/v1/device/debug`, {
       method: "POST",

@@ -45,7 +45,7 @@ static bool rc_store_auth(const char *email, const char *password, const char *t
     return err == ESP_OK;
 }
 
-static bool rc_load_creds(char *email, size_t e_len, char *pass, size_t p_len) {
+bool rc_load_creds(char *email, size_t e_len, char *pass, size_t p_len) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS_AUTH, NVS_READONLY, &h) != ESP_OK) return false;
     bool ok = true;
@@ -186,11 +186,9 @@ static void rc_log_cert_snippet(void) {
 
 static esp_err_t rc_perform_login(const char *email, const char *password, bool store_creds);
 
-esp_err_t rc_login(const char *email, const char *password) {
-    if (rc_has_token()) {
-        ESP_LOGI(RC_TAG, "login: using cached token");
-        /* Optionally refresh stored creds if provided (no network) */
-        if (email && password) rc_store_auth(email, password, NULL);
+esp_err_t rc_login(const char *email, const char *password, bool use_cache) {
+    if (use_cache && rc_has_token()) {
+        ESP_LOGI(RC_TAG, "rc_login: Using cached token.");
         return ESP_OK;
     }
     return rc_perform_login(email, password, true);

@@ -160,13 +160,14 @@ void collect_and_send_task(void) {
         ESP_LOGI(TAG, "A hora já está sincronizada. Pulando a etapa de NTP.");
     }
 
-    const char *user_email = "test@example.com";
-    const char *user_pass  = "password123";
+    char user_email[128];
+    char user_pass[128];
+    bool have_creds = rc_load_creds(user_email, sizeof(user_email), user_pass, sizeof(user_pass));
 
     bool starting_new_batch = (readings_count == 0 || !device_config_initialized);
 
     if (starting_new_batch) {
-        if (rc_login(user_email, user_pass) == ESP_OK) {
+        if (have_creds && rc_login(user_email, user_pass, true) == ESP_OK) {
             char *device_json = NULL;
             if (rc_get_device_by_mac(NULL, &device_json) == ESP_OK && device_json) {
                 rc_extract_device_config(device_json, &readingsPerBatch, &wakeUpInterval);
@@ -180,7 +181,7 @@ void collect_and_send_task(void) {
                 ESP_LOGW(TAG, "Falha ao obter configuração do dispositivo. Usando cache/padrões.");
             }
         } else {
-            ESP_LOGE(TAG, "Falha na autenticação. Usando cache/padrões.");
+            ESP_LOGE(TAG, "Falha na autenticação ou credenciais ausentes. Usando cache/padrões.");
         }
         // Recarrega os valores possivelmente atualizados
         readingsPerBatch = device_readingsPerBatch;
@@ -323,6 +324,10 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
+    // Initialize TCP/IP stack and event loop once
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+
     // Load debug mode state from NVS
     nvs_handle_t nvs;
     if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
@@ -340,15 +345,19 @@ void app_main(void)
     xTaskCreate(factory_reset_button_task, "factory_reset_btn", 4096, NULL, 3, NULL);
 
     // O boot flow tenta conectar ao Wi-Fi ou inicia o modo de provisionamento.
-    bool connected = wifi_boot_flow();
+    bool setup_complete = wifi_boot_flow();
 
-    if (connected) {
-        // Se conectado, inicia a lógica principal de coleta e envio.
+    if (setup_complete) {
+        // Se a configuração estiver completa, inicia a lógica principal de coleta e envio.
         // Esta função não retornará, pois colocará o dispositivo para dormir.
         collect_and_send_task();
     } else {
         ESP_LOGW(TAG, "Modo de provisionamento iniciado. Conecte-se ao AP e acesse http://192.168.4.1/");
         // O dispositivo permanecerá acordado no modo de provisionamento.
+        // --- FIX: Keep main task alive in provisioning mode ---
+        while(1) {
+            vTaskDelay(pdMS_TO_TICKS(10000));
+        }
     }
 }
 
@@ -403,9 +412,11 @@ static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pas
 // --- NEW: Try to connect in STA mode with provided credentials ---
 static bool connect_sta_with(const char *ssid, const char *pass) {
     s_wifi_event_group = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+
+    // Create STA interface only if it doesn't exist.
+    if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == NULL) {
+        esp_netif_create_default_wifi_sta();
+    }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -418,7 +429,8 @@ static bool connect_sta_with(const char *ssid, const char *pass) {
     wifi_config_t wifi_config = { 0 };
     strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
     strlcpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    // --- FIX: Use APSTA mode to keep provisioning AP active ---
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
@@ -438,7 +450,8 @@ static bool connect_sta_with(const char *ssid, const char *pass) {
         set_setup_stage("connected");
     } else {
         ESP_LOGW(TAG, "WiFi connection failed or timed out.");
-        esp_wifi_stop();
+        // Do not stop wifi, just disconnect the station attempt
+        esp_wifi_disconnect();
     }
 
     // Clean up handler instances (optional now, safer later)
@@ -452,9 +465,8 @@ static bool connect_sta_with(const char *ssid, const char *pass) {
 static void start_softap_and_rest_server(void) {
     ESP_LOGW(TAG, "Starting SoftAP for provisioning...");
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
     // Create both AP and STA default interfaces so we can scan/connect while AP is up
+    // It's safe to call these multiple times.
     esp_netif_create_default_wifi_ap();
     esp_netif_create_default_wifi_sta();
 
@@ -500,22 +512,40 @@ static void start_softap_and_rest_server(void) {
 static bool wifi_boot_flow(void) {
     char ssid[33] = {0};
     char pass[65] = {0};
+    char stage[32] = {0};
 
-    if (load_wifi_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
-        if (connect_sta_with(ssid, pass)) {
-            return true; // STA connected
-        }
-        // --- NEW: fall through to provisioning if failed ---
-        set_setup_stage("provisioning");
-        ESP_LOGW(TAG, "Saved credentials failed to connect. Falling back to SoftAP provisioning.");
-    } else {
-        // --- NEW: no creds yet
-        set_setup_stage("provisioning");
-        ESP_LOGI(TAG, "No saved Wi-Fi credentials found. Starting provisioning SoftAP.");
+    // Check current setup stage
+    nvs_handle_t nvs;
+    if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
+        size_t len = sizeof(stage);
+        nvs_get_str(nvs, "setup", stage, &len);
+        nvs_close(nvs);
     }
 
+    // If setup is fully complete, just connect and go to main task
+    if (strcmp(stage, "user_saved") == 0) {
+        ESP_LOGI(TAG, "Setup is complete. Connecting to Wi-Fi for normal operation.");
+        if (load_wifi_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
+            if (connect_sta_with(ssid, pass)) {
+                return true; // Setup complete and connected.
+            }
+        }
+        // If connection fails with complete setup, something is wrong. Fallback to provisioning.
+        ESP_LOGE(TAG, "Failed to connect with saved credentials, but setup was marked complete. Resetting.");
+        do_factory_reset(); // Or just start_softap_and_rest_server();
+        return false; // Should not be reached
+    }
+
+    // If setup is not complete, start provisioning server and try to connect if we have creds
+    ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");
     start_softap_and_rest_server();
-    return false;
+
+    if (load_wifi_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        ESP_LOGI(TAG, "Found Wi-Fi credentials, attempting to connect in background...");
+        connect_sta_with(ssid, pass); // Connect but don't block main flow
+    }
+
+    return false; // Always return false to keep provisioning server running
 }
 
 // --- WiFi connection logic (unchanged) ---

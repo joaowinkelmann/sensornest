@@ -23,5 +23,7 @@
   "failedToSaveRole": "Falha ao salvar a função",
   "failedToScan": "Falha ao buscar redes",
   "failedToConnect": "Falha ao conectar",
-  "language": "Idioma"
+  "language": "Idioma",
+  "debugMode": "Alternar Modo de Debug (Depuração)",
+  "debugModeHint": "O modo de depuração está habilitado. Destinado para propósitos de desenvolvimento e solução de problemas."
 }

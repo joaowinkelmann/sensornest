@@ -34,7 +34,9 @@ typedef struct rest_server_context {
 } rest_server_context_t;
 
 // Forward declaration (after struct so the type is known)
-static void register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx);
+static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx);
+static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap);
+
 
 #define CHECK_FILE_EXTENSION(filename, ext) (strcasecmp(&filename[strlen(filename) - strlen(ext)], ext) == 0)
 
@@ -285,6 +287,52 @@ static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+/* --- NEW: POST /api/v1/provision/user --- */
+static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
+    char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
+    if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid body");
+        return ESP_FAIL;
+    }
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *j_email = cJSON_GetObjectItem(root, "email");
+    cJSON *j_pass = cJSON_GetObjectItem(root, "password");
+
+    if (!cJSON_IsString(j_email) || !cJSON_IsString(j_pass)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Email and password are required");
+        return ESP_FAIL;
+    }
+
+    // Copy email to a local buffer before it's freed by cJSON_Delete
+    char email_buf[128];
+    strlcpy(email_buf, j_email->valuestring, sizeof(email_buf));
+
+    // Valida se o login fornecido é válido
+    esp_err_t login_err = rc_login(j_email->valuestring, j_pass->valuestring, false);
+
+    cJSON_Delete(root);
+
+    if (login_err == ESP_OK) {
+        ESP_LOGI(TAG, "User credentials validated and saved for email: %s", email_buf);
+        nvs_set_setup_stage("user_saved"); // Advance setup stage
+        httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
+        return ESP_OK;
+    } else {
+        ESP_LOGW(TAG, "Failed to validate user credentials for email: %s", email_buf);
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"error\":\"invalid_credentials\"}");
+        return ESP_OK; // Return OK to send custom response
+    }
+}
+
 /* --- NEW: POST /api/v1/device/debug --- */
 static esp_err_t rs_device_debug_post_handler(httpd_req_t *req) {
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
@@ -454,8 +502,9 @@ static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req)
     if (err == ESP_OK) err = nvs_set_str(nvs, "pass", j_pass->valuestring);
     if (err == ESP_OK) err = nvs_commit(nvs);
     nvs_close(nvs);
-    cJSON_Delete(root);
+
     if (err != ESP_OK) {
+        cJSON_Delete(root);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs write failed");
         return ESP_FAIL;
     }
@@ -463,6 +512,8 @@ static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req)
     nvs_set_setup_stage("wifi_saved");
 
     ESP_LOGI(TAG, "Wi-Fi credentials saved: SSID=%s", j_ssid->valuestring);
+
+    cJSON_Delete(root); // Moved to the end
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"saved\"}");
@@ -685,7 +736,7 @@ static esp_err_t rs_cloud_login_post_handler(httpd_req_t *req) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "email/password required");
         return ESP_FAIL;
     }
-    esp_err_t err = rc_login(j_email->valuestring, j_pass->valuestring);
+    esp_err_t err = rc_login(j_email->valuestring, j_pass->valuestring, true);
     if (err != ESP_OK) {
         cJSON_Delete(root);
         httpd_resp_set_status(req, "401 Unauthorized");
@@ -804,6 +855,14 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &wifi_provision_post_uri);
 
+    httpd_uri_t user_creds_post_uri = {
+        .uri = "/api/v1/provision/user",
+        .method = HTTP_POST,
+        .handler = rs_user_creds_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &user_creds_post_uri);
+
     httpd_uri_t wifi_retry_post_uri = {
         .uri = "/api/v1/provision/retry",
         .method = HTTP_POST,
@@ -870,7 +929,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_register_uri_handler(server, &cloud_device_get_uri);
 
     /* Register captive portal probe handlers (specific paths) */
-    register_captive_handlers(server, rest_context);
+    rs_register_captive_handlers(server, rest_context);
 
     #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
     /* Register file server for static assets LAST, so it acts as a fallback for non-API/probe routes */
@@ -906,7 +965,7 @@ static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req);
 static esp_err_t rs_captive_redirect_handler(httpd_req_t *req);
 
 // Registrar to fix implicit declaration error
-static void register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx) {
+static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx) {
     httpd_uri_t probe_generate_204 = {
         .uri      = "/generate_204",          // Android
         .method   = HTTP_GET,

@@ -23,5 +23,7 @@
   "failedToSaveRole": "Failed to save role",
   "failedToScan": "Failed to scan networks",
   "failedToConnect": "Failed to connect",
-  "language": "Language"
+  "language": "Language",
+  "debugMode": "Toggle Debug Mode",
+  "debugModeHint": "Debug mode is enabled. This is intended for development and troubleshooting purposes."
 }

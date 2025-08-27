@@ -23,5 +23,7 @@
   "failedToSaveRole": "Error al guardar el rol",
   "failedToScan": "Error al escanear redes",
   "failedToConnect": "Error al conectar",
-  "language": "Idioma"
+  "language": "Idioma",
+  "debugMode": "Alternar Modo de Debug (Depuración)",
+  "debugModeHint": "El modo de depuración está habilitado. Esto está destinado para propósitos de desarrollo y solución de problemas."
 }
