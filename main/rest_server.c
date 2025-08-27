@@ -285,23 +285,83 @@ static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+/* --- NEW: POST /api/v1/device/debug --- */
+static esp_err_t rs_device_debug_post_handler(httpd_req_t *req) {
+    char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
+    if (req->content_len >= SCRATCH_BUFSIZE) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "content too long");
+        return ESP_FAIL;
+    }
+    int ret = httpd_req_recv(req, buf, req->content_len);
+    if (ret <= 0) {
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_FAIL;
+    }
+
+    const cJSON *j_enabled = cJSON_GetObjectItem(root, "enabled");
+    if (!cJSON_IsBool(j_enabled)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "boolean 'enabled' field required");
+        return ESP_FAIL;
+    }
+
+    uint8_t debug_flag = cJSON_IsTrue(j_enabled) ? 1 : 0;
+
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open("device", NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs open failed");
+        return ESP_FAIL;
+    }
+    err = nvs_set_u8(nvs, "debug", debug_flag);
+    if (err == ESP_OK) err = nvs_commit(nvs);
+    nvs_close(nvs);
+    cJSON_Delete(root);
+
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs write failed");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGW(TAG, "Debug mode has been %s. Restarting...", debug_flag ? "ENABLED" : "DISABLED");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\",\"restarting\":true}");
+
+    // Short delay to allow response to be sent
+    vTaskDelay(pdMS_TO_TICKS(200));
+    esp_restart();
+
+    return ESP_OK;
+}
+
 /* --- NEW: GET /api/v1/setup/status --- */
 static esp_err_t rs_setup_status_get_handler(httpd_req_t *req) {
     char role[16] = {0};
     char stage[32] = {0};
     bool has_wifi = false;
     bool connected = false;
-    char ssid[33] = {0};
     char ip_str[16] = {0};
+    char ssid[33] = {0};
 
-    // Read role and stage from NVS
-    nvs_handle_t nvs_dev;
-    if (nvs_open("device", NVS_READONLY, &nvs_dev) == ESP_OK) {
-        size_t rsz = sizeof(role);
-        size_t ssz = sizeof(stage);
-        nvs_get_str(nvs_dev, "role", role, &rsz);
-        nvs_get_str(nvs_dev, "setup", stage, &ssz);
-        nvs_close(nvs_dev);
+    cJSON *root = cJSON_CreateObject();
+
+    // Load role and stage from NVS
+    nvs_handle_t nvs;
+    if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
+        size_t len = sizeof(role);
+        nvs_get_str(nvs, "role", role, &len);
+        len = sizeof(stage);
+        nvs_get_str(nvs, "setup", stage, &len);
+        uint8_t debug_flag = 0;
+        nvs_get_u8(nvs, "debug", &debug_flag);
+        nvs_close(nvs);
+        cJSON_AddBoolToObject(root, "debug", debug_flag == 1);
     }
 
     // Check if Wi-Fi creds exist
@@ -329,7 +389,7 @@ static esp_err_t rs_setup_status_get_handler(httpd_req_t *req) {
         }
     }
 
-    cJSON *root = cJSON_CreateObject();
+
     cJSON_AddStringToObject(root, "role", role[0] ? role : NULL);
     cJSON_AddStringToObject(root, "stage", stage[0] ? stage : NULL);
     cJSON_AddBoolToObject(root, "has_wifi", has_wifi);
@@ -759,6 +819,14 @@ esp_err_t start_rest_server(const char *base_path)
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &device_role_post_uri);
+
+    httpd_uri_t device_debug_post_uri = {
+        .uri = "/api/v1/device/debug",
+        .method = HTTP_POST,
+        .handler = rs_device_debug_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &device_debug_post_uri);
 
     httpd_uri_t setup_status_get_uri = {
         .uri = "/api/v1/setup/status",

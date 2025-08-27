@@ -27,6 +27,8 @@
 #include <stdarg.h>
 #include "certs.h"
 
+static bool g_debug_mode_enabled = false;
+
 static int custom_log_vprintf(const char *format, va_list arg) {
     // Default color
     const char* color = LOG_RESET_COLOR;
@@ -209,6 +211,21 @@ static void perform_sensor_reading() {
         return;
     }
 
+    if (g_debug_mode_enabled) {
+        ESP_LOGI(TAG, "Simulating sensor reading (DEBUG MODE)");
+        sensor_readings_batch[readings_count].temperature = 20.0f + (float)(esp_random() % 100) / 10.0f;
+        sensor_readings_batch[readings_count].humidity = 40.0f + (float)(esp_random() % 200) / 10.0f;
+        time(&sensor_readings_batch[readings_count].timestamp);
+
+        ESP_LOGI(TAG, "Leitura #%d armazenada (simulada): Temp=%.1fC, Hum=%.1f%%",
+                 readings_count + 1,
+                 sensor_readings_batch[readings_count].temperature,
+                 sensor_readings_batch[readings_count].humidity);
+
+        readings_count++;
+        return;
+    }
+
     int16_t humidity = 0, temperature = 0;
     
     // Reinicializa o GPIO após acordar novamente
@@ -305,6 +322,19 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    // Load debug mode state from NVS
+    nvs_handle_t nvs;
+    if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
+        uint8_t debug_flag = 0; // 0 = false, 1 = true
+        if (nvs_get_u8(nvs, "debug", &debug_flag) == ESP_OK) {
+            g_debug_mode_enabled = (debug_flag == 1);
+        }
+        nvs_close(nvs);
+    }
+    if (g_debug_mode_enabled) {
+        ESP_LOGW(TAG, "!!! DEBUG MODE ENABLED: Sensor readings will be simulated. !!!");
+    }
 
     // Tarefa para monitorar a ação de factory reset (segurar o botão BOOT por 5s)
     xTaskCreate(factory_reset_button_task, "factory_reset_btn", 4096, NULL, 3, NULL);

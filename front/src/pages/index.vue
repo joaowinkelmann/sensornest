@@ -36,6 +36,16 @@
                 </q-card-section>
               </q-card>
             </div>
+            <!-- NEW: Debug mode toggle -->
+            <div class="col-12 q-mt-md">
+              <q-toggle
+                v-model="debugEnabled"
+                :label="$t('debugMode')"
+                :hint="$t('debugModeHint')"
+                @update:model-value="toggleDebug"
+                color="primary"
+              />
+            </div>
           </div>
 
           <!-- Wi-Fi setup -->
@@ -100,8 +110,10 @@
 <script setup>
 import { api } from "@/services/api";
 import { useI18n } from "vue-i18n";
+import { useQuasar } from "quasar";
 
 const { t } = useI18n();
+const $q = useQuasar();
 
 const role = ref(null); // 'CONTROLLER' or 'WORKER'
 const ssid = ref("");
@@ -112,6 +124,8 @@ const connecting = ref(false);
 const error = ref("");
 const status = ref(null);
 const pollTimer = ref(null);
+// NEW: Debug mode state
+const debugEnabled = ref(false);
 
 const connected = computed(() => !!status.value?.connected);
 const step = computed(() => {
@@ -148,6 +162,26 @@ async function pickRole(r) {
     scan();
   } catch (e) {
     error.value = e.message || t("failedToSaveRole");
+  }
+}
+
+async function toggleDebug(enabled) {
+  try {
+    const response = await api.setDebug(enabled);
+    if (response.restarting) {
+      $q.notify({
+        type: "positive",
+        message: t("debugModeToggled"),
+        caption: t("deviceRestarting"),
+        position: "top",
+      });
+      setTimeout(() => {
+      }, 1000);
+    }
+  } catch (e) {
+    error.value = e.message || t("failedToToggleDebug");
+    // Revert the toggle on error
+    debugEnabled.value = !enabled;
   }
 }
 
@@ -233,6 +267,7 @@ async function fetchInitialStatus() {
   try {
     const setupStatus = await api.setupStatus();
     role.value = setupStatus.role;
+    debugEnabled.value = setupStatus.debug || false;
     if (setupStatus.connected) {
       status.value = {
         connected: true,

@@ -92,12 +92,18 @@ export const api = {
     fetch(`${base}/api/v1/provision/retry`, { method: "POST" }).then(handle),
   status: () => fetch(`${base}/api/v1/wifi/status`).then(handle),
 
-  // --- NEW: setup/role endpoints ---
   setupStatus: () => fetch(`${base}/api/v1/setup/status`).then(handle),
   setRole: (role) =>
     fetch(`${base}/api/v1/device/role`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
+    }).then(handle),
+
+  setDebug: (enabled) =>
+    fetch(`${base}/api/v1/device/debug`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
     }).then(handle),
 };
