@@ -15,7 +15,7 @@
 #include "esp_sntp.h"
 #include "cJSON.h"
 #include "dht.h"
-#include <stdint.h> // added for int16_t
+#include <stdint.h>
 #include "esp_mac.h"
 #include "esp_littlefs.h"
 #include "nvs.h"
@@ -87,6 +87,7 @@ esp_err_t start_rest_server(const char *base_path);
 static bool wifi_boot_flow(void);
 static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len);
 static bool connect_sta_with(const char *ssid, const char *pass);
+static bool connect_to_wifi(void);
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 const char* get_esp_model(void);
@@ -132,78 +133,72 @@ static void go_to_sleep(uint64_t sleep_time_seconds) {
 
 
 void collect_and_send_task(void) {
-    ESP_LOGI(TAG, "--- Iniciando Tarefa de Coleta e Envio ---");
-    ESP_LOGI(TAG, "Leituras coletadas até agora no lote atual: %d", readings_count);
-
-    int readingsPerBatch = device_readingsPerBatch;
-    int wakeUpInterval   = device_wakeUpInterval;
-
-    if (!time_is_set) {
-        ESP_LOGI(TAG, "Sincronizando a hora com o NTP...");
-        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-        esp_sntp_setservername(0, "pool.ntp.org");
-        esp_sntp_init();
-        setenv("TZ", "GMT+3", 1);
-        tzset();
-        int retry = 0;
-        while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 15) {
-            vTaskDelay(2000 / portTICK_PERIOD_MS);
-        }
-        if (retry < 15) {
-            time_is_set = true;
-            ESP_LOGI(TAG, "Hora sincronizada com sucesso.");
-        } else {
-            ESP_LOGE(TAG, "Falha ao sincronizar a hora. Usando hora do sistema.");
-            // Em um caso real, poderíamos tentar reiniciar ou dormir por mais tempo.
-        }
-    } else {
-        ESP_LOGI(TAG, "A hora já está sincronizada. Pulando a etapa de NTP.");
-    }
-
-    char user_email[128];
-    char user_pass[128];
-    bool have_creds = rc_load_creds(user_email, sizeof(user_email), user_pass, sizeof(user_pass));
-
-    bool starting_new_batch = (readings_count == 0 || !device_config_initialized);
-
-    if (starting_new_batch) {
-        if (have_creds && rc_login(user_email, user_pass, true) == ESP_OK) {
-            char *device_json = NULL;
-            if (rc_get_device_by_mac(NULL, &device_json) == ESP_OK && device_json) {
-                rc_extract_device_config(device_json, &readingsPerBatch, &wakeUpInterval);
-                ESP_LOGI(TAG, "Buscada configuração do dispositivo do server: wakeUpInterval=%d, readingsPerBatch=%d",
-                         wakeUpInterval, readingsPerBatch);
-                free(device_json);
-                if (readingsPerBatch > 0) device_readingsPerBatch = readingsPerBatch;
-                if (wakeUpInterval > 0)   device_wakeUpInterval   = wakeUpInterval;
-                device_config_initialized = true;
-            } else {
-                ESP_LOGW(TAG, "Falha ao obter configuração do dispositivo. Usando cache/padrões.");
-            }
-        } else {
-            ESP_LOGE(TAG, "Falha na autenticação ou credenciais ausentes. Usando cache/padrões.");
-        }
-        // Recarrega os valores possivelmente atualizados
-        readingsPerBatch = device_readingsPerBatch;
-        wakeUpInterval   = device_wakeUpInterval;
-    } else {
-        ESP_LOGI(TAG, "Config do dispositivo reutilizada (wakeUpInterval=%d, readingsPerBatch=%d)",
-                 wakeUpInterval, readingsPerBatch);
-    }
-
-    // Só agora fazemos a leitura (para não perder a chance de login no início do lote)
+    // First, perform a sensor reading and increment the counter.
+    // This happens on every wake-up, without Wi-Fi.
     perform_sensor_reading();
 
-    if (readings_count >= readingsPerBatch) {
-        ESP_LOGI(TAG, "Lote de leituras completo (%d/%d). Enviando para o servidor.", readings_count, readingsPerBatch);
-        // Mantém a lógica existente
-        send_batched_data();
-        readings_count = 0;
+    // Check if the batch is full.
+    if (readings_count >= device_readingsPerBatch) {
+        ESP_LOGI(TAG, "Batch is full (%d/%d). Connecting to Wi-Fi to send data.", readings_count, device_readingsPerBatch);
+
+        // --- Connect to Wi-Fi ---
+        if (connect_to_wifi()) {
+            // --- Sync time if needed ---
+            if (!time_is_set) {
+                ESP_LOGI(TAG, "Syncing NTP time...");
+                esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+                esp_sntp_setservername(0, "pool.ntp.org");
+                esp_sntp_init();
+                setenv("TZ", "GMT+3", 1);
+                tzset();
+                int retry = 0;
+                while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 15) {
+                    vTaskDelay(2000 / portTICK_PERIOD_MS);
+                }
+                if (retry < 15) {
+                    time_is_set = true;
+                    ESP_LOGI(TAG, "Time synced successfully.");
+                } else {
+                    ESP_LOGE(TAG, "Failed to sync time.");
+                }
+            }
+
+            // --- Login and get device config if it's the first time ---
+            if (!device_config_initialized) {
+                char user_email[128], user_pass[128];
+                if (rc_load_creds(user_email, sizeof(user_email), user_pass, sizeof(user_pass)) &&
+                    rc_login(user_email, user_pass, true) == ESP_OK) {
+                    char *device_json = NULL;
+                    if (rc_get_device_by_mac(NULL, &device_json) == ESP_OK && device_json) {
+                        int batch = -1, interval = -1;
+                        rc_extract_device_config(device_json, &batch, &interval);
+                        ESP_LOGI(TAG, "Fetched device config: wakeUpInterval=%d, readingsPerBatch=%d", interval, batch);
+                        free(device_json);
+                        if (batch > 0) device_readingsPerBatch = batch;
+                        if (interval > 0) device_wakeUpInterval = interval;
+                        device_config_initialized = true;
+                    }
+                }
+            }
+
+            // --- Send data and reset counter ---
+            send_batched_data();
+            readings_count = 0;
+
+            // --- Disconnect Wi-Fi ---
+            esp_wifi_disconnect();
+            esp_wifi_stop();
+            ESP_LOGI(TAG, "Wi-Fi stopped.");
+
+        } else {
+            ESP_LOGE(TAG, "Failed to connect to Wi-Fi. Data not sent. Will retry on next batch.");
+            // The batch remains full, so it will try to send again on the next wake-up.
+        }
     } else {
-        ESP_LOGI(TAG, "Lote incompleto (%d/%d). Voltando a dormir.", readings_count, readingsPerBatch);
+        ESP_LOGI(TAG, "Batch incomplete (%d/%d). Going back to sleep.", readings_count, device_readingsPerBatch);
     }
 
-    go_to_sleep(wakeUpInterval);
+    go_to_sleep(device_wakeUpInterval);
 }
 
 static void perform_sensor_reading() {
@@ -409,56 +404,81 @@ static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pas
     return true;
 }
 
-// --- NEW: Try to connect in STA mode with provided credentials ---
-static bool connect_sta_with(const char *ssid, const char *pass) {
-    s_wifi_event_group = xEventGroupCreate();
-
-    // Create STA interface only if it doesn't exist.
-    if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == NULL) {
-        esp_netif_create_default_wifi_sta();
+// --- REFACTORED: Boot flow orchestrator ---
+static bool wifi_boot_flow(void) {
+    char stage[32] = {0};
+    nvs_handle_t nvs;
+    if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
+        size_t len = sizeof(stage);
+        nvs_get_str(nvs, "setup", stage, &len);
+        nvs_close(nvs);
     }
 
+    // If setup is fully complete, just return true to proceed to main task.
+    // We will NOT connect to Wi-Fi here anymore.
+    if (strcmp(stage, "user_saved") == 0) {
+        ESP_LOGI(TAG, "Setup is complete. Proceeding to main task.");
+        return true;
+    }
+
+    // If setup is not complete, start provisioning server
+    ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");
+    start_softap_and_rest_server();
+    return false; // Stay in provisioning mode
+}
+
+// --- NEW: Helper function to connect to Wi-Fi on demand ---
+static bool connect_to_wifi(void) {
+    char ssid[33] = {0};
+    char pass[65] = {0};
+    if (!load_wifi_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        ESP_LOGE(TAG, "No Wi-Fi credentials found to connect.");
+        return false;
+    }
+
+    esp_netif_create_default_wifi_sta();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
+    s_wifi_event_group = xEventGroupCreate();
+    esp_event_handler_instance_t instance_any_id, instance_got_ip;
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_any_id));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
 
-    wifi_config_t wifi_config = { 0 };
+    wifi_config_t wifi_config = {0};
     strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
     strlcpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
-    // --- FIX: Use APSTA mode to keep provisioning AP active ---
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_connect());
 
-    ESP_LOGI(TAG, "Waiting for WiFi connection (STA)...");
-    EventBits_t bits = xEventGroupWaitBits(
-        s_wifi_event_group,
-        WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-        pdFALSE,
-        pdFALSE,
-        pdMS_TO_TICKS(15000) // 15s timeout
-    );
+    ESP_LOGI(TAG, "Waiting for connection...");
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(15000)); // 15s timeout
 
-    bool ok = (bits & WIFI_CONNECTED_BIT);
-    if (ok) {
-        ESP_LOGI(TAG, "WiFi Connected (STA).");
-        // --- NEW: mark connected ---
-        set_setup_stage("connected");
-    } else {
-        ESP_LOGW(TAG, "WiFi connection failed or timed out.");
-        // Do not stop wifi, just disconnect the station attempt
-        esp_wifi_disconnect();
-    }
-
-    // Clean up handler instances (optional now, safer later)
     esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip);
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id);
     vEventGroupDelete(s_wifi_event_group);
-    return ok;
+
+    if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGI(TAG, "WiFi Connected.");
+        return true;
+    }
+    
+    ESP_LOGE(TAG, "Connection failed.");
+    esp_wifi_stop();
+    return false;
+}
+
+// --- WiFi connection logic (unchanged) ---
+static EventGroupHandle_t s_wifi_event_group;
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT      BIT1
+static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) { esp_wifi_connect(); }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) { xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT); }
+    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) { xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT); }
 }
 
 // --- NEW: Start SoftAP with "ESP-{shortID}" and launch REST server ---
@@ -474,88 +494,34 @@ static void start_softap_and_rest_server(void) {
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
     // Generate AP SSID "ESP-{MODEL}-{6 char from MAC}"
-    uint8_t mac[6] = {0};
-    esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
-    char ap_ssid[32];
-    const char* model = get_esp_model();
-    snprintf(ap_ssid, sizeof(ap_ssid), "ESP-%s-%02X%02X%02X", model, mac[3], mac[4], mac[5]);
+    uint8_t mac[6];
+    char ssid[32];
+    esp_efuse_mac_get_default(mac);
+    snprintf(ssid, sizeof(ssid), "ESP-%s-%02X%02X%02X", get_esp_model(), mac[3], mac[4], mac[5]);
 
-    wifi_config_t ap_config = (wifi_config_t){ 0 };
-    strlcpy((char *)ap_config.ap.ssid, ap_ssid, sizeof(ap_config.ap.ssid));
-    ap_config.ap.ssid_len = strlen(ap_ssid);
-    ap_config.ap.channel = 1;
-    ap_config.ap.max_connection = 4;
-    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    wifi_config_t wifi_config = {
+        .ap = {
+            .ssid_len = strlen(ssid),
+            .channel = 1,
+            .password = "", // Open network
+            .max_connection = 4,
+            .authmode = WIFI_AUTH_OPEN,
+        },
+    };
+    strlcpy((char *)wifi_config.ap.ssid, ssid, sizeof(wifi_config.ap.ssid));
 
-    // IMPORTANT: APSTA so we can scan via STA while AP remains accessible
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGW(TAG, "SoftAP SSID: %s, open auth. DHCP at 192.168.4.1", ap_ssid);
+    ESP_LOGW(TAG, "SoftAP SSID: %s, open auth. DHCP at 192.168.4.1", ssid);
 
-    // --- NEW: mark provisioning stage ---
-    set_setup_stage("provisioning");
-
-    // Start HTTP REST server
+    // Start the REST server
     ESP_ERROR_CHECK(mount_www_fs());
     ESP_ERROR_CHECK(start_rest_server("/www"));
 
-    // Start captive DNS so all hostnames resolve to AP IP and probes hit our server
-    xTaskCreate(captive_dns_task, "captive_dns", 8192, NULL, 5, NULL);
-
-    // --- NEW: mark provisioning stage ---
-    set_setup_stage("provisioning");
-}
-
-// --- NEW: Boot flow orchestrator ---
-static bool wifi_boot_flow(void) {
-    char ssid[33] = {0};
-    char pass[65] = {0};
-    char stage[32] = {0};
-
-    // Check current setup stage
-    nvs_handle_t nvs;
-    if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
-        size_t len = sizeof(stage);
-        nvs_get_str(nvs, "setup", stage, &len);
-        nvs_close(nvs);
-    }
-
-    // If setup is fully complete, just connect and go to main task
-    if (strcmp(stage, "user_saved") == 0) {
-        ESP_LOGI(TAG, "Setup is complete. Connecting to Wi-Fi for normal operation.");
-        if (load_wifi_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
-            if (connect_sta_with(ssid, pass)) {
-                return true; // Setup complete and connected.
-            }
-        }
-        // If connection fails with complete setup, something is wrong. Fallback to provisioning.
-        ESP_LOGE(TAG, "Failed to connect with saved credentials, but setup was marked complete. Resetting.");
-        do_factory_reset(); // Or just start_softap_and_rest_server();
-        return false; // Should not be reached
-    }
-
-    // If setup is not complete, start provisioning server and try to connect if we have creds
-    ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");
-    start_softap_and_rest_server();
-
-    if (load_wifi_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
-        ESP_LOGI(TAG, "Found Wi-Fi credentials, attempting to connect in background...");
-        connect_sta_with(ssid, pass); // Connect but don't block main flow
-    }
-
-    return false; // Always return false to keep provisioning server running
-}
-
-// --- WiFi connection logic (unchanged) ---
-static EventGroupHandle_t s_wifi_event_group;
-#define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT      BIT1
-static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) { esp_wifi_connect(); }
-    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) { xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT); }
-    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) { xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT); }
+    // Start the captive DNS task
+    xTaskCreate(&captive_dns_task, "captive_dns", 4096, NULL, 5, NULL);
 }
 
 // --- NEW: LittleFS mount helper ---
