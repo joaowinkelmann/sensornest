@@ -64,7 +64,7 @@ static EventGroupHandle_t s_wifi_event_group;
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
 #define BOOT_BTN_GPIO           GPIO_NUM_0     // BOOT button (IO0)
-#define BOOT_BTN_HOLD_RESET_MS  3000           // segurar BOOT por 3 segundos para reset de fábrica
+#define BOOT_BTN_HOLD_RESET_MS  300           // segurar BOOT por 0.3 segundo para reset de fábrica
 static void factory_reset_button_task(void *pvParameters);
 static void do_factory_reset(void);
 
