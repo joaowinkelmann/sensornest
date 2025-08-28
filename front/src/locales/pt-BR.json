@@ -25,5 +25,9 @@
   "failedToConnect": "Falha ao conectar",
   "language": "Idioma",
   "debugMode": "Alternar Modo de Debug (Depuração)",
-  "debugModeHint": "O modo de depuração está habilitado. Destinado para propósitos de desenvolvimento e solução de problemas."
+  "debugModeHint": "O modo de depuração está habilitado. Destinado para propósitos de desenvolvimento e solução de problemas.",
+  "cloudLogin": "Login",
+  "email": "E-mail",
+  "password": "Senha",
+  "status_login": "Conexão estabelecida. Entre com sua conta."
 }

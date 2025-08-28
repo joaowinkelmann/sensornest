@@ -25,5 +25,9 @@
   "failedToConnect": "Failed to connect",
   "language": "Language",
   "debugMode": "Toggle Debug Mode",
-  "debugModeHint": "Debug mode is enabled. This is intended for development and troubleshooting purposes."
+  "debugModeHint": "Debug mode is enabled. This is intended for development and troubleshooting purposes.",
+  "cloudLogin": "Login",
+  "email": "E-mail",
+  "password": "Password",
+  "status_login": "Connection established. Log in with your account."
 }
