@@ -40,5 +40,6 @@
   "loginSuccess": "¡Inicio de sesión exitoso!",
   "bindDeviceBtn": "Vincular Dispositivo a la Malla",
   "selectMeshTitle": "Seleccionar Malla",
-  "selectMesh": "Seleccionar Malla"
+  "selectMesh": "Seleccionar Malla",
+  "deviceBound": "Dispositivo Vinculado con Éxito"
 }

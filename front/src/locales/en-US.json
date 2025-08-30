@@ -40,5 +40,6 @@
   "loginSuccess": "Login successful!",
   "bindDeviceBtn": "Bind Device to Mesh",
   "selectMeshTitle": "Select Mesh",
-  "selectMesh": "Select Mesh"
+  "selectMesh": "Select Mesh",
+  "deviceBound": "Device Successfully Bound"
 }
