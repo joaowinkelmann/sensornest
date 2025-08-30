@@ -25,7 +25,6 @@ static const char *TAG = "REST_SERVER";
 #define FILE_PATH_MAX (ESP_VFS_PATH_MAX + 128)
 #define SCRATCH_BUFSIZE (10240)
 #define MAX_URI_HANDLERS 32
-static inline void rs_add_close_hdr(httpd_req_t *req);
 
 // Move struct definition before using its type in prototype
 typedef struct rest_server_context {
@@ -33,12 +32,52 @@ typedef struct rest_server_context {
     char scratch[SCRATCH_BUFSIZE];
 } rest_server_context_t;
 
-// Forward declaration (after struct so the type is known)
-static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx);
+// --- Function Prototypes ---
+static inline void rs_add_close_hdr(httpd_req_t *req);
 static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap);
-
+static esp_err_t rs_set_content_type_from_file(httpd_req_t *req, const char *filepath);
+static esp_err_t rs_rest_common_get_handler(httpd_req_t *req);
+static esp_err_t rs_system_info_get_handler(httpd_req_t *req);
+static void nvs_set_setup_stage(const char *stage);
+static esp_err_t rs_device_role_post_handler(httpd_req_t *req);
+static esp_err_t rs_user_creds_post_handler(httpd_req_t *req);
+static esp_err_t rs_device_debug_post_handler(httpd_req_t *req);
+static esp_err_t rs_setup_status_get_handler(httpd_req_t *req);
+static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req);
+static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req);
+static esp_err_t rs_wifi_scan_get_handler(httpd_req_t *req);
+static esp_err_t rs_wifi_status_get_handler(httpd_req_t *req);
+static esp_err_t rs_probe_generate_204_handler(httpd_req_t *req);
+static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req);
+static esp_err_t rs_captive_redirect_handler(httpd_req_t *req);
+// REMOVED: static esp_err_t rs_cloud_login_post_handler(httpd_req_t *req);
+static esp_err_t rs_cloud_device_get_handler(httpd_req_t *req);
+static esp_err_t rs_cloud_meshes_get_handler(httpd_req_t *req);
+static esp_err_t rs_cloud_device_bind_post_handler(httpd_req_t *req);
+static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req);
+static esp_err_t rs_cors_options_handler(httpd_req_t *req);
+static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx);
 
 #define CHECK_FILE_EXTENSION(filename, ext) (strcasecmp(&filename[strlen(filename) - strlen(ext)], ext) == 0)
+
+static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap) {
+    int total = req->content_len;
+    if (total <= 0 || total >= (int)cap) {
+        ESP_LOGE(TAG, "Invalid body length: %d (max %zu)", total, cap - 1);
+        return false;
+    }
+    int off = 0;
+    while (off < total) {
+        int r = httpd_req_recv(req, buf + off, total - off);
+        if (r <= 0) {
+            ESP_LOGE(TAG, "Failed to read body, recv returned %d", r);
+            return false;
+        }
+        off += r;
+    }
+    buf[total] = 0;
+    return true;
+}
 
 #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
 /* Set HTTP response content type according to file extension */
@@ -66,30 +105,6 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
 {
     char filepath[FILE_PATH_MAX];
 
-    // --- NEW: Detect old captive portal UAs and serve a fallback page ---
-    char ua[128] = {0};
-    httpd_req_get_hdr_value_str(req, "User-Agent", ua, sizeof(ua));
-    if (strstr(ua, "Chrome/60.") || strstr(ua, "CaptivePortal")) {
-        // This UA is from an old Android captive portal WebView.
-        // Serve a simple HTML page asking the user to open in a real browser.
-        ESP_LOGW(TAG, "Old captive portal UA detected: '%s'. Serving fallback page.", ua);
-        httpd_resp_set_type(req, "text/html");
-        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-        const char *fallback_html =
-            "<!DOCTYPE html><html><head><title>Wi-Fi Setup</title>"
-            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
-            "<style>"
-            " body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0f0f0; text-align: center; }"
-            " div { padding: 20px; border: 1px solid #ccc; border-radius: 8px; background: #fff; }"
-            " a { display: inline-block; padding: 15px 25px; font-size: 18px; color: white; background-color: #007bff; text-decoration: none; border-radius: 5px; }"
-            "</style></head><body><div>"
-            "<h1>Please open in browser</h1>"
-            "<p>This network requires configuration in your main web browser.</p><br>"
-            "<a href=\"http://192.168.4.1/\">Open Setup Page</a>"
-            "</div></body></html>";
-        return httpd_resp_send(req, fallback_html, HTTPD_RESP_USE_STRLEN);
-    }
-
     rest_server_context_t *rest_context = (rest_server_context_t *)req->user_ctx;
     strlcpy(filepath, rest_context->base_path, sizeof(filepath));
     if (req->uri[strlen(req->uri) - 1] == '/') {
@@ -107,7 +122,6 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    // FIX: call correct helper name (had missing rs_ prefix)
     rs_set_content_type_from_file(req, filepath);
     rs_add_close_hdr(req);   // <--- ensure client won't keep socket alive
 
@@ -147,39 +161,6 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
 }
 #endif // CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
 
-/* Simple handler for light brightness control */
-static esp_err_t rs_light_brightness_post_handler(httpd_req_t *req)
-{
-    int total_len = req->content_len;
-    int cur_len = 0;
-    char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
-    int received = 0;
-    if (total_len >= SCRATCH_BUFSIZE) {
-        /* Respond with 500 Internal Server Error */
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "content too long");
-        return ESP_FAIL;
-    }
-    while (cur_len < total_len) {
-        received = httpd_req_recv(req, buf + cur_len, total_len);
-        if (received <= 0) {
-            /* Respond with 500 Internal Server Error */
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to post control value");
-            return ESP_FAIL;
-        }
-        cur_len += received;
-    }
-    buf[total_len] = '\0';
-
-    cJSON *root = cJSON_Parse(buf);
-    int red = cJSON_GetObjectItem(root, "red")->valueint;
-    int green = cJSON_GetObjectItem(root, "green")->valueint;
-    int blue = cJSON_GetObjectItem(root, "blue")->valueint;
-    ESP_LOGI(TAG, "Light control: red = %d, green = %d, blue = %d", red, green, blue);
-    cJSON_Delete(root);
-    httpd_resp_sendstr(req, "Post control value successfully");
-    return ESP_OK;
-}
-
 /* Simple handler for getting system handler */
 static esp_err_t rs_system_info_get_handler(httpd_req_t *req)
 {
@@ -190,20 +171,6 @@ static esp_err_t rs_system_info_get_handler(httpd_req_t *req)
     cJSON_AddStringToObject(root, "chip", CONFIG_IDF_TARGET);
     cJSON_AddStringToObject(root, "idf_version", IDF_VER);
     cJSON_AddNumberToObject(root, "cores", chip_info.cores);
-    const char *sys_info = cJSON_Print(root);
-    httpd_resp_sendstr(req, sys_info);
-    free((void *)sys_info);
-    cJSON_Delete(root);
-    return ESP_OK;
-}
-
-/* Simple handler for getting temperature data */
-static esp_err_t rs_temperature_data_get_handler(httpd_req_t *req)
-{
-    httpd_resp_set_type(req, "application/json");
-    cJSON *root = cJSON_CreateObject();
-    // Note: we're simulating temperature data with a random number for demonstration purposes
-    cJSON_AddNumberToObject(root, "raw", esp_random() % 20);
     const char *sys_info = cJSON_Print(root);
     httpd_resp_sendstr(req, sys_info);
     free((void *)sys_info);
@@ -297,7 +264,7 @@ static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
 
     cJSON *root = cJSON_Parse(buf);
     if (!root) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
         return ESP_FAIL;
     }
 
@@ -314,37 +281,58 @@ static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
     char email_buf[128];
     strlcpy(email_buf, j_email->valuestring, sizeof(email_buf));
 
-    // Valida se o login fornecido é válido
+    // Validate if the provided login is valid
     esp_err_t login_err = rc_login(j_email->valuestring, j_pass->valuestring, false);
 
-    cJSON_Delete(root);
-
-    if (login_err == ESP_OK) {
-        ESP_LOGI(TAG, "User credentials validated and saved for email: %s", email_buf);
-        nvs_set_setup_stage("user_saved"); // Advance setup stage
-        httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
-        return ESP_OK;
-    } else {
+    if (login_err != ESP_OK) {
         ESP_LOGW(TAG, "Failed to validate user credentials for email: %s", email_buf);
+        cJSON_Delete(root);
         httpd_resp_set_status(req, "401 Unauthorized");
         httpd_resp_set_type(req, "application/json");
         httpd_resp_sendstr(req, "{\"error\":\"invalid_credentials\"}");
         return ESP_OK; // Return OK to send custom response
     }
+
+    ESP_LOGI(TAG, "User credentials validated and saved for email: %s", email_buf);
+    nvs_set_setup_stage("user_saved"); // Advance setup stage
+
+    // After successful login, try to get device info
+    char *device_json = NULL;
+    esp_err_t derr = rc_get_device_by_mac(NULL, &device_json);
+    httpd_resp_set_type(req, "application/json");
+
+    if (derr == ESP_OK && device_json) {
+        // Safely construct the response JSON
+        cJSON *resp_root = cJSON_CreateObject();
+        if (resp_root) {
+            cJSON_AddStringToObject(resp_root, "status", "ok");
+            cJSON *device_obj = cJSON_Parse(device_json);
+            if (device_obj) {
+                cJSON_AddItemToObject(resp_root, "device", device_obj);
+            }
+            char *resp_str = cJSON_PrintUnformatted(resp_root);
+            if (resp_str) {
+                httpd_resp_sendstr(req, resp_str);
+                free(resp_str);
+            }
+            cJSON_Delete(resp_root);
+        }
+        free(device_json);
+    } else {
+        httpd_resp_sendstr(req, "{\"status\":\"ok\",\"device\":null}");
+        if (device_json) free(device_json);
+    }
+    cJSON_Delete(root);
+    return ESP_OK;
 }
 
 /* --- NEW: POST /api/v1/device/debug --- */
 static esp_err_t rs_device_debug_post_handler(httpd_req_t *req) {
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
-    if (req->content_len >= SCRATCH_BUFSIZE) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "content too long");
+    if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid body");
         return ESP_FAIL;
     }
-    int ret = httpd_req_recv(req, buf, req->content_len);
-    if (ret <= 0) {
-        return ESP_FAIL;
-    }
-    buf[ret] = '\0';
 
     cJSON *root = cJSON_Parse(buf);
     if (!root) {
@@ -388,7 +376,7 @@ static esp_err_t rs_device_debug_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* --- NEW: GET /api/v1/setup/status --- */
+/* --- GET /api/v1/setup/status --- */
 static esp_err_t rs_setup_status_get_handler(httpd_req_t *req) {
     char role[16] = {0};
     char stage[32] = {0};
@@ -462,22 +450,11 @@ static esp_err_t rs_setup_status_get_handler(httpd_req_t *req) {
 /* Provisioning handler - save WiFi credentials */
 static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req)
 {
-    int total_len = req->content_len;
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
-    if (total_len >= SCRATCH_BUFSIZE) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "content too long");
+    if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid body");
         return ESP_FAIL;
     }
-    int received = 0, cur_len = 0;
-    while (cur_len < total_len) {
-        received = httpd_req_recv(req, buf + cur_len, total_len - cur_len);
-        if (received <= 0) {
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv failed");
-            return ESP_FAIL;
-        }
-        cur_len += received;
-    }
-    buf[total_len] = '\0';
     cJSON *root = cJSON_Parse(buf);
     if (!root) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
@@ -680,7 +657,7 @@ static esp_err_t rs_captive_redirect_handler(httpd_req_t *req)
     httpd_req_get_hdr_value_str(req, "User-Agent", ua, sizeof(ua));
     httpd_req_get_hdr_value_str(req, "Referer", referer, sizeof(referer));
 
-    ESP_LOGI(TAG, "captive redirect: uri=%s host=%s UA='%s' Referer='%s'", 
+    ESP_LOGI(TAG, "captive redirect: uri=%s host=%s UA='%s' Referer='%s'",
              req->uri, host[0]?host:"(no host)", ua, referer);
 
     // This handler should only be active when web pages are NOT deployed.
@@ -703,71 +680,7 @@ static esp_err_t rs_captive_redirect_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-// --- NEW: helper to read JSON body safely (used by cloud handlers) ---
-static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap) {
-    int total = req->content_len;
-    if (total <= 0 || total >= (int)cap) return false;
-    int off = 0;
-    while (off < total) {
-        int r = httpd_req_recv(req, buf + off, total - off);
-        if (r <= 0) return false;
-        off += r;
-    }
-    buf[total] = 0;
-    return true;
-}
-
-// --- NEW: POST /api/v1/cloud/login (reuses rc_login + rc_get_device_by_mac) ---
-static esp_err_t rs_cloud_login_post_handler(httpd_req_t *req) {
-    rest_server_context_t *ctx = (rest_server_context_t*)req->user_ctx;
-    if (!rs_read_body(req, ctx->scratch, sizeof(ctx->scratch))) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
-        return ESP_FAIL;
-    }
-    cJSON *root = cJSON_Parse(ctx->scratch);
-    if (!root) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
-        return ESP_FAIL;
-    }
-    cJSON *j_email = cJSON_GetObjectItem(root, "email");
-    cJSON *j_pass  = cJSON_GetObjectItem(root, "password");
-    if (!cJSON_IsString(j_email) || !cJSON_IsString(j_pass)) {
-        cJSON_Delete(root);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "email/password required");
-        return ESP_FAIL;
-    }
-    esp_err_t err = rc_login(j_email->valuestring, j_pass->valuestring, true);
-    if (err != ESP_OK) {
-        cJSON_Delete(root);
-        httpd_resp_set_status(req, "401 Unauthorized");
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, "{\"error\":\"login_failed\"}");
-        return ESP_OK;
-    }
-    // Optionally fetch device metadata immediately
-    char *device_json = NULL;
-    esp_err_t derr = rc_get_device_by_mac(NULL, &device_json);
-    httpd_resp_set_type(req, "application/json");
-    if (derr == ESP_OK && device_json) {
-        size_t resp_len = strlen(device_json) + 32;
-        char *resp = malloc(resp_len);
-        if (!resp) {
-            free(device_json);
-            httpd_resp_sendstr(req, "{\"status\":\"ok\",\"device\":null}");
-            cJSON_Delete(root);
-            return ESP_OK;
-        }
-        snprintf(resp, resp_len, "{\"status\":\"ok\",\"device\":%s}", device_json);
-        httpd_resp_sendstr(req, resp);
-        free(resp);
-        free(device_json);
-    } else {
-        httpd_resp_sendstr(req, "{\"status\":\"ok\",\"device\":null}");
-        if (device_json) free(device_json);
-    }
-    cJSON_Delete(root);
-    return ESP_OK;
-}
+// --- REMOVED: rs_cloud_login_post_handler is now redundant ---
 
 // --- NEW: GET /api/v1/cloud/device?mac=AA:BB:CC:DD:EE:FF ---
 static esp_err_t rs_cloud_device_get_handler(httpd_req_t *req) {
@@ -799,6 +712,123 @@ static esp_err_t rs_cloud_device_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// --- NEW: GET /api/v1/cloud/meshes ---
+static esp_err_t rs_cloud_meshes_get_handler(httpd_req_t *req) {
+    char *meshes_json = NULL;
+    esp_err_t err = rc_get_meshes(&meshes_json);
+    httpd_resp_set_type(req, "application/json");
+
+    if (err == ESP_OK && meshes_json) {
+        httpd_resp_sendstr(req, meshes_json);
+        free(meshes_json);
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_INVALID_STATE) { // Not logged in
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_sendstr(req, "{\"error\":\"unauthorized\"}");
+        return ESP_OK;
+    }
+
+    httpd_resp_set_status(req, "502 Bad Gateway");
+    httpd_resp_sendstr(req, "{\"error\":\"cloud_error_fetching_meshes\"}");
+    return ESP_OK;
+}
+
+// --- NEW: POST /api/v1/cloud/device/bind ---
+static esp_err_t rs_cloud_device_bind_post_handler(httpd_req_t *req) {
+    rest_server_context_t *ctx = (rest_server_context_t*)req->user_ctx;
+    if (!rs_read_body(req, ctx->scratch, sizeof(ctx->scratch))) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
+        return ESP_FAIL;
+    }
+    cJSON *root = cJSON_Parse(ctx->scratch);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_FAIL;
+    }
+    cJSON *j_mesh_id = cJSON_GetObjectItem(root, "meshId");
+    if (!cJSON_IsString(j_mesh_id) || !j_mesh_id->valuestring[0]) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "meshId required");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = rc_bind_device_to_mesh(j_mesh_id->valuestring);
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK) {
+        nvs_set_setup_stage("mesh_selected");
+        httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_INVALID_STATE) { // Not logged in
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_sendstr(req, "{\"error\":\"unauthorized\"}");
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_NOT_FOUND) { // Device not found on cloud
+        httpd_resp_set_status(req, "404 Not Found");
+        httpd_resp_sendstr(req, "{\"error\":\"device_not_found\"}");
+        return ESP_OK;
+    }
+
+    httpd_resp_set_status(req, "502 Bad Gateway");
+    httpd_resp_sendstr(req, "{\"error\":\"cloud_error_binding_device\"}");
+    return ESP_OK;
+}
+
+// --- NEW: POST /api/v1/cloud/device/register ---
+static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req) {
+    rest_server_context_t *ctx = (rest_server_context_t*)req->user_ctx;
+    if (!rs_read_body(req, ctx->scratch, sizeof(ctx->scratch))) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
+        return ESP_FAIL;
+    }
+    cJSON *root = cJSON_Parse(ctx->scratch);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_FAIL;
+    }
+    cJSON *j_name = cJSON_GetObjectItem(root, "name");
+    cJSON *j_role = cJSON_GetObjectItem(root, "role");
+
+    if (!cJSON_IsString(j_name) || !j_name->valuestring[0] || !cJSON_IsString(j_role) || !j_role->valuestring[0]) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "name and role required");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = rc_register_device(j_name->valuestring, j_role->valuestring);
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK) {
+        httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_INVALID_STATE) { // Not logged in
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_sendstr(req, "{\"error\":\"unauthorized\"}");
+        return ESP_OK;
+    }
+
+    httpd_resp_set_status(req, "502 Bad Gateway");
+    httpd_resp_sendstr(req, "{\"error\":\"cloud_error_registering_device\"}");
+    return ESP_OK;
+}
+
+/* --- REFACTORED: Generic handler for all CORS pre-flight OPTIONS requests --- */
+static esp_err_t rs_cors_options_handler(httpd_req_t *req) {
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "Content-Type, Authorization");
+    httpd_resp_set_status(req, "204 No Content");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+
 esp_err_t start_rest_server(const char *base_path)
 {
     esp_err_t ret = ESP_OK;
@@ -811,6 +841,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.max_uri_handlers = MAX_URI_HANDLERS;
+    config.stack_size = 8192; // Increase stack size for TLS operations
 
     /* --- NEW: socket lifecycle tuning to mitigate ENFILE/EMFILE (accept error 23) --- */
     config.lru_purge_enable = true;      // Reclaim least‑recently used session if max sockets reached
@@ -822,6 +853,17 @@ esp_err_t start_rest_server(const char *base_path)
     ESP_LOGI(TAG, "Starting HTTP Server");
     ESP_GOTO_ON_ERROR(httpd_start(&server, &config), err, TAG, "Failed to start http server");
 
+    /* --- REFACTORED: Register a single, global CORS OPTIONS handler --- */
+    /* This should be registered first to catch all OPTIONS requests */
+    httpd_uri_t cors_handler = {
+        .uri = "/*",
+        .method = HTTP_OPTIONS,
+        .handler = rs_cors_options_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &cors_handler);
+
+
     /* Register API endpoints (specific paths) */
     httpd_uri_t system_info_get_uri = {
         .uri = "/api/v1/system/info",
@@ -831,21 +873,13 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &system_info_get_uri);
 
-    httpd_uri_t temperature_data_get_uri = {
-        .uri = "/api/v1/temp/raw",
-        .method = HTTP_GET,
-        .handler = rs_temperature_data_get_handler,
-        .user_ctx = rest_context
-    };
-    httpd_register_uri_handler(server, &temperature_data_get_uri);
-
-    httpd_uri_t light_brightness_post_uri = {
-        .uri = "/api/v1/light/brightness",
+    httpd_uri_t device_role_post_uri = {
+        .uri = "/api/v1/device/role",
         .method = HTTP_POST,
-        .handler = rs_light_brightness_post_handler,
+        .handler = rs_device_role_post_handler,
         .user_ctx = rest_context
     };
-    httpd_register_uri_handler(server, &light_brightness_post_uri);
+    httpd_register_uri_handler(server, &device_role_post_uri);
 
     httpd_uri_t wifi_provision_post_uri = {
         .uri = "/api/v1/provision/wifi",
@@ -855,14 +889,6 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &wifi_provision_post_uri);
 
-    httpd_uri_t user_creds_post_uri = {
-        .uri = "/api/v1/provision/user",
-        .method = HTTP_POST,
-        .handler = rs_user_creds_post_handler,
-        .user_ctx = rest_context
-    };
-    httpd_register_uri_handler(server, &user_creds_post_uri);
-
     httpd_uri_t wifi_retry_post_uri = {
         .uri = "/api/v1/provision/retry",
         .method = HTTP_POST,
@@ -871,13 +897,13 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &wifi_retry_post_uri);
 
-    httpd_uri_t device_role_post_uri = {
-        .uri = "/api/v1/device/role",
+    httpd_uri_t user_creds_post_uri = {
+        .uri = "/api/v1/provision/user",
         .method = HTTP_POST,
-        .handler = rs_device_role_post_handler,
+        .handler = rs_user_creds_post_handler,
         .user_ctx = rest_context
     };
-    httpd_register_uri_handler(server, &device_role_post_uri);
+    httpd_register_uri_handler(server, &user_creds_post_uri);
 
     httpd_uri_t device_debug_post_uri = {
         .uri = "/api/v1/device/debug",
@@ -912,14 +938,6 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_register_uri_handler(server, &wifi_status_get_uri);
 
     // --- NEW registrations for cloud integration ---
-    httpd_uri_t cloud_login_post_uri = {
-        .uri = "/api/v1/cloud/login",
-        .method = HTTP_POST,
-        .handler = rs_cloud_login_post_handler,
-        .user_ctx = rest_context
-    };
-    httpd_register_uri_handler(server, &cloud_login_post_uri);
-
     httpd_uri_t cloud_device_get_uri = {
         .uri = "/api/v1/cloud/device",
         .method = HTTP_GET,
@@ -928,10 +946,39 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &cloud_device_get_uri);
 
+    // --- NEW: Mesh selection endpoints ---
+    httpd_uri_t cloud_meshes_get_uri = {
+        .uri = "/api/v1/cloud/meshes",
+        .method = HTTP_GET,
+        .handler = rs_cloud_meshes_get_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &cloud_meshes_get_uri);
+
+    httpd_uri_t cloud_device_bind_post_uri = {
+        .uri = "/api/v1/cloud/device/bind",
+        .method = HTTP_POST,
+        .handler = rs_cloud_device_bind_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &cloud_device_bind_post_uri);
+
+    httpd_uri_t cloud_device_register_post_uri = {
+        .uri = "/api/v1/cloud/device/register",
+        .method = HTTP_POST,
+        .handler = rs_cloud_device_register_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &cloud_device_register_post_uri);
+
+
+    /* REMOVED all individual OPTIONS handler registrations */
+
+
     /* Register captive portal probe handlers (specific paths) */
     rs_register_captive_handlers(server, rest_context);
 
-    #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
+#if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
     /* Register file server for static assets LAST, so it acts as a fallback for non-API/probe routes */
     httpd_uri_t common_get_uri = {
         .uri = "/*",
@@ -940,7 +987,7 @@ esp_err_t start_rest_server(const char *base_path)
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &common_get_uri);
-    #else
+#else
     /* If no web files, register a catch-all captive redirect as the last resort */
     httpd_uri_t wildcard = {
         .uri = "/*",
@@ -949,7 +996,7 @@ esp_err_t start_rest_server(const char *base_path)
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &wildcard);
-    #endif
+#endif
 
     return ESP_OK;
 err:

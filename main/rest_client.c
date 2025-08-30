@@ -26,6 +26,9 @@ extern const char *winkels_root_ca_pem;
 #define CLOUD_LOGIN_URL         CLOUD_BASE_URL "/auth/login/"
 #define CLOUD_DEVICE_MAC_URL    CLOUD_BASE_URL "/devices/mac/"   /* append AA:BB:CC:DD:EE:FF */
 #define CLOUD_READINGS_URL      CLOUD_BASE_URL "/readings/add/"   /* POST */
+#define CLOUD_MESHES_URL        CLOUD_BASE_URL "/meshes"         /* GET */
+#define CLOUD_DEVICE_REGISTER_URL CLOUD_BASE_URL "/devices"      /* POST */
+#define CLOUD_DEVICE_BIND_URL   CLOUD_BASE_URL "/devices/"        /* append {id} */
 
 #define NVS_NS_AUTH             "auth"
 #define NVS_KEY_TOKEN           "token"
@@ -344,6 +347,223 @@ retry_once:
     if (status == 401) return ESP_ERR_INVALID_STATE;
     return ESP_FAIL;
 }
+
+/* --- NEW: Fetch all meshes for the authenticated user --- */
+esp_err_t rc_get_meshes(char **out_json) {
+    if (!out_json) return ESP_ERR_INVALID_ARG;
+    *out_json = NULL;
+
+    char token[512];
+    if (!rc_get_token(token, sizeof(token))) {
+        ESP_LOGW(RC_TAG, "meshes fetch: no token (call rc_login first)");
+        return ESP_ERR_INVALID_STATE;
+    }
+retry_once:
+    rc_resp_accum_t acc = { .buf = malloc(8192), .cap = 8192, .len = 0 }; // Larger buffer for meshes list
+    if (!acc.buf) return ESP_ERR_NO_MEM;
+
+    esp_http_client_config_t cfg = {
+        .url = CLOUD_MESHES_URL,
+        .method = HTTP_METHOD_GET,
+        .cert_pem = winkels_root_ca_pem,
+        .timeout_ms = 10000,
+        .event_handler = rc_http_event_handler,
+        .user_data = &acc,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&cfg);
+    if (!client) {
+        free(acc.buf);
+        return ESP_FAIL;
+    }
+
+    char auth[600];
+    snprintf(auth, sizeof(auth), "Bearer %s", token);
+    esp_http_client_set_header(client, "Authorization", auth);
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status = esp_http_client_get_status_code(client);
+    if (acc.len < acc.cap) acc.buf[acc.len] = 0; else acc.buf[acc.cap - 1] = 0;
+    esp_http_client_cleanup(client);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(RC_TAG, "meshes fetch HTTP error: %s", esp_err_to_name(err));
+        free(acc.buf);
+        return err;
+    }
+    if (status == 200) {
+        *out_json = acc.buf;
+        ESP_LOGI(RC_TAG, "meshes fetch success (%d bytes)", (int)acc.len);
+        return ESP_OK;
+    }
+    if (status == 401) {
+        ESP_LOGW(RC_TAG, "meshes fetch 401 -> re-auth & retry");
+        free(acc.buf);
+        if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
+            goto retry_once;
+        }
+        return ESP_ERR_INVALID_STATE;
+    }
+    ESP_LOGW(RC_TAG, "meshes fetch status=%d body=%s", status, acc.buf ? acc.buf : "");
+    free(acc.buf);
+    return ESP_FAIL;
+}
+
+/* --- NEW: Bind the current device to a specific mesh --- */
+esp_err_t rc_bind_device_to_mesh(const char *mesh_id) {
+    if (!mesh_id || !mesh_id[0]) return ESP_ERR_INVALID_ARG;
+
+    char *device_json = NULL;
+    char device_id[40] = {0};
+
+    // 1. Get the full device object to find its ID
+    esp_err_t err = rc_get_device_by_mac(NULL, &device_json);
+    if (err != ESP_OK) {
+        ESP_LOGE(RC_TAG, "bind_device: could not get own device details first. err=%s", esp_err_to_name(err));
+        return err;
+    }
+    if (!device_json) return ESP_FAIL;
+
+    cJSON *root = cJSON_Parse(device_json);
+    if (root) {
+        cJSON *j_id = cJSON_GetObjectItem(root, "id");
+        if (cJSON_IsString(j_id)) {
+            strlcpy(device_id, j_id->valuestring, sizeof(device_id));
+        }
+        cJSON_Delete(root);
+    }
+    free(device_json);
+
+    if (!device_id[0]) {
+        ESP_LOGE(RC_TAG, "bind_device: could not parse device ID from cloud response.");
+        return ESP_FAIL;
+    }
+
+    // 2. Perform the PATCH request to update the meshId
+    char token[512];
+    if (!rc_get_token(token, sizeof(token))) return ESP_ERR_INVALID_STATE;
+
+retry_once:
+    char url[256];
+    snprintf(url, sizeof(url), "%s%s", CLOUD_DEVICE_BIND_URL, device_id);
+
+    char body[128];
+    snprintf(body, sizeof(body), "{\"meshId\":\"%s\"}", mesh_id);
+
+    esp_http_client_config_t cfg = {
+        .url = url,
+        .method = HTTP_METHOD_PATCH,
+        .cert_pem = winkels_root_ca_pem,
+        .timeout_ms = 10000,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&cfg);
+    if (!client) return ESP_FAIL;
+
+    char auth[600];
+    snprintf(auth, sizeof(auth), "Bearer %s", token);
+    esp_http_client_set_header(client, "Authorization", auth);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, body, strlen(body));
+
+    err = esp_http_client_perform(client);
+    int status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(RC_TAG, "bind_device: HTTP PATCH error: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    if (status >= 200 && status < 300) {
+        ESP_LOGI(RC_TAG, "bind_device: success. Device %s bound to mesh %s", device_id, mesh_id);
+        return ESP_OK;
+    }
+
+    if (status == 401) {
+        ESP_LOGW(RC_TAG, "bind_device: 401 -> re-auth & retry");
+        if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
+            goto retry_once;
+        }
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    ESP_LOGE(RC_TAG, "bind_device: failed with HTTP status %d", status);
+    if (status == 404) return ESP_ERR_NOT_FOUND;
+    return ESP_FAIL;
+}
+
+/* --- NEW: Register the current device with the cloud --- */
+esp_err_t rc_register_device(const char *name, const char *role) {
+    if (!name || !role) return ESP_ERR_INVALID_ARG;
+
+    char token[512];
+    if (!rc_get_token(token, sizeof(token))) return ESP_ERR_INVALID_STATE;
+
+retry_once:
+    char mac_buf[18];
+    if (!rc_format_own_mac(mac_buf, sizeof(mac_buf))) return ESP_FAIL;
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "macAddress", mac_buf);
+    cJSON_AddStringToObject(root, "name", name);
+    cJSON_AddStringToObject(root, "role", role);
+    // Add other fields with sensible defaults
+    cJSON_AddStringToObject(root, "description", "Newly registered device");
+    cJSON_AddNumberToObject(root, "x", 0);
+    cJSON_AddNumberToObject(root, "y", 0);
+    cJSON_AddStringToObject(root, "status", "ACTIVE");
+    cJSON_AddStringToObject(root, "deviceColor", "#FFFFFF");
+    cJSON_AddNumberToObject(root, "readingsPerBatch", 10);
+    cJSON_AddNumberToObject(root, "wakeUpInterval", 3600);
+
+    char *body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!body) return ESP_ERR_NO_MEM;
+
+    esp_http_client_config_t cfg = {
+        .url = CLOUD_DEVICE_REGISTER_URL,
+        .method = HTTP_METHOD_POST,
+        .cert_pem = winkels_root_ca_pem,
+        .timeout_ms = 10000,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&cfg);
+    if (!client) {
+        free(body);
+        return ESP_FAIL;
+    }
+
+    char auth[600];
+    snprintf(auth, sizeof(auth), "Bearer %s", token);
+    esp_http_client_set_header(client, "Authorization", auth);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, body, strlen(body));
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+    free(body);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(RC_TAG, "register_device: HTTP POST error: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    if (status == 201) {
+        ESP_LOGI(RC_TAG, "register_device: success");
+        return ESP_OK;
+    }
+
+    if (status == 401) {
+        ESP_LOGW(RC_TAG, "register_device: 401 -> re-auth & retry");
+        if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
+            goto retry_once;
+        }
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    ESP_LOGE(RC_TAG, "register_device: failed with HTTP status %d", status);
+    return ESP_FAIL;
+}
+
 
 /* OPTIONAL: convenience to extract selected config fields (not required yet) */
 esp_err_t rc_extract_device_config(const char *device_json,
