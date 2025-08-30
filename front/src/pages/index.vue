@@ -266,22 +266,42 @@ const setupDone = ref(false);
 const connected = computed(() => !!status.value?.connected);
 const step = computed(() => {
   if (!role.value) return 0;
-  if (connected.value) return 3;
-  if (connecting.value) return 2;
-  if (ssid.value) return 1;
-  return 1;
+  // After role selection, if we are not connected to Wi-Fi yet, we are at the Wi-Fi steps.
+  if (!connected.value) {
+    if (connecting.value) return 2; // Connecting to Wi-Fi
+    return 1; // Selecting network / entering password
+  }
+  // Once connected to Wi-Fi, the steps depend on cloud status
+  if (!loggedIn.value) return 3; // Login to cloud
+  if (!device.value) return 4; // Register device
+  if (!device.value.meshId || changingMesh.value) return 5; // Select mesh
+  return 6; // Complete
 });
-const progressValue = computed(() => [0, 0.34, 0.67, 1][step.value] || 0);
+
+const progressValue = computed(() => {
+  // Map step to a progress value from 0 to 1
+  const stepProgress = {
+    0: 0,       // Role
+    1: 1/6,     // Wi-Fi Select
+    2: 2/6,     // Wi-Fi Connecting
+    3: 3/6,     // Login
+    4: 4/6,     // Register
+    5: 5/6,     // Bind Mesh
+    6: 1,       // Done
+  };
+  return stepProgress[step.value] || 0;
+});
 const statusText = computed(() => {
   if (!role.value) return t("status_chooseRole");
+  if (!connected.value) {
+    if (connecting.value) return t("status_connecting");
+    if (ssid.value) return t("status_enterPassword");
+    return t("status_selectNetwork");
+  }
   if (!loggedIn.value) return t("status_login");
   if (!device.value) return t("status_registerDevice");
   if (!device.value.meshId || changingMesh.value) return t("status_selectMesh");
-  if (device.value.meshId) return t("status_complete");
-  if (connected.value) return t("status_login");
-  if (connecting.value) return t("status_connecting");
-  if (ssid.value) return t("status_enterPassword");
-  return t("status_selectNetwork");
+  return t("status_complete");
 });
 const ssidOptions = computed(() =>
   ssidList.value.map((ap) => ({
@@ -365,16 +385,22 @@ async function doLogin() {
   error.value = "";
   try {
     const loginResponse = await api.saveUserCreds(userEmail.value, userPassword.value);
-    console.log("Login Response:", loginResponse); // <-- Added log
+    console.log("Login Response:", loginResponse); // <-- Existing log
+    console.log("Device object from login:", loginResponse.device); // <-- ADDED
     loggedIn.value = true;
-    $q.notify({
-      type: "positive",
-      message: t("loginSuccess")
-    });
-    // --- NEW: Process device info from the login response ---
+    // q notify ta crashando por enquanto, debugar o que tem de errado com esses toasts
+    // $q.notify({
+    //   type: "positive",
+    //   message: t("loginSuccess")
+    // });
+    // --- Process device info from the login response ---
     device.value = loginResponse.device;
-    if (device.value) {
+    console.log("Device state after login:", device.value); // <-- ADDED
+    if (device.value?.id) {
+      console.log("Device has ID, fetching meshes..."); // <-- ADDED
       await fetchMeshes(); // Fetch meshes to show name or for selection
+    } else {
+      console.log("Device has no ID, proceeding to registration step."); // <-- ADDED
     }
   } catch (e) {
     if (e.response?.status === 401) {
@@ -389,14 +415,20 @@ async function doLogin() {
 
 // --- NEW: Methods for device and mesh flow ---
 async function checkDevice() {
-  console.log("Check DEVICE CALLED")
+  console.log("Checking device status from server..."); // <-- UPDATED
   error.value = "";
   try {
+    // This call is redundant if login response already provides the device.
+    // We keep it for flows where login is not the entry point (e.g. page refresh).
     const dev = await api.getDevice();
-    console.log("Device Status:", dev); // <-- Added log
+    console.log("getDevice API response:", dev); // <-- UPDATED
     device.value = dev;
+    console.log("Device state after checkDevice:", device.value); // <-- ADDED
     // Always fetch meshes to display the name if already bound
-    await fetchMeshes();
+    if (device.value?.id) {
+      console.log("Device has ID, fetching meshes..."); // <-- ADDED
+      await fetchMeshes();
+    }
   } catch (e) {
     if (e.response?.status === 404) {
       // Device not found, needs registration
@@ -510,10 +542,14 @@ function stopPolling() {
 async function fetchInitialStatus() {
   try {
     const setupStatus = await api.setupStatus();
+    console.log("Initial setup status:", setupStatus); // <-- ADDED
     role.value = setupStatus.role;
-    debugEnabled.value = setupStatus.debug || false;
+    debugEnabled.value = setupStatus.debug;
+
     if (setupStatus.stage === 'user_saved' || setupStatus.stage === 'mesh_selected') {
+        console.log("Stage is 'user_saved' or 'mesh_selected', setting loggedIn and checking device."); // <-- ADDED
         loggedIn.value = true;
+        // If logged in, check device status immediately
         await checkDevice();
     }
     if (setupStatus.connected) {

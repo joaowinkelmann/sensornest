@@ -1,5 +1,5 @@
 /*
- * Exposes routes for the front-end to use internally
+ * Exposes REST routes for the front-end to use internally
 */
 #include <string.h>
 #include <fcntl.h>

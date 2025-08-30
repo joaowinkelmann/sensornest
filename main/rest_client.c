@@ -28,7 +28,7 @@ extern const char *winkels_root_ca_pem;
 #define CLOUD_READINGS_URL      CLOUD_BASE_URL "/readings/add/"   /* POST */
 #define CLOUD_MESHES_URL        CLOUD_BASE_URL "/meshes"         /* GET */
 #define CLOUD_DEVICE_REGISTER_URL CLOUD_BASE_URL "/devices"      /* POST */
-#define CLOUD_DEVICE_BIND_URL   CLOUD_BASE_URL "/devices/"        /* append {id} */
+#define CLOUD_DEVICE_UPDATE_URL   CLOUD_BASE_URL "/devices/update/"        /* append {id} */
 
 #define NVS_NS_AUTH             "auth"
 #define NVS_KEY_TOKEN           "token"
@@ -438,20 +438,20 @@ esp_err_t rc_bind_device_to_mesh(const char *mesh_id) {
         return ESP_FAIL;
     }
 
-    // 2. Perform the PATCH request to update the meshId
+    // 2. Perform the POST request to update the meshId
     char token[512];
     if (!rc_get_token(token, sizeof(token))) return ESP_ERR_INVALID_STATE;
 
 retry_once:
     char url[256];
-    snprintf(url, sizeof(url), "%s%s", CLOUD_DEVICE_BIND_URL, device_id);
+    snprintf(url, sizeof(url), "%s%s", CLOUD_DEVICE_UPDATE_URL, device_id);
 
     char body[128];
     snprintf(body, sizeof(body), "{\"meshId\":\"%s\"}", mesh_id);
 
     esp_http_client_config_t cfg = {
         .url = url,
-        .method = HTTP_METHOD_PATCH,
+        .method = HTTP_METHOD_POST,
         .cert_pem = winkels_root_ca_pem,
         .timeout_ms = 10000,
     };
@@ -469,7 +469,7 @@ retry_once:
     esp_http_client_cleanup(client);
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "bind_device: HTTP PATCH error: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "bind_device: HTTP POST error: %s", esp_err_to_name(err));
         return err;
     }
 
