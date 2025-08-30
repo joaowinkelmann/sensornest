@@ -20,6 +20,8 @@
   "status_connecting": "Conectando...",
   "status_enterPassword": "Rede selecionada. Digite a senha para continuar.",
   "status_selectNetwork": "Selecione uma rede para começar.",
+  "status_complete": "Configuração completa! O dispositivo está conectado.",
+  "status_selectMesh": "Selecione uma mesh.",
   "failedToSaveRole": "Falha ao salvar a função",
   "failedToScan": "Falha ao buscar redes",
   "failedToConnect": "Falha ao conectar",
@@ -29,5 +31,14 @@
   "cloudLogin": "Login",
   "email": "E-mail",
   "password": "Senha",
-  "status_login": "Conexão estabelecida. Entre com sua conta."
+  "status_login": "Conexão estabelecida. Entre com sua conta.",
+  "deviceBoundTitle": "Dispositivo Vinculado",
+  "currentMesh": "Mesh Atual",
+  "completeSetupBtn": "Finalizar Configuração",
+  "changeMeshBtn": "Alterar Mesh",
+  "error_invalid_credentials": "Credenciais inválidas. Por favor, tente novamente.",
+  "loginSuccess": "Login bem-sucedido!",
+  "bindDeviceBtn": "Vincular Dispositivo à Mesh",
+  "selectMeshTitle": "Selecionar Mesh",
+  "selectMesh": "Selecionar Mesh"
 }

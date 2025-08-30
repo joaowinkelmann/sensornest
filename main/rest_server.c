@@ -20,6 +20,10 @@
 #include "certs.h"
 #include "rest_client.h"
 
+static EventGroupHandle_t s_wifi_event_group;
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT      BIT1
+
 static const char *TAG = "REST_SERVER";
 
 #define FILE_PATH_MAX (ESP_VFS_PATH_MAX + 128)
@@ -57,6 +61,7 @@ static esp_err_t rs_cloud_device_bind_post_handler(httpd_req_t *req);
 static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req);
 static esp_err_t rs_cors_options_handler(httpd_req_t *req);
 static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx);
+static void wifi_test_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
 #define CHECK_FILE_EXTENSION(filename, ext) (strcasecmp(&filename[strlen(filename) - strlen(ext)], ext) == 0)
 
@@ -176,6 +181,70 @@ static esp_err_t rs_system_info_get_handler(httpd_req_t *req)
     free((void *)sys_info);
     cJSON_Delete(root);
     return ESP_OK;
+}
+
+static void wifi_test_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+        ESP_LOGI(TAG, "Wi-Fi test connection failed.");
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        ESP_LOGI(TAG, "Wi-Fi test connection successful.");
+    }
+}
+
+// --- NEW: Helper to test Wi-Fi credentials and save on success ---
+static esp_err_t test_and_save_wifi_credentials(const char *ssid, const char *pass) {
+    s_wifi_event_group = xEventGroupCreate();
+
+    esp_event_handler_instance_t instance_any_id;
+    esp_event_handler_instance_t instance_got_ip;
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                        ESP_EVENT_ANY_ID,
+                                                        &wifi_test_event_handler,
+                                                        NULL,
+                                                        &instance_any_id));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+                                                        IP_EVENT_STA_GOT_IP,
+                                                        &wifi_test_event_handler,
+                                                        NULL,
+                                                        &instance_got_ip));
+
+    wifi_config_t wifi_config = {0};
+    strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
+    strlcpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_connect());
+
+    ESP_LOGI(TAG, "Testing Wi-Fi connection to SSID: %s", ssid);
+
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+            pdFALSE,
+            pdFALSE,
+            pdMS_TO_TICKS(15000)); // 15-second timeout
+
+    // Unregister handlers and clean up
+    esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip);
+    esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id);
+    vEventGroupDelete(s_wifi_event_group);
+    esp_wifi_disconnect(); // Stop the connection attempt
+
+    if (bits & WIFI_CONNECTED_BIT) {
+        // Connection successful, save credentials
+        nvs_handle_t nvs;
+        esp_err_t err = nvs_open("wifi", NVS_READWRITE, &nvs);
+        if (err != ESP_OK) return err;
+        err = nvs_set_str(nvs, "ssid", ssid);
+        if (err == ESP_OK) err = nvs_set_str(nvs, "pass", pass);
+        if (err == ESP_OK) err = nvs_commit(nvs);
+        nvs_close(nvs);
+        return err;
+    } else {
+        return ESP_ERR_INVALID_STATE;
+    }
 }
 
 /* --- NEW: Helper to set setup stage in NVS --- */
@@ -462,39 +531,38 @@ static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req)
     }
     const cJSON *j_ssid = cJSON_GetObjectItem(root, "ssid");
     const cJSON *j_pass = cJSON_GetObjectItem(root, "password");
+
+    const char *ssid_log = (j_ssid && cJSON_IsString(j_ssid)) ? j_ssid->valuestring : "(null)";
+    const char *pass_log = (j_pass && cJSON_IsString(j_pass) && j_pass->valuestring[0] != 0) ? j_pass->valuestring : "(empty)";
+    ESP_LOGI(TAG, "Received Wi-Fi provision data: SSID='%s' PASS='%s'", ssid_log, pass_log);
+
     if (!cJSON_IsString(j_ssid) || !cJSON_IsString(j_pass)) {
         ESP_LOGE(TAG, "Invalid Wi-Fi provision data: %s", buf);
         cJSON_Delete(root);
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "ssid/password required");
         return ESP_FAIL;
     }
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open("wifi", NVS_READWRITE, &nvs);
-    if (err != ESP_OK) {
-        cJSON_Delete(root);
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs open failed");
+
+    // --- REFACTORED: Test connection before saving ---
+    esp_err_t err = test_and_save_wifi_credentials(j_ssid->valuestring, j_pass->valuestring);
+    cJSON_Delete(root);
+
+    if (err == ESP_OK) {
+        nvs_set_setup_stage("wifi_saved");
+        ESP_LOGI(TAG, "Wi-Fi credentials tested and saved successfully.");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"status\":\"saved\"}");
+        return ESP_OK;
+    } else if (err == ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG, "Wi-Fi connection test failed. Credentials not saved.");
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_sendstr(req, "{\"error\":\"invalid_credentials\"}");
+        return ESP_OK; // Return OK to send custom 401 response
+    } else {
+        ESP_LOGE(TAG, "Failed to save credentials to NVS: %s", esp_err_to_name(err));
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs_write_failed");
         return ESP_FAIL;
     }
-    err = nvs_set_str(nvs, "ssid", j_ssid->valuestring);
-    if (err == ESP_OK) err = nvs_set_str(nvs, "pass", j_pass->valuestring);
-    if (err == ESP_OK) err = nvs_commit(nvs);
-    nvs_close(nvs);
-
-    if (err != ESP_OK) {
-        cJSON_Delete(root);
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs write failed");
-        return ESP_FAIL;
-    }
-    // --- NEW: advance setup stage ---
-    nvs_set_setup_stage("wifi_saved");
-
-    ESP_LOGI(TAG, "Wi-Fi credentials saved: SSID=%s", j_ssid->valuestring);
-
-    cJSON_Delete(root); // Moved to the end
-
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"saved\"}");
-    return ESP_OK;
 }
 
 /* Provisioning handler - retry connection using saved credentials */
@@ -592,28 +660,30 @@ static esp_err_t rs_wifi_scan_get_handler(httpd_req_t *req) {
 
 /* --- NEW: Wi-Fi status (GET /api/v1/wifi/status) --- */
 static esp_err_t rs_wifi_status_get_handler(httpd_req_t *req) {
-    bool connected = false;
-    wifi_ap_record_t ap_info;
-    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-        connected = true;
-    }
-
     cJSON *root = cJSON_CreateObject();
-    cJSON_AddBoolToObject(root, "connected", connected);
-    if (connected) {
-        cJSON_AddStringToObject(root, "ssid", (const char *)ap_info.ssid);
-        cJSON_AddNumberToObject(root, "rssi", ap_info.rssi);
+    bool connected = false;
 
-        esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-        if (sta) {
-            esp_netif_ip_info_t ip;
-            if (esp_netif_get_ip_info(sta, &ip) == ESP_OK) {
-                char ip_str[16];
-                snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip.ip));
-                cJSON_AddStringToObject(root, "ip", ip_str);
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (sta_netif) {
+        esp_netif_ip_info_t ip_info;
+        if (esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
+            // We have a valid IP, so we are fully connected.
+            connected = true;
+
+            // Now get AP info, which should be reliable.
+            wifi_ap_record_t ap_info;
+            if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+                cJSON_AddStringToObject(root, "ssid", (const char *)ap_info.ssid);
+                cJSON_AddNumberToObject(root, "rssi", ap_info.rssi);
             }
+
+            char ip_str[16];
+            snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
+            cJSON_AddStringToObject(root, "ip", ip_str);
         }
     }
+
+    cJSON_AddBoolToObject(root, "connected", connected);
 
     httpd_resp_set_type(req, "application/json");
     const char *json = cJSON_PrintUnformatted(root);
@@ -734,7 +804,7 @@ static esp_err_t rs_cloud_meshes_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// --- NEW: POST /api/v1/cloud/device/bind ---
+// --- POST /api/v1/cloud/device/bind ---
 static esp_err_t rs_cloud_device_bind_post_handler(httpd_req_t *req) {
     rest_server_context_t *ctx = (rest_server_context_t*)req->user_ctx;
     if (!rs_read_body(req, ctx->scratch, sizeof(ctx->scratch))) {

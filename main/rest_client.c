@@ -23,12 +23,12 @@ static const char *RC_TAG = "REST_client";
 extern const char *winkels_root_ca_pem;
 
 #define CLOUD_BASE_URL          "https://winkels.com.br/tempmesh/api"
-#define CLOUD_LOGIN_URL         CLOUD_BASE_URL "/auth/login/"
-#define CLOUD_DEVICE_MAC_URL    CLOUD_BASE_URL "/devices/mac/"   /* append AA:BB:CC:DD:EE:FF */
-#define CLOUD_READINGS_URL      CLOUD_BASE_URL "/readings/add/"   /* POST */
-#define CLOUD_MESHES_URL        CLOUD_BASE_URL "/meshes"         /* GET */
-#define CLOUD_DEVICE_REGISTER_URL CLOUD_BASE_URL "/devices"      /* POST */
-#define CLOUD_DEVICE_UPDATE_URL   CLOUD_BASE_URL "/devices/update/"        /* append {id} */
+#define CLOUD_LOGIN_URL           CLOUD_BASE_URL "/auth/login/"
+#define CLOUD_DEVICE_MAC_URL      CLOUD_BASE_URL "/devices/mac/"   /* append AA:BB:CC:DD:EE:FF */
+#define CLOUD_READINGS_URL        CLOUD_BASE_URL "/readings/add/"  /* POST */
+#define CLOUD_MESHES_URL          CLOUD_BASE_URL "/meshes"         /* GET */
+#define CLOUD_DEVICE_REGISTER_URL CLOUD_BASE_URL "/devices"        /* POST */
+#define CLOUD_DEVICE_UPDATE_URL   CLOUD_BASE_URL "/devices/"       /* PATCH {id} */
 
 #define NVS_NS_AUTH             "auth"
 #define NVS_KEY_TOKEN           "token"
@@ -451,7 +451,7 @@ retry_once:
 
     esp_http_client_config_t cfg = {
         .url = url,
-        .method = HTTP_METHOD_POST,
+        .method = HTTP_METHOD_PATCH,
         .cert_pem = winkels_root_ca_pem,
         .timeout_ms = 10000,
     };
@@ -469,7 +469,7 @@ retry_once:
     esp_http_client_cleanup(client);
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "bind_device: HTTP POST error: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "bind_device: HTTP PATCH error: %s", esp_err_to_name(err));
         return err;
     }
 

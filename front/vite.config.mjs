@@ -45,6 +45,10 @@ export default defineConfig({
     quasar({ sassVariables: "src/quasar-variables.sass" }),
   ],
 
+  build: {
+    cssCodeSplit: false,
+  },
+
   optimizeDeps: {
     exclude: [
       "vue-router",

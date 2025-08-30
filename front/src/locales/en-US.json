@@ -20,6 +20,8 @@
   "status_connecting": "Connecting...",
   "status_enterPassword": "Network selected. Enter password to continue.",
   "status_selectNetwork": "Select a network to begin.",
+  "status_complete": "Configuration complete! The device is connected.",
+  "status_selectMesh": "Select a mesh.",
   "failedToSaveRole": "Failed to save role",
   "failedToScan": "Failed to scan networks",
   "failedToConnect": "Failed to connect",
@@ -29,5 +31,14 @@
   "cloudLogin": "Login",
   "email": "E-mail",
   "password": "Password",
-  "status_login": "Connection established. Log in with your account."
+  "status_login": "Connection established. Log in with your account.",
+  "deviceBoundTitle": "Device Bound",
+  "currentMesh": "Current Mesh",
+  "completeSetupBtn": "Complete Setup",
+  "changeMeshBtn": "Change Mesh",
+  "error_invalid_credentials": "Invalid credentials. Please try again.",
+  "loginSuccess": "Login successful!",
+  "bindDeviceBtn": "Bind Device to Mesh",
+  "selectMeshTitle": "Select Mesh",
+  "selectMesh": "Select Mesh"
 }

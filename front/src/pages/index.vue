@@ -10,13 +10,6 @@
         <q-linear-progress :value="progressValue" color="primary" class="q-mb-sm" />
 
         <q-card-section class="q-pt-none">
-          <q-banner v-if="error" class="q-mb-md" dense rounded inline-actions type="negative">
-            {{ error }}
-            <template #action>
-              <q-btn flat color="white" :label="$t('dismiss')" @click="error = ''" />
-            </template>
-          </q-banner>
-
           <!-- Role selection -->
           <div v-if="!role" class="row q-col-gutter-md q-mb-md">
             <div class="col-12 text-subtitle1">{{ $t("selectRole") }}</div>
@@ -322,6 +315,25 @@ function cardClass(r) {
   return role.value === r ? "bg-grey-2" : "";
 }
 
+function showError(e, fallbackKey) {
+  let message = "";
+  try {
+    // API errors are expected to be JSON strings like '{"error":"key"}'
+    const errorBody = JSON.parse(e.message);
+    if (errorBody.error) {
+      message = t("error_" + errorBody.error) || t(fallbackKey) || errorBody.error;
+    }
+  } catch (jsonError) {
+    // Fallback for non-JSON errors or if the key doesn't exist
+    console.warn("Error parsing error message:", jsonError);
+    message = t(fallbackKey) || e.message;
+  }
+  $q.notify({
+    type: "negative",
+    message: message,
+  });
+}
+
 async function pickRole(r) {
   try {
     await api.setRole(r);
@@ -329,7 +341,7 @@ async function pickRole(r) {
     // After choosing role, start scanning Wi-Fi
     scan();
   } catch (e) {
-    error.value = e.message || t("failedToSaveRole");
+    showError(e, "failedToSaveRole");
   }
 }
 
@@ -347,7 +359,7 @@ async function toggleDebug(enabled) {
       }, 1000);
     }
   } catch (e) {
-    error.value = e.message || t("failedToToggleDebug");
+    showError(e, "failedToToggleDebug");
     // Revert the toggle on error
     debugEnabled.value = !enabled;
   }
@@ -361,7 +373,6 @@ function filterSSIDs(val, update) {
 
 async function scan() {
   loadingScan.value = true;
-  error.value = "";
   try {
     const list = await api.scan();
     const unique = Object.values(
@@ -374,7 +385,7 @@ async function scan() {
     );
     ssidList.value = unique.sort((a, b) => b.rssi - a.rssi);
   } catch (e) {
-    error.value = e.message || t("failedToScan");
+    showError(e, "failedToScan");
   } finally {
     loadingScan.value = false;
   }
@@ -382,18 +393,15 @@ async function scan() {
 
 async function doLogin() {
   loginLoading.value = true;
-  error.value = "";
   try {
     const loginResponse = await api.saveUserCreds(userEmail.value, userPassword.value);
     console.log("Login Response:", loginResponse); // <-- Existing log
     console.log("Device object from login:", loginResponse.device); // <-- ADDED
     loggedIn.value = true;
-    // q notify ta crashando por enquanto, debugar o que tem de errado com esses toasts
-    // $q.notify({
-    //   type: "positive",
-    //   message: t("loginSuccess")
-    // });
-    // --- Process device info from the login response ---
+    $q.notify({
+      type: "positive",
+      message: t("loginSuccess")
+    });
     device.value = loginResponse.device;
     console.log("Device state after login:", device.value); // <-- ADDED
     if (device.value?.id) {
@@ -403,11 +411,7 @@ async function doLogin() {
       console.log("Device has no ID, proceeding to registration step."); // <-- ADDED
     }
   } catch (e) {
-    if (e.response?.status === 401) {
-      error.value = t("invalidCredentials");
-    } else {
-      error.value = e.message || t("loginFailed");
-    }
+    showError(e, "loginFailed");
   } finally {
     loginLoading.value = false;
   }
@@ -416,7 +420,6 @@ async function doLogin() {
 // --- NEW: Methods for device and mesh flow ---
 async function checkDevice() {
   console.log("Checking device status from server..."); // <-- UPDATED
-  error.value = "";
   try {
     // This call is redundant if login response already provides the device.
     // We keep it for flows where login is not the entry point (e.g. page refresh).
@@ -430,40 +433,37 @@ async function checkDevice() {
       await fetchMeshes();
     }
   } catch (e) {
-    if (e.response?.status === 404) {
-      // Device not found, needs registration
-      device.value = null;
+    // Don't show error for 404, it's an expected state (device not registered)
+    if (e.message.includes("404")) {
+       device.value = null;
     } else {
-      error.value = e.message || t("failedToCheckDevice");
+      showError(e, "failedToCheckDevice");
     }
   }
 }
 
 async function registerDevice() {
-  error.value = "";
   try {
     const regResponse = await api.registerDevice(newDeviceName.value, role.value);
     console.log("Register Response:", regResponse); // <-- Added log
     $q.notify({ type: "positive", message: t("deviceRegistered") });
     await checkDevice(); // Re-check to proceed to mesh selection
   } catch (e) {
-    error.value = e.message || t("failedToRegisterDevice");
+    showError(e, "failedToRegisterDevice");
   }
 }
 
 async function fetchMeshes() {
-  error.value = "";
   try {
     const meshesResponse = await api.getMeshes();
     console.log("Meshes:", meshesResponse); // <-- Added log
     meshes.value = meshesResponse;
   } catch (e) {
-    error.value = e.message || t("failedToFetchMeshes");
+    showError(e, "failedToFetchMeshes");
   }
 }
 
 async function bindDevice() {
-  error.value = "";
   try {
     const bindResponse = await api.bindDevice(selectedMeshId.value);
     console.log("Bind Response:", bindResponse); // <-- Added log
@@ -471,7 +471,7 @@ async function bindDevice() {
     await checkDevice(); // Re-check to update UI
     changingMesh.value = false;
   } catch (e) {
-    error.value = e.message || t("failedToBindDevice");
+    showError(e, "failedToBindDevice");
   }
 }
 
@@ -490,25 +490,23 @@ function completeSetup() {
 
 async function connect() {
   connecting.value = true;
-  error.value = "";
   try {
     await api.saveCreds({ ssid: ssid.value, password: password.value });
     await api.retryConnect();
     startPolling();
   } catch (e) {
-    error.value = e.message || t("failedToConnect");
+    showError(e, "failedToConnect");
     connecting.value = false;
   }
 }
 
 async function retry() {
   connecting.value = true;
-  error.value = "";
   try {
     await api.retryConnect();
     startPolling();
   } catch (e) {
-    error.value = e.message || t("failedToConnect");
+    showError(e, "failedToConnect");
     connecting.value = false;
   }
 }
@@ -565,7 +563,7 @@ async function fetchInitialStatus() {
       scan();
     }
   } catch (e) {
-    error.value = e.message || "Failed to get initial status";
+    showError(e, "failedToGetInitialStatus");
   }
 }
 

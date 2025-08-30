@@ -20,6 +20,8 @@
   "status_connecting": "Conectando...",
   "status_enterPassword": "Red seleccionada. Introduzca la contraseña para continuar.",
   "status_selectNetwork": "Seleccione una red para comenzar.",
+  "status_complete": "¡Configuración completa! El dispositivo está conectado.",
+  "status_selectMesh": "Seleccione una malla.",
   "failedToSaveRole": "Error al guardar el rol",
   "failedToScan": "Error al escanear redes",
   "failedToConnect": "Error al conectar",
@@ -29,5 +31,14 @@
   "cloudLogin": "Login",
   "email": "E-mail",
   "password": "Seña",
-  "status_login": "Conexión establecida. Inicie sesión con su cuenta."
+  "status_login": "Conexión establecida. Inicie sesión con su cuenta.",
+  "deviceBoundTitle": "Dispositivo Vinculado",
+  "currentMesh": "Malla Actual",
+  "completeSetupBtn": "Finalizar Configuración",
+  "changeMeshBtn": "Cambiar Malla",
+  "error_invalid_credentials": "Credenciales inválidas. Por favor, inténtelo de nuevo.",
+  "loginSuccess": "¡Inicio de sesión exitoso!",
+  "bindDeviceBtn": "Vincular Dispositivo a la Malla",
+  "selectMeshTitle": "Seleccionar Malla",
+  "selectMesh": "Seleccionar Malla"
 }
