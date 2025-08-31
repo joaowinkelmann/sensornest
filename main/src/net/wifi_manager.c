@@ -27,7 +27,6 @@ static void sta_event_handler(void *arg, esp_event_base_t base, int32_t id, void
 esp_err_t wifi_manager_init(void) {
     if (s_initialized) return ESP_OK;
 
-    // These may already have been done in app_main; treat "already" as success.
     esp_err_t err;
 
     err = esp_netif_init();
@@ -42,15 +41,20 @@ esp_err_t wifi_manager_init(void) {
         return err;
     }
 
+    /* NEW: detect pre-created STA netif (e.g. provisioning already did it) */
     if (!s_sta_created) {
-        esp_netif_create_default_wifi_sta();
-        s_sta_created = true;
+        if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) {
+            ESP_LOGI(TAG, "STA netif already exists (provisioning path); reusing.");
+            s_sta_created = true;
+        } else {
+            esp_netif_create_default_wifi_sta();
+            s_sta_created = true;
+        }
     }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     err = esp_wifi_init(&cfg);
     if (err == ESP_ERR_WIFI_INIT_STATE) {
-        // Already inited
         err = ESP_OK;
     }
     if (err != ESP_OK) {
@@ -58,7 +62,6 @@ esp_err_t wifi_manager_init(void) {
         return err;
     }
 
-    // Set mode (ignore if already set)
     esp_wifi_set_mode(WIFI_MODE_STA);
 
     err = esp_wifi_start();

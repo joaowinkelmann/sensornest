@@ -21,6 +21,7 @@
 #include "net/rest_client.h"
 #include "app/app_state.h"
 #include "esp_http_client.h"
+#include "net/espnow_manager.h"
 
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
@@ -66,6 +67,8 @@ static void rs_register_captive_handlers(httpd_handle_t server, rest_server_cont
 static void wifi_test_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req);
 static bool rs_has_station_ip(void);
+static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req);
+static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req);
 
 #define CHECK_FILE_EXTENSION(filename, ext) (strcasecmp(&filename[strlen(filename) - strlen(ext)], ext) == 0)
 
@@ -320,7 +323,12 @@ static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
 
     ESP_LOGI(TAG, "Device role set to: %s", role_buf);
 
-    nvs_set_setup_stage("role_selected");
+    if (strcmp(role, "WORKER")==0) {
+        nvs_set_setup_stage("worker_role_set");  // use helper (was invalid handle)
+        ESP_LOGI(TAG, "Worker role selected; skipping Wi-Fi/cloud provisioning path.");
+    } else {
+        nvs_set_setup_stage("role_set");
+    }
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"ok\",\"role_saved\":true}");
@@ -1141,8 +1149,27 @@ esp_err_t start_rest_server(const char *base_path)
     /* Register captive portal probe handlers (specific paths) */
     rs_register_captive_handlers(server, rest_context);
 
+    // --- NEW: Additional handlers for worker/controller provisioning ---
+    httpd_uri_t controllers_scan_get = {
+        .uri      = "/api/v1/controllers/scan",
+        .method   = HTTP_GET,
+        .handler  = rs_controllers_scan_get_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &controllers_scan_get);
+    ESP_LOGI(TAG, "Registered endpoint: %s", controllers_scan_get.uri);
+
+    httpd_uri_t worker_bind_post = {
+        .uri      = "/api/v1/worker/bind",
+        .method   = HTTP_POST,
+        .handler  = rs_worker_bind_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &worker_bind_post);
+    ESP_LOGI(TAG, "Registered endpoint: %s", worker_bind_post.uri);
+
 #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
-    /* Register file server for static assets LAST, so it acts as a fallback for non-API/probe routes */
+    /* Register file server LAST as a fallback */
     httpd_uri_t common_get_uri = {
         .uri = "/*",
         .method = HTTP_GET,
@@ -1151,7 +1178,6 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &common_get_uri);
 #else
-    /* If no web files, register a catch-all captive redirect as the last resort */
     httpd_uri_t wildcard = {
         .uri = "/*",
         .method = HTTP_GET,
@@ -1235,6 +1261,81 @@ static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"ok\",\"restarting\":true}");
     // Allow response flush
+    vTaskDelay(pdMS_TO_TICKS(150));
+    esp_restart();
+    return ESP_OK;
+}
+
+/* GET /api/v1/controllers/scan */
+static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
+    ESP_LOGI(TAG, "Controller scan request received.");
+
+    // Optional query param ?ms=5000
+    int duration_ms = 5000; // increased default
+    char query[64];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char ms_str[16];
+        if (httpd_query_key_value(query, "ms", ms_str, sizeof(ms_str)) == ESP_OK) {
+            int v = atoi(ms_str);
+            if (v >= 1000 && v <= 15000) duration_ms = v;
+        }
+    }
+
+    if (!espnow_manager_is_initialized()) {
+        ESP_LOGW(TAG, "ESPNOW not initialized yet on worker provisioning; initializing now.");
+        esp_err_t ie = espnow_manager_init(false, NULL);
+        if (ie != ESP_OK) {
+            ESP_LOGE(TAG, "ESPNOW init failed in scan handler: %s", esp_err_to_name(ie));
+        } else {
+            ESP_LOGI(TAG, "ESPNOW init success in scan handler.");
+        }
+    } else {
+        ESP_LOGD(TAG, "ESPNOW already initialized, proceeding with scan.");
+    }
+    char *json = NULL;
+    esp_err_t err = espnow_manager_collect_controllers(duration_ms, &json);
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK && json) {
+        ESP_LOGI(TAG, "Controller scan success (duration=%d) payload_len=%d",
+                 duration_ms, (int)strlen(json));
+        httpd_resp_sendstr(req, json);
+        free(json);
+        return ESP_OK;
+    }
+    ESP_LOGW(TAG, "Controller scan failed (%s) (inited=%d) duration=%d",
+             esp_err_to_name(err), espnow_manager_is_initialized(), duration_ms);
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_sendstr(req, "{\"error\":\"scan_failed\"}");
+    return ESP_OK;
+}
+
+/* POST /api/v1/worker/bind  body: { "name":"Worker1","controllerMac":"AA:BB:.."} */
+static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req) {
+    char *buf = ((rest_server_context_t*)req->user_ctx)->scratch;
+    if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body"); return ESP_FAIL;
+    }
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad json"); return ESP_FAIL; }
+    cJSON *j_name = cJSON_GetObjectItem(root,"name");
+    cJSON *j_mac  = cJSON_GetObjectItem(root,"controllerMac");
+    if (!cJSON_IsString(j_name) || !j_name->valuestring[0] ||
+        !cJSON_IsString(j_mac)  || !j_mac->valuestring[0]) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing fields");
+        return ESP_FAIL;
+    }
+    nvs_handle_t nvs;
+    if (nvs_open("device", NVS_READWRITE, &nvs)==ESP_OK) {
+        nvs_set_str(nvs,"name", j_name->valuestring);
+        nvs_set_str(nvs,"controller_mac", j_mac->valuestring);
+        nvs_set_str(nvs,"setup","complete");
+        nvs_commit(nvs);
+        nvs_close(nvs);
+    }
+    cJSON_Delete(root);
+    httpd_resp_set_type(req,"application/json");
+    httpd_resp_sendstr(req,"{\"status\":\"ok\",\"restarting\":true}");
     vTaskDelay(pdMS_TO_TICKS(150));
     esp_restart();
     return ESP_OK;

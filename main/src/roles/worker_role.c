@@ -1,6 +1,7 @@
 #include "roles/worker_role.h"
 #include "esp_log.h"
 #include "sensor/sensor.h"
+#include "net/espnow_manager.h"
 #include "storage/batch_store.h"
 #include "net/rest_client.h"
 #include "esp_sntp.h"
@@ -9,6 +10,7 @@
 #include "esp_sleep.h"
 #include "roles/role_manager.h"
 #include "net/wifi_manager.h"
+#include "indicator/led_indicator.h"
 
 // Forward declare (temporarily reusing code from tempmesh.c until fully moved)
 extern bool send_batched_data(void);
@@ -64,20 +66,58 @@ static void fetch_remote_config(void) {
 }
 
 esp_err_t worker_role_start(void) {
+    static bool espnow_inited = false;
+    if (!espnow_inited) {
+        if (espnow_manager_init(false, NULL) == ESP_OK) {
+            espnow_inited = true;
+        } else {
+            ESP_LOGW(TAG_WR, "Failed to init ESPNOW (will still attempt legacy Wi-Fi path).");
+        }
+    }
+
+    /* Debug identification flash */
+    if (s_debug) {
+        led_indicator_init();
+        led_indicator_flash_worker_debug();
+    }
+
     // Single cycle (mirrors existing loop) – deep sleep ends task.
     perform_sensor_reading();
+    if (s_debug) {
+        vTaskDelay(pdMS_TO_TICKS(150));
+        led_indicator_off();
+    }
 
     if (batch_store_count() >= device_readingsPerBatch) {
-        ESP_LOGI(TAG_WR, "Batch full (%d/%d). Connecting Wi-Fi.",
+        ESP_LOGI(TAG_WR, "Batch full (%d/%d). Sending via ESPNOW.",
                  batch_store_count(), device_readingsPerBatch);
 
-        if (wifi_manager_connect_saved(15000)) {
-            ensure_time();
-            fetch_remote_config();
-            bool ok = send_batched_data();
-            if (ok) batch_store_clear();
+        if (espnow_inited) {
+            char *json_payload = NULL;
+            if (batch_store_build_json(&json_payload) == ESP_OK && json_payload) {
+                size_t len = strlen(json_payload);
+                esp_err_t se = espnow_manager_send_broadcast(json_payload, len);
+                if (se == ESP_OK) {
+                    ESP_LOGI(TAG_WR, "ESPNOW batch sent (%u bytes, may be truncated).", (unsigned)len);
+                    batch_store_clear();
+                } else {
+                    ESP_LOGW(TAG_WR, "ESPNOW send failed (%s); retaining batch.", esp_err_to_name(se));
+                }
+                free(json_payload);
+            } else {
+                ESP_LOGE(TAG_WR, "Failed to build batch JSON; retaining batch.");
+            }
         } else {
-            ESP_LOGW(TAG_WR, "Wi-Fi connect failed; retaining batch.");
+            /* Fallback: old Wi-Fi/cloud path (optional). */
+            ESP_LOGI(TAG_WR, "ESPNOW unavailable; falling back to Wi-Fi/cloud.");
+            if (wifi_manager_connect_saved(15000)) {
+                ensure_time();
+                fetch_remote_config();
+                bool ok = send_batched_data();
+                if (ok) batch_store_clear();
+            } else {
+                ESP_LOGW(TAG_WR, "Wi-Fi connect failed; retaining batch.");
+            }
         }
     } else {
         ESP_LOGI(TAG_WR, "Batch incomplete (%d/%d).",
@@ -87,7 +127,6 @@ esp_err_t worker_role_start(void) {
     simulate_or_sleep(device_wakeUpInterval);
 
     if (s_debug) {
-        // In debug, continue simulating multiple wake cycles
         return worker_role_start();
     }
     return ESP_OK; // Deep sleep path never reaches here

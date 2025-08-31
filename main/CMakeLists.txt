@@ -8,6 +8,8 @@ idf_component_register(
         "src/net/rest_server.c"
         "src/net/captive_dns.c"
         "src/net/wifi_manager.c"
+        "src/net/espnow_manager.c"
+        "src/indicator/led_indicator.c"
         "src/roles/role_manager.c"
         "src/roles/worker_role.c"
         "src/roles/controller_role.c"
@@ -16,7 +18,7 @@ idf_component_register(
     PRIV_REQUIRES
         esp_timer
     REQUIRES
-        esp_wifi esp_event nvs_flash esp_netif esp_http_client esp_http_server json dht littlefs
+        esp_wifi esp_event nvs_flash esp_netif esp_http_client esp_http_server json dht littlefs led_strip  # <--- add led_strip
 )
 
 if(CONFIG_EXAMPLE_DEPLOY_WEB_PAGES)

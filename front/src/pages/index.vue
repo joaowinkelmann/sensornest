@@ -42,7 +42,7 @@
           </div>
 
           <!-- Wi-Fi setup -->
-          <div v-if="role && !connected">
+          <div v-if="role && role !== 'WORKER' && !connected">
             <q-select
               v-model="ssid"
               filled
@@ -86,8 +86,28 @@
             />
           </div>
 
+          <!-- Worker controller selection (moved earlier for clarity) -->
+          <div v-if="role==='WORKER'" class="q-mt-md">
+            <div class="text-h6">{{$t('selectController')}}</div>
+            <q-input v-model="workerName" filled :label="$t('workerName')" class="q-mt-sm"/>
+            <q-select
+              v-model="selectedControllerMac"
+              :options="controllers.map(c=>({label:`${c.name||'Controller'} (${c.mac})`, value:c.mac}))"
+              filled class="q-mt-sm"
+              :label="$t('availableControllers')"
+              :loading="controllersLoading"
+            >
+              <template #append>
+                <q-btn dense flat round icon="refresh" @click="scanControllers"/>
+              </template>
+            </q-select>
+            <q-btn class="q-mt-md" color="primary"
+                   :disable="!workerName || !selectedControllerMac"
+                   :label="$t('bindWorker')" @click="bindWorker"/>
+          </div>
+
           <!-- Login Form -->
-          <div v-if="connected && !loggedIn">
+          <div v-if="role!=='WORKER' && connected && !loggedIn">
             <div class="text-h6 q-mt-lg">{{ $t("cloudLogin") }}</div>
             <q-input
               v-model="userEmail"
@@ -131,7 +151,7 @@
           </div>
 
           <!-- Mesh Selection -->
-          <div v-if="loggedIn && (!device?.meshId || changingMesh)">
+          <div v-if="role!=='WORKER' && loggedIn && (!device?.meshId || changingMesh)">
             <div class="text-h6 q-mt-lg">{{ $t("selectMeshTitle") }}</div>
             <q-select
               v-model="selectedMeshId"
@@ -238,7 +258,7 @@
           </div>
 
           <!-- Device Bound Status -->
-          <div v-if="loggedIn && device && device.meshId && !changingMesh">
+          <div v-if="role!=='WORKER' && loggedIn && device && device.meshId && !changingMesh">
             <q-icon name="cloud_done" color="positive" size="xl" class="q-mt-lg"/>
             <div class="text-h6">{{ $t("deviceBoundTitle") }}</div>
             <div v-if="currentMesh" class="text-subtitle1">
@@ -262,7 +282,7 @@
           </div>
 
           <!-- Final Status -->
-          <div v-if="setupDone">
+          <div v-if="role!=='WORKER' && setupDone">
              <q-icon name="cloud_done" color="positive" size="xl" class="q-mt-lg"/>
              <div class="text-h6">{{ $t('setupComplete') }}</div>
              <div class="text-subtitle2">{{ $t('deviceWillRestart') }}</div>
@@ -326,10 +346,15 @@ const setupDone = ref(false);
 const completingSetup = ref(false); // <--- ADDED
 const updatingDeviceLoading = ref(false);
 
+const controllers = ref([]);
+const selectedControllerMac = ref("");
+const workerName = ref("");
+const controllersLoading = ref(false);
 
 const connected = computed(() => !!status.value?.connected);
 const step = computed(() => {
   if (!role.value) return 0;
+  if (role.value === 'WORKER') return 1; // worker single step
   // After role selection, if we are not connected to Wi-Fi yet, we are at the Wi-Fi steps.
   if (!connected.value) {
     if (connecting.value) return 2; // Connecting to Wi-Fi
@@ -342,6 +367,9 @@ const step = computed(() => {
 });
 
 const progressValue = computed(() => {
+  if (role.value === 'WORKER') {
+    return selectedControllerMac.value ? 1 : 0.5;
+  }
   // Map step to a progress value from 0 to 1
   const stepProgress = {
     0: 0,       // Role
@@ -355,6 +383,7 @@ const progressValue = computed(() => {
 });
 const statusText = computed(() => {
   if (!role.value) return t("status_chooseRole");
+  if (role.value === 'WORKER') return t("selectController");
   if (!connected.value) {
     if (connecting.value) return t("status_connecting");
     if (ssid.value) return t("status_enterPassword");
@@ -406,8 +435,11 @@ async function pickRole(r) {
   try {
     await api.setRole(r);
     role.value = r;
-    // After choosing role, start scanning Wi-Fi
-    scan();
+    if (r === 'WORKER') {
+      scanControllers();
+    } else {
+      scan();
+    }
   } catch (e) {
     showError(e, "failedToSaveRole");
   }
@@ -461,6 +493,17 @@ async function scan() {
     showError(e, "failedToScan");
   } finally {
     loadingScan.value = false;
+  }
+}
+
+async function scanControllers() {
+  controllersLoading.value = true;
+  try {
+    controllers.value = await api.getControllers();
+  } catch (e) {
+    showError(e, "failedToScanControllers");
+  } finally {
+    controllersLoading.value = false;
   }
 }
 
@@ -674,10 +717,13 @@ function stopPolling() {
 async function fetchInitialStatus() {
   try {
     const setupStatus = await api.setupStatus();
-    console.log("Initial setup status:", setupStatus); // <-- ADDED
     role.value = setupStatus.role;
     debugEnabled.value = setupStatus.debug;
-
+    if (role.value === 'WORKER') {
+      // Skip Wi-Fi / cloud; directly begin controller discovery
+      scanControllers();
+      return;
+    }
     if (setupStatus.stage === 'user_saved' || setupStatus.stage === 'mesh_selected') {
         console.log("Stage is 'user_saved' or 'mesh_selected', setting loggedIn and checking device."); // <-- ADDED
         loggedIn.value = true;

@@ -8,6 +8,11 @@
 #include "esp_sntp.h"
 #include "net/rest_client.h"
 #include "net/wifi_manager.h"
+#include "net/espnow_manager.h"
+#include "indicator/led_indicator.h"
+#include "nvs.h"
+#include "esp_wifi.h"
+#include "esp_mac.h"
 
 #define CONTROLLER_MAIN_STACK   8192   // Increase from 4096 (TLS & JSON need >6K)
 #define CONTROLLER_MAIN_PRIO    5
@@ -105,10 +110,52 @@ static void controller_main_task(void *arg) {
     }
 }
 
+static void controller_rx_espnow_cb(const uint8_t *mac, const uint8_t *data, int len) {
+    // Log a safe snippet
+    char buf[128];
+    int n = len < (int)sizeof(buf)-1 ? len : (int)sizeof(buf)-1;
+    memcpy(buf, data, n);
+    buf[n] = 0;
+    ESP_LOGI(TAG_CR, "ESPNOW RX %dB from %02X:%02X:%02X:%02X:%02X:%02X data='%s'%s",
+             len, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5], buf, (len>n?"...":""));
+    // TODO: parse JSON and store readings (future)
+}
+
 void controller_role_set_debug(bool enabled) { s_debug = enabled; }
 
 esp_err_t controller_role_start(void) {
     ESP_LOGI(TAG_CR, "Controller role starting (debug=%d).", s_debug);
+
+    // Init ESPNOW listener early
+    esp_err_t en = espnow_manager_init(true, controller_rx_espnow_cb);
+    if (en != ESP_OK) {
+        ESP_LOGW(TAG_CR, "ESPNOW init failed: %s (continuing without worker ingestion)", esp_err_to_name(en));
+    }
+
+    /* Start pulsing LED if debug mode */
+    if (s_debug) {
+        if (led_indicator_init() == ESP_OK) {
+            led_indicator_controller_pulse_start();
+        }
+    } else {
+        led_indicator_controller_pulse_stop();
+    }
+
+    // Load controller name (optional)
+    char ctrl_name[33]="Controller";
+    nvs_handle_t nvs;
+    if (nvs_open("device", NVS_READONLY, &nvs)==ESP_OK) {
+        size_t l=sizeof(ctrl_name);
+        nvs_get_str(nvs,"name",ctrl_name,&l);
+        nvs_close(nvs);
+    }
+    espnow_manager_start_controller_beacon(ctrl_name, 1000); // shorter interval for better discovery while testing
+    ESP_LOGI(TAG_CR, "Controller beacon activated name='%s' interval=%dms",
+             ctrl_name, 1000);
+    uint8_t ch=0; wifi_second_chan_t sc=WIFI_SECOND_CHAN_NONE;
+    esp_wifi_get_channel(&ch,&sc);
+    ESP_LOGI(TAG_CR, "Beacon active on channel=%u", ch);
+
     if (xTaskCreate(controller_main_task,
                     "controller_main",
                     CONTROLLER_MAIN_STACK,
