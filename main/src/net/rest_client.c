@@ -14,7 +14,7 @@
 #include "nvs_flash.h"
 #include "esp_mac.h"
 #include "cJSON.h"
-#include "certs.h"
+#include "security/certs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
@@ -215,88 +215,124 @@ static esp_err_t rc_force_reauth(void) {
 static esp_err_t rc_perform_login(const char *email, const char *password, bool store_creds) {
     if (!email || !password) return ESP_ERR_INVALID_ARG;
     rc_log_cert_snippet();
-    rc_resp_accum_t acc = { .cap = 1024, .len = 0 };
-    acc.buf = calloc(1, acc.cap);
-    if (!acc.buf) return ESP_ERR_NO_MEM;
-    esp_http_client_config_t cfg = {
-        .url = CLOUD_LOGIN_URL,
-        .method = HTTP_METHOD_POST,
-        .cert_pem = winkels_root_ca_pem,
-        .event_handler = rc_http_event_handler,
-        .user_data = &acc,
-        .timeout_ms = 3600,
-        .buffer_size = 1024,
-        .buffer_size_tx = 1024
-    };
-    ESP_LOGI(RC_TAG, "login: POST %s", CLOUD_LOGIN_URL);
-    esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    if (!client) { free(acc.buf); return ESP_FAIL; }
-    char body[256];
-    snprintf(body, sizeof(body), "{\"email\":\"%s\",\"password\":\"%s\"}", email, password);
-    ESP_LOGI(RC_TAG, "login: request body (%d bytes): %s", (int)strlen(body), body);
-    esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_post_field(client, body, strlen(body));
-    // Retry transient connect failures a few times with a short backoff
+
+    const int max_attempts = 3;
+    int attempt = 0;
     esp_err_t err = ESP_FAIL;
-    int tries = 0;
-    const int max_tries = 3;
-    int64_t start_ms = esp_timer_get_time() / 1000;
-    const int64_t total_cap_ms = 25000; // overall cap ~25s
-    do {
+    int http_status = 0;
+
+    for (attempt = 1; attempt <= max_attempts; ++attempt) {
+        rc_resp_accum_t acc = { .cap = 2048, .len = 0 };
+        acc.buf = calloc(1, acc.cap);
+        if (!acc.buf) return ESP_ERR_NO_MEM;
+
+        esp_http_client_config_t cfg = {
+            .url = CLOUD_LOGIN_URL,
+            .method = HTTP_METHOD_POST,
+            .cert_pem = winkels_root_ca_pem,
+            .event_handler = rc_http_event_handler,
+            .user_data = &acc,
+            .timeout_ms = 8000,            // reduced
+            .buffer_size = 1024,
+            .buffer_size_tx = 1024,
+            .skip_cert_common_name_check = true   // (optional: allow if CN mismatch; keep if needed)
+        };
+
+        ESP_LOGI(RC_TAG, "login: attempt %d/%d POST %s", attempt, max_attempts, CLOUD_LOGIN_URL);
+        esp_http_client_handle_t client = esp_http_client_init(&cfg);
+        if (!client) {
+            free(acc.buf);
+            return ESP_FAIL;
+        }
+
+        char body[256];
+        snprintf(body, sizeof(body), "{\"email\":\"%s\",\"password\":\"%s\"}", email, password);
+        esp_http_client_set_header(client, "Content-Type", "application/json");
+        esp_http_client_set_header(client, "Accept", "application/json");
+        esp_http_client_set_post_field(client, body, strlen(body));
+
         err = esp_http_client_perform(client);
-        if (err == ESP_ERR_HTTP_CONNECT && tries < max_tries) {
-            ESP_LOGW(RC_TAG, "login: connect failed, retrying (%d/%d)", tries + 1, max_tries);
-            vTaskDelay(pdMS_TO_TICKS(1200));
-            tries++;
-            int64_t elapsed = (esp_timer_get_time() / 1000) - start_ms;
-            if (elapsed >= total_cap_ms) {
-                ESP_LOGW(RC_TAG, "login: total time cap reached (~%lld ms)", (long long)elapsed);
-                break;
+        http_status = esp_http_client_get_status_code(client);
+        int64_t cl = esp_http_client_get_content_length(client);
+        bool chunked = esp_http_client_is_chunked_response(client);
+
+        if (acc.len < acc.cap) acc.buf[acc.len] = 0;
+        else acc.buf[acc.cap - 1] = 0;
+
+        ESP_LOGI(RC_TAG, "login: perform result=%s http_status=%d content_len=%lld chunked=%d",
+                 esp_err_to_name(err), http_status, (long long)cl, chunked);
+
+        // Snapshot a body snippet
+        if (acc.len) {
+            char snippet[161];
+            size_t n = acc.len < 160 ? acc.len : 160;
+            memcpy(snippet, acc.buf, n);
+            snippet[n] = 0;
+            ESP_LOGD(RC_TAG, "login: body snippet: %s", snippet);
+        }
+
+        if (err != ESP_OK) {
+            esp_http_client_cleanup(client);
+            free(acc.buf);
+            if (err == ESP_ERR_HTTP_CONNECT || err == ESP_ERR_HTTP_EAGAIN) {
+                if (attempt < max_attempts) {
+                    int backoff_ms = 1000 << (attempt - 1); // 1000,2000,4000
+                    ESP_LOGW(RC_TAG, "login: transient connect error (%s); backoff %d ms",
+                             esp_err_to_name(err), backoff_ms);
+                    vTaskDelay(pdMS_TO_TICKS(backoff_ms));
+                    continue;
+                }
             }
+            return err;
+        }
+
+        // Completed HTTP transaction
+        if (http_status == 200 || http_status == 201) {
+            cJSON *root = cJSON_Parse(acc.buf);
+            if (!root) {
+                ESP_LOGE(RC_TAG, "login: JSON parse failed");
+                esp_http_client_cleanup(client);
+                free(acc.buf);
+                return ESP_FAIL;
+            }
+            cJSON *acc_tok = cJSON_GetObjectItem(root, "access_token");
+            if (!cJSON_IsString(acc_tok)) {
+                ESP_LOGE(RC_TAG, "login: access_token missing");
+                cJSON_Delete(root);
+                esp_http_client_cleanup(client);
+                free(acc.buf);
+                return ESP_FAIL;
+            }
+            bool stored = rc_store_auth(email, store_creds ? password : NULL, acc_tok->valuestring);
+            ESP_LOGI(RC_TAG, "login: token length=%d stored=%d",
+                     (int)strlen(acc_tok->valuestring), stored);
+            cJSON_Delete(root);
+            esp_http_client_cleanup(client);
+            free(acc.buf);
+            return stored ? ESP_OK : ESP_FAIL;
+        }
+
+        if (http_status == 401) {
+            ESP_LOGW(RC_TAG, "login: invalid credentials (401)");
+            esp_http_client_cleanup(client);
+            free(acc.buf);
+            return ESP_ERR_INVALID_STATE; // signal invalid credentials
+        }
+
+        // Other server errors -> maybe retry
+        esp_http_client_cleanup(client);
+        free(acc.buf);
+        if (http_status >= 500 && attempt < max_attempts) {
+            int backoff_ms = 1000 << (attempt - 1);
+            ESP_LOGW(RC_TAG, "login: server error %d -> retry in %d ms", http_status, backoff_ms);
+            vTaskDelay(pdMS_TO_TICKS(backoff_ms));
             continue;
         }
-        break;
-    } while (1);
-    int status = esp_http_client_get_status_code(client);
-    int64_t cl = esp_http_client_get_content_length(client);
-    bool chunked = esp_http_client_is_chunked_response(client);
-    ESP_LOGI(RC_TAG, "login: perform status=%s http_status=%d content_len=%lld chunked=%d",
-             esp_err_to_name(err), status, (long long)cl, chunked);
-    if (acc.len < acc.cap) acc.buf[acc.len] = 0; else acc.buf[acc.cap - 1] = 0;
-    if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "login: perform failed: %s", esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        free(acc.buf);
-        return err;
-    }
-    if (status != 200 && status != 201) {
-        ESP_LOGW(RC_TAG, "login: unexpected HTTP status=%d", status);
-        esp_http_client_cleanup(client);
-        free(acc.buf);
+        ESP_LOGE(RC_TAG, "login: failed with HTTP status %d (no retry)", http_status);
         return ESP_FAIL;
     }
-    cJSON *root = cJSON_Parse(acc.buf);
-    if (!root) {
-        ESP_LOGE(RC_TAG, "login: JSON parse failed");
-        esp_http_client_cleanup(client);
-        free(acc.buf);
-        return ESP_FAIL;
-    }
-    cJSON *acc_tok = cJSON_GetObjectItem(root, "access_token");
-    if (!cJSON_IsString(acc_tok)) {
-        ESP_LOGE(RC_TAG, "login: access_token missing");
-        cJSON_Delete(root);
-        esp_http_client_cleanup(client);
-        free(acc.buf);
-        return ESP_FAIL;
-    }
-    bool stored = rc_store_auth(email, store_creds ? password : NULL, acc_tok->valuestring);
-    ESP_LOGI(RC_TAG, "login: token length=%d stored=%d",
-             (int)strlen(acc_tok->valuestring), stored);
-    cJSON_Delete(root);
-    esp_http_client_cleanup(client);
-    free(acc.buf);
-    return stored ? ESP_OK : ESP_FAIL;
+
+    return err;
 }
 
 /* --- Fetch device by MAC (NULL => use own) 

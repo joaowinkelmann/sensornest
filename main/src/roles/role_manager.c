@@ -1,9 +1,9 @@
-#include "role_manager.h"
+#include "roles/role_manager.h"
 #include "esp_log.h"
 #include "nvs.h"
 #include <string.h>
-#include "worker_role.h"
-#include "controller_role.h"
+#include "roles/worker_role.h"
+#include "roles/controller_role.h"
 
 static const char *TAG_RM = "ROLE_MGR";
 static device_role_t s_cached = DEVICE_ROLE_UNKNOWN;

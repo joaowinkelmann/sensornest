@@ -17,8 +17,10 @@
 #include "esp_netif.h"
 #include "esp_mac.h"
 #include <errno.h>
-#include "certs.h"
-#include "rest_client.h"
+#include "security/certs.h"
+#include "net/rest_client.h"
+#include "app/app_state.h"
+#include "esp_http_client.h"
 
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
@@ -63,6 +65,7 @@ static esp_err_t rs_cors_options_handler(httpd_req_t *req);
 static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx);
 static void wifi_test_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req);
+static bool rs_has_station_ip(void);
 
 #define CHECK_FILE_EXTENSION(filename, ext) (strcasecmp(&filename[strlen(filename) - strlen(ext)], ext) == 0)
 
@@ -355,12 +358,19 @@ static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
     esp_err_t login_err = rc_login(j_email->valuestring, j_pass->valuestring, false);
 
     if (login_err != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to validate user credentials for email: %s", email_buf);
         cJSON_Delete(root);
-        httpd_resp_set_status(req, "401 Unauthorized");
         httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, "{\"error\":\"invalid_credentials\"}");
-        return ESP_OK; // Return OK to send custom response
+        if (login_err == ESP_ERR_INVALID_STATE) {
+            httpd_resp_set_status(req, "401 Unauthorized");
+            httpd_resp_sendstr(req, "{\"error\":\"invalid_credentials\"}");
+        } else if (login_err == ESP_ERR_HTTP_CONNECT || login_err == ESP_ERR_HTTP_EAGAIN) {
+            httpd_resp_set_status(req, "503 Service Unavailable");
+            httpd_resp_sendstr(req, "{\"error\":\"cloud_unreachable\"}");
+        } else {
+            httpd_resp_set_status(req, "502 Bad Gateway");
+            httpd_resp_sendstr(req, "{\"error\":\"cloud_error\"}");
+        }
+        return ESP_OK;
     }
 
     ESP_LOGI(TAG, "User credentials validated and saved for email: %s", email_buf);
@@ -396,6 +406,15 @@ static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// OPTIONAL: add helper before rs_user_creds_post_handler to ensure STA has IP
+static bool rs_has_station_ip(void) {
+    esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (!sta) return false;
+    esp_netif_ip_info_t ip;
+    if (esp_netif_get_ip_info(sta, &ip) != ESP_OK) return false;
+    return ip.ip.addr != 0;
+}
+
 /* --- NEW: POST /api/v1/device/debug --- */
 static esp_err_t rs_device_debug_post_handler(httpd_req_t *req) {
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
@@ -421,14 +440,11 @@ static esp_err_t rs_device_debug_post_handler(httpd_req_t *req) {
 
     nvs_handle_t nvs;
     esp_err_t err = nvs_open("device", NVS_READWRITE, &nvs);
-    if (err != ESP_OK) {
-        cJSON_Delete(root);
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs open failed");
-        return ESP_FAIL;
+    if (err == ESP_OK) {
+        err = nvs_set_u8(nvs, "debug", debug_flag);
+        if (err == ESP_OK) err = nvs_commit(nvs);
+        nvs_close(nvs);
     }
-    err = nvs_set_u8(nvs, "debug", debug_flag);
-    if (err == ESP_OK) err = nvs_commit(nvs);
-    nvs_close(nvs);
     cJSON_Delete(root);
 
     if (err != ESP_OK) {
@@ -436,13 +452,14 @@ static esp_err_t rs_device_debug_post_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
-    ESP_LOGW(TAG, "Debug mode has been %s. Restarting...", debug_flag ? "ENABLED" : "DISABLED");
-    httpd_resp_sendstr(req, "{\"status\":\"ok\",\"restarting\":true}");
+    // Runtime apply without restart
+    app_set_debug_mode(debug_flag == 1);
 
-    // Short delay to allow response to be sent
-    vTaskDelay(pdMS_TO_TICKS(200));
-    esp_restart();
-
+    httpd_resp_set_type(req, "application/json");
+    // Keep 'restarting' field (false) for frontend compatibility
+    httpd_resp_sendstr(req, debug_flag ?
+        "{\"status\":\"ok\",\"restarting\":false,\"debug\":true}" :
+        "{\"status\":\"ok\",\"restarting\":false,\"debug\":false}");
     return ESP_OK;
 }
 
@@ -721,6 +738,8 @@ static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req)
 }
 
 /* catch-all GET -> redirect to landing page (index.html) */
+// Wrap the captive redirect handler so it's only compiled when needed
+#if !CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
 static esp_err_t rs_captive_redirect_handler(httpd_req_t *req)
 {
     char host[128] = {0}, ua[128] = {0}, referer[128] = {0};
@@ -731,9 +750,6 @@ static esp_err_t rs_captive_redirect_handler(httpd_req_t *req)
     ESP_LOGI(TAG, "captive redirect: uri=%s host=%s UA='%s' Referer='%s'",
              req->uri, host[0]?host:"(no host)", ua, referer);
 
-    // This handler should only be active when web pages are NOT deployed.
-    // The main file server will handle redirects and fallbacks otherwise.
-    #if !CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
     const char *target = "/";
     char location[256];
     snprintf(location, sizeof(location), "http://192.168.4.1%s", target);
@@ -743,13 +759,9 @@ static esp_err_t rs_captive_redirect_handler(httpd_req_t *req)
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", location);
     httpd_resp_sendstr(req, "");
-    #else
-    // If web pages are deployed, the common_get_handler will catch everything.
-    // This handler shouldn't be reached, but if it is, forward to the file server.
-    return rs_rest_common_get_handler(req);
-    #endif
     return ESP_OK;
 }
+#endif
 
 // --- REMOVED: rs_cloud_login_post_handler is now redundant ---
 
@@ -1160,7 +1172,9 @@ err:
 //  --- ADD forward declarations for captive probe handlers & registrar ---
 static esp_err_t rs_probe_generate_204_handler(httpd_req_t *req);
 static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req);
+#if !CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
 static esp_err_t rs_captive_redirect_handler(httpd_req_t *req);
+#endif
 
 // Registrar to fix implicit declaration error
 static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx) {

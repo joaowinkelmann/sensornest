@@ -35,7 +35,7 @@
   "deviceBoundTitle": "Dispositivo Vinculado",
   "currentMesh": "Malla Actual",
   "completeSetupBtn": "Finalizar Configuración",
-  "changeDeviceParams": "Actualizar Dispositivo",
+  "changeDeviceParams": "Cambiar Configuración",
   "error_invalid_credentials": "Credenciales inválidas. Por favor, inténtelo de nuevo.",
   "loginSuccess": "¡Inicio de sesión exitoso!",
   "updateDeviceBtn": "Actualizar Dispositivo",

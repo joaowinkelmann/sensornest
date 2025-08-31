@@ -1,16 +1,22 @@
-idf_component_register(SRCS "tempmesh.c"
-                            "rest_server.c"
-                            "rest_client.c"
-                            "captive_dns.c"
-                            "certs.c"
-                            "sensor.c"
-                            "batch_store.c"
-                            "role_manager.c"
-                            "worker_role.c"
-                            "controller_role.c"
-                    INCLUDE_DIRS "."
-                    PRIV_REQUIRES esp_timer
-                    REQUIRES esp_wifi esp_event nvs_flash esp_netif esp_http_client esp_http_server json dht littlefs)
+idf_component_register(
+    SRCS
+        "src/app/tempmesh.c"
+        "src/security/certs.c"
+        "src/sensor/sensor.c"
+        "src/storage/batch_store.c"
+        "src/net/rest_client.c"
+        "src/net/rest_server.c"
+        "src/net/captive_dns.c"
+        "src/roles/role_manager.c"
+        "src/roles/worker_role.c"
+        "src/roles/controller_role.c"
+    INCLUDE_DIRS
+        "include"
+    PRIV_REQUIRES
+        esp_timer
+    REQUIRES
+        esp_wifi esp_event nvs_flash esp_netif esp_http_client esp_http_server json dht littlefs
+)
 
 if(CONFIG_EXAMPLE_DEPLOY_WEB_PAGES)
     set(WEB_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../front")

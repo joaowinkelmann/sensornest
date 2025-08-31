@@ -35,7 +35,7 @@
   "deviceBoundTitle": "Device Bound",
   "currentMesh": "Current Mesh",
   "completeSetupBtn": "Complete Setup",
-  "changeDeviceParams": "Update Device",
+  "changeDeviceParams": "Change Settings",
   "error_invalid_credentials": "Invalid credentials. Please try again.",
   "loginSuccess": "Login successful!",
   "loginFailed": "Login failed. Please check your credentials.",

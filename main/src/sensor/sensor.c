@@ -1,4 +1,4 @@
-#include "sensor.h"
+#include "sensor/sensor.h"
 #include "dht.h"
 #include "esp_random.h"
 #include "esp_log.h"

@@ -86,14 +86,6 @@
             />
           </div>
 
-          <!-- Connection status -->
-          <div v-if="connected">
-            <q-icon name="check_circle" color="positive" size="xl" />
-            <div class="text-h6">{{ $t("connected") }}</div>
-            <div>{{ $t("ipAddress") }} {{ status.ip }}</div>
-            <div>{{ $t("ssid") }} {{ status.ssid }}</div>
-          </div>
-
           <!-- Login Form -->
           <div v-if="connected && !loggedIn">
             <div class="text-h6 q-mt-lg">{{ $t("cloudLogin") }}</div>
@@ -228,6 +220,7 @@
                   color="primary"
                   :label="$t('updateDeviceBtn')"
                   :disable="!selectedMeshId"
+                  :loading="updatingDeviceLoading"
                   @click="asyncSaveDeviceParams"
                 />
               </div>
@@ -240,7 +233,7 @@
               color="primary"
               :label="$t('updateDeviceBtn')"
               :disable="!selectedMeshId"
-              @click="bindDevice"
+              @click="updateDevice"
             />
           </div>
 
@@ -256,6 +249,8 @@
                 color="primary"
                 :label="$t('completeSetupBtn')"
                 @click="completeSetup"
+                :loading="completingSetup"
+                :disable="completingSetup"
               />
               <q-btn
                 color="secondary"
@@ -280,7 +275,14 @@
         </q-card-section>
 
         <q-card-actions align="around" class="bg-grey-1">
-          <div class="text-caption">{{ statusText }}</div>
+          <div class="text-caption">
+            {{ statusText }}
+            <template v-if="connected">
+              • {{ $t("connected") }}
+              • {{ $t("ipAddress") }} {{ status.ip }}
+              • {{ $t("ssid") }} {{ status.ssid }}
+            </template>
+          </div>
         </q-card-actions>
       </q-card>
     </div>
@@ -321,6 +323,8 @@ const meshes = ref([]);
 const selectedMeshId = ref(null);
 const changingMesh = ref(false);
 const setupDone = ref(false);
+const completingSetup = ref(false); // <--- ADDED
+const updatingDeviceLoading = ref(false);
 
 
 const connected = computed(() => !!status.value?.connected);
@@ -535,7 +539,8 @@ async function fetchMeshes() {
   }
 }
 
-async function bindDevice() {
+async function updateDevice() {
+  updatingDeviceLoading.value = true;
   try {
     // Use updateDevice to set mesh + optional name/readings/interval
     const resp = await api.updateDevice(
@@ -544,12 +549,13 @@ async function bindDevice() {
       newDeviceWakeUpInterval.value || undefined,
       selectedMeshId.value || undefined
     );
+    updatingDeviceLoagind.value = false;
     console.log("Update Response:", resp);
     $q.notify({ type: "positive", message: t("deviceBound") });
     await checkDevice(); // Re-check to update UI
     changingMesh.value = false;
   } catch (e) {
-    showError(e, "failedToBindDevice");
+    showError(e, "failedToupdateDevice");
   }
 }
 
@@ -589,16 +595,30 @@ async function asyncSaveDeviceParams() {
       await checkDevice();
     }
   } catch (e) {
-    showError(e, "failedToBindDevice");
+    showError(e, "failedToupdateDevice");
   }
 }
 
 async function completeSetup() {
+  if (completingSetup.value) return;
+  completingSetup.value = true;
   try {
+    // Call endpoint (device will actually restart almost immediately)
     await api.completeSetup();
+    // Inform user and keep UI for ~10s so they can safely disconnect
+    $q.notify({
+      type: "positive",
+      message: t("setupFinalizing"),
+      caption: t("setupDisconnectHint"),
+      timeout: 10000,
+      actions: [{ label: t("dismiss"), color: "white" }]
+    });
+    await new Promise(r => setTimeout(r, 10000));
     setupDone.value = true;
   } catch (e) {
     showError(e, "failedToCompleteSetup");
+  } finally {
+    completingSetup.value = false;
   }
 }
 

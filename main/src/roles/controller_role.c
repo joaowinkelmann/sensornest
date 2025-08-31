@@ -1,12 +1,12 @@
-#include "controller_role.h"
+#include "roles/controller_role.h"
 #include "esp_log.h"
-#include "role_manager.h"
-#include "sensor.h"
-#include "batch_store.h"
+#include "roles/role_manager.h"
+#include "sensor/sensor.h"
+#include "storage/batch_store.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_sntp.h"
-#include "rest_client.h"
+#include "net/rest_client.h"
 
 #define CONTROLLER_MAIN_STACK   8192   // Increase from 4096 (TLS & JSON need >6K)
 #define CONTROLLER_MAIN_PRIO    5

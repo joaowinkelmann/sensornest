@@ -1,7 +1,7 @@
 #pragma once
 #include <stdbool.h>
 #include "esp_err.h"
-#include "sensor.h"
+#include "sensor/sensor.h"
 
 /* Fixed maximum (RTC friendly) */
 #define BATCH_STORE_MAX_READINGS 50

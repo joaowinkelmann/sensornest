@@ -1,13 +1,13 @@
-#include "worker_role.h"
+#include "roles/worker_role.h"
 #include "esp_log.h"
-#include "sensor.h"
-#include "batch_store.h"
-#include "rest_client.h"
+#include "sensor/sensor.h"
+#include "storage/batch_store.h"
+#include "net/rest_client.h"
 #include "esp_sntp.h"
 #include "nvs.h"
 #include "esp_wifi.h"
 #include "esp_sleep.h"
-#include "role_manager.h"
+#include "roles/role_manager.h"
 
 // Forward declare (temporarily reusing code from tempmesh.c until fully moved)
 extern bool connect_to_wifi(void);

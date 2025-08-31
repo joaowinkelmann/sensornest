@@ -23,14 +23,14 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_sleep.h"
-#include "rest_client.h"
+#include "net/rest_client.h"
 #include <stdarg.h>
-#include "certs.h"
-#include "sensor.h"
-#include "batch_store.h"
-#include "role_manager.h"
-#include "worker_role.h"
-#include "controller_role.h"
+#include "security/certs.h"
+#include "sensor/sensor.h"
+#include "storage/batch_store.h"
+#include "roles/role_manager.h"
+#include "roles/worker_role.h"
+#include "roles/controller_role.h"
 
 static bool g_debug_mode_enabled = false;
 
@@ -637,4 +637,12 @@ const char* get_esp_model(void) {
 #else
     return "UNKNOWN";
 #endif
+}
+
+bool app_get_debug_mode(void) {
+    return g_debug_mode_enabled;
+}
+void app_set_debug_mode(bool enabled) {
+    g_debug_mode_enabled = enabled;
+    ESP_LOGW(TAG, "Debug mode %s", enabled ? "ENABLED" : "DISABLED");
 }
