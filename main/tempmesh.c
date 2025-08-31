@@ -26,6 +26,11 @@
 #include "rest_client.h"
 #include <stdarg.h>
 #include "certs.h"
+#include "sensor.h"
+#include "batch_store.h"
+#include "role_manager.h"
+#include "worker_role.h"
+#include "controller_role.h"
 
 static bool g_debug_mode_enabled = false;
 
@@ -91,36 +96,29 @@ extern void captive_dns_task(void *pv);
 esp_err_t start_rest_server(const char *base_path);
 static bool wifi_boot_flow(void);
 static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len);
-static bool connect_to_wifi(void);
+bool connect_to_wifi(void);
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 const char* get_esp_model(void);
 
-
-// Estrutura para uma única leitura de sensor
-typedef struct {
-    float temperature;
-    float humidity;
-    time_t timestamp; // Usaremos time_t para o carimbo de data/hora
-} sensor_reading_t;
-
-// O número máximo de leituras que podemos armazenar.
-// Cuidar limite de memória RTC (Baseline de 8KB para S3 e C3)
-#define MAX_READINGS_IN_BATCH 50
-
-// Variáveis que irão persistir durante o deep sleep
-RTC_DATA_ATTR static int readings_count = 0; // Contador de leituras atuais no lote
-RTC_DATA_ATTR static sensor_reading_t sensor_readings_batch[MAX_READINGS_IN_BATCH]; // Array para armazenar o lote
-RTC_DATA_ATTR static bool time_is_set = false;
-RTC_DATA_ATTR static bool device_config_initialized = false;
-RTC_DATA_ATTR static int device_readingsPerBatch = 2;
-RTC_DATA_ATTR static int device_wakeUpInterval   = 10;
+// REMOVE old MAX_READINGS_IN_BATCH + RTC arrays:
+// #define MAX_READINGS_IN_BATCH 50
+// RTC_DATA_ATTR static int readings_count = 0;
+// RTC_DATA_ATTR static sensor_reading_t sensor_readings_batch[MAX_READINGS_IN_BATCH]; // Array para armazenar o lote
+RTC_DATA_ATTR bool time_is_set = false;
+RTC_DATA_ATTR bool device_config_initialized = false;
+RTC_DATA_ATTR int device_readingsPerBatch = 2;
+RTC_DATA_ATTR int device_wakeUpInterval   = 10;
 
 
-void collect_and_send_task(void);
-static void perform_sensor_reading(void);
-static void send_batched_data(void);
-static void go_to_sleep(uint64_t sleep_time_seconds);
+// Forward declare old functions we keep temporarily
+bool send_batched_data(void);
+void perform_sensor_reading(void);
+void simulate_or_sleep(uint64_t seconds);
+bool connect_to_wifi(void);
+
+// Remove outdated prototype:
+// void collect_and_send_task(void);
 
 static void go_to_sleep(uint64_t sleep_time_seconds) {
     // if debug mode is on, don't go to sleep
@@ -145,7 +143,7 @@ static void go_to_sleep(uint64_t sleep_time_seconds) {
 }
 
 
-static void simulate_or_sleep(uint64_t seconds) {
+void simulate_or_sleep(uint64_t seconds) {
     if (g_debug_mode_enabled) {
         ESP_LOGI(TAG, "[SIM] Sleeping (simulated) for %llu s (no deep sleep / serial kept).", seconds);
         vTaskDelay(pdMS_TO_TICKS(seconds * 1000));
@@ -158,8 +156,8 @@ void collect_and_send_task(void) {
     for (;;) {
         perform_sensor_reading();
 
-        if (readings_count >= device_readingsPerBatch) {
-            ESP_LOGI(TAG, "Batch full (%d/%d). Connecting to Wi-Fi to send data.", readings_count, device_readingsPerBatch);
+        if (batch_store_count() >= device_readingsPerBatch) {
+            ESP_LOGI(TAG, "Batch full (%d/%d). Connecting to Wi-Fi to send data.", batch_store_count(), device_readingsPerBatch);
 
             if (connect_to_wifi()) {
                 if (!time_is_set) {
@@ -198,8 +196,12 @@ void collect_and_send_task(void) {
                     }
                 }
 
-                send_batched_data();
-                readings_count = 0;
+                bool ok = send_batched_data();
+                if (ok) {
+                    batch_store_clear();
+                } else {
+                    ESP_LOGW(TAG, "Retaining batch (%d readings) for retry.", batch_store_count());
+                }
 
                 if (!g_debug_mode_enabled) { // keep Wi-Fi up in debug if you want quick repeats
                     esp_wifi_disconnect();
@@ -213,7 +215,7 @@ void collect_and_send_task(void) {
                 // keep readings_count so we retry sending next cycle
             }
         } else {
-            ESP_LOGI(TAG, "Batch incomplete (%d/%d).", readings_count, device_readingsPerBatch);
+            ESP_LOGI(TAG, "Batch incomplete (%d/%d).", batch_store_count(), device_readingsPerBatch);
         }
 
         // Simulated or real sleep
@@ -227,107 +229,44 @@ void collect_and_send_task(void) {
     }
 }
 
-static void perform_sensor_reading() {
-    if (readings_count >= MAX_READINGS_IN_BATCH) {
+void perform_sensor_reading() {
+    if (batch_store_is_full()) {
         ESP_LOGW(TAG, "O lote de leituras está cheio. Descartando nova leitura.");
         return;
     }
-
-    if (g_debug_mode_enabled) {
-        ESP_LOGI(TAG, "Simulating sensor reading (DEBUG MODE)");
-        sensor_readings_batch[readings_count].temperature = 20.0f + (float)(esp_random() % 100) / 10.0f;
-        sensor_readings_batch[readings_count].humidity = 40.0f + (float)(esp_random() % 200) / 10.0f;
-        time(&sensor_readings_batch[readings_count].timestamp);
-
-        ESP_LOGI(TAG, "Leitura #%d armazenada (simulada): Temp=%.1fC, Hum=%.1f%%",
-                 readings_count + 1,
-                 sensor_readings_batch[readings_count].temperature,
-                 sensor_readings_batch[readings_count].humidity);
-
-        readings_count++;
+    sensor_reading_t reading;
+    esp_err_t err = sensor_read_once(g_debug_mode_enabled, &reading);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Falha na leitura do sensor (err=%s)", esp_err_to_name(err));
         return;
     }
-
-    int16_t humidity = 0, temperature = 0;
-    
-    // Reinicializa o GPIO após acordar novamente
-    gpio_set_direction(DHT_GPIO, GPIO_MODE_INPUT_OUTPUT_OD);
-    gpio_set_pull_mode(DHT_GPIO, GPIO_PULLUP_ONLY);
-
-    esp_err_t res = ESP_FAIL;
-    for (int retry = 0; retry < 3; retry++) {
-        vTaskDelay(pdMS_TO_TICKS(DHT_PULLUP_MS));
-        res = dht_read_data(DHT_TYPE, DHT_GPIO, &humidity, &temperature);
-        if (res == ESP_OK) {
-            break;
-        }
-        ESP_LOGW(TAG, "Falha na leitura do DHT (tentativa %d): %s", retry + 1, esp_err_to_name(res));
+    if (batch_store_add(&reading) == ESP_OK) {
+        ESP_LOGI(TAG, "Leitura #%d armazenada: Temp=%.1fC, Hum=%.1f%%",
+                 batch_store_count(), reading.temperature, reading.humidity);
     }
-
-    if (res != ESP_OK) {
-        ESP_LOGE(TAG, "Falha na leitura do DHT: %s", esp_err_to_name(res));
-        // Poderíamos armazenar um valor de erro, como -999, se quiséssemos.
-        // Por enquanto, apenas não incrementamos o contador.
-        return;
-    }
-
-    // Armazena os dados no nosso array na memória RTC
-    sensor_readings_batch[readings_count].temperature = (float)temperature / 10.0f;
-    sensor_readings_batch[readings_count].humidity = (float)humidity / 10.0f;
-    time(&sensor_readings_batch[readings_count].timestamp); // Pega o timestamp atual
-
-    ESP_LOGI(TAG, "Leitura #%d armazenada: Temp=%.1fC, Hum=%.1f%%", 
-             readings_count + 1, 
-             sensor_readings_batch[readings_count].temperature, 
-             sensor_readings_batch[readings_count].humidity);
-    
-    // Incrementa o contador de leituras
-    readings_count++;
 }
 
-// --- NOVO: Função para construir o JSON com o lote de dados e enviá-lo ---
-static void send_batched_data() {
+// Replace old send_batched_data()
+bool send_batched_data() {
     static const char *DATA_TAG = "DATA_SENDER";
-    char mac_str[18];
-    uint8_t mac_addr[6];
-    esp_efuse_mac_get_default(mac_addr);
-    sprintf(mac_str, "%02X:%02X:%02X:%02X:%02X:%02X", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-
-    // Usando cJSON para construir o payload de forma segura
-    cJSON *root = cJSON_CreateObject();
-    cJSON *data_array = cJSON_CreateArray();
-    cJSON_AddItemToObject(root, "data", data_array);
-
-    for (int i = 0; i < readings_count; i++) {
-        cJSON *reading_obj = cJSON_CreateObject();
-        
-        char time_buffer[30];
-        struct tm timeinfo;
-        gmtime_r(&sensor_readings_batch[i].timestamp, &timeinfo);
-        strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
-
-        cJSON_AddStringToObject(reading_obj, "mac", mac_str);
-        cJSON_AddNumberToObject(reading_obj, "temp", sensor_readings_batch[i].temperature);
-        cJSON_AddNumberToObject(reading_obj, "hum", sensor_readings_batch[i].humidity);
-        cJSON_AddStringToObject(reading_obj, "readingTime", time_buffer);
-        
-        cJSON_AddItemToArray(data_array, reading_obj);
+    char *json_payload = NULL;
+    esp_err_t err_json = batch_store_build_json(&json_payload);
+    if (err_json != ESP_OK) {
+        ESP_LOGE(DATA_TAG, "Falha ao construir JSON: %s", esp_err_to_name(err_json));
+        return false;
     }
-
-    char *json_payload = cJSON_Print(root);
     ESP_LOGI(DATA_TAG, "Payload JSON do lote gerado: %s", json_payload);
 
     esp_err_t err = rc_post_readings(json_payload);
+    free(json_payload);
+
     if (err == ESP_OK) {
         ESP_LOGI(DATA_TAG, "Lote de leituras enviado com sucesso!");
+        return true;
     } else {
         ESP_LOGE(DATA_TAG, "Falha ao enviar o lote de leituras: %s", esp_err_to_name(err));
-        // Aqui, poderíamos implementar uma lógica de nova tentativa ou salvar os dados em flash.
+        return false;
     }
-
-    // Liberar memória alocada pelo cJSON
-    cJSON_Delete(root);
-    free(json_payload);
 }
 
 void app_main(void)
@@ -344,6 +283,10 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+
+    // Init Batch Store
+    ESP_ERROR_CHECK(batch_store_init(false));
 
     // Initialize TCP/IP stack and event loop once
     ESP_ERROR_CHECK(esp_netif_init());
@@ -371,7 +314,15 @@ void app_main(void)
     if (setup_complete) {
         // Se a configuração estiver completa, inicia a lógica principal de coleta e envio.
         // Esta função não retornará, pois colocará o dispositivo para dormir.
-        collect_and_send_task();
+        // collect_and_send_task();
+        worker_role_set_debug(g_debug_mode_enabled);
+        controller_role_set_debug(g_debug_mode_enabled);
+        esp_err_t r = role_manager_start();
+        if (r != ESP_OK) {
+            ESP_LOGW(TAG, "Role manager returned (%s). Staying idle.", esp_err_to_name(r));
+            while (1) { vTaskDelay(pdMS_TO_TICKS(10000)); }
+        }
+        return;
     } else {
         ESP_LOGW(TAG, "Modo de provisionamento iniciado. Conecte-se ao AP e acesse http://192.168.4.1/");
         // O dispositivo permanecerá acordado no modo de provisionamento.
@@ -454,7 +405,7 @@ static bool wifi_boot_flow(void) {
 }
 
 // --- NEW: Helper function to connect to Wi-Fi on demand ---
-static bool connect_to_wifi(void) {
+bool connect_to_wifi(void) {
     // Fast path: already connected?
     wifi_ap_record_t ap_info;
     esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");

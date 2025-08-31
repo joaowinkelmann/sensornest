@@ -718,6 +718,9 @@ retry_send:
         return err;
     }
     if (status == 200 || status == 201) return ESP_OK;
+    if (status >= 400 && status < 500) {
+        ESP_LOGW(RC_TAG, "post_readings: server rejected payload (status=%d). Consider checking field names.", status);
+    }
     if (status == 401 && retry == 0) {
         ESP_LOGW(RC_TAG, "post_readings: 401 -> re-auth & retry");
         if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
