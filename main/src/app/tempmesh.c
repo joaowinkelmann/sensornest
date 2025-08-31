@@ -31,6 +31,7 @@
 #include "roles/role_manager.h"
 #include "roles/worker_role.h"
 #include "roles/controller_role.h"
+#include "net/wifi_manager.h"
 
 static bool g_debug_mode_enabled = false;
 
@@ -96,7 +97,6 @@ extern void captive_dns_task(void *pv);
 esp_err_t start_rest_server(const char *base_path);
 static bool wifi_boot_flow(void);
 static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len);
-bool connect_to_wifi(void);
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 const char* get_esp_model(void);
@@ -115,7 +115,6 @@ RTC_DATA_ATTR int device_wakeUpInterval   = 10;
 bool send_batched_data(void);
 void perform_sensor_reading(void);
 void simulate_or_sleep(uint64_t seconds);
-bool connect_to_wifi(void);
 
 // Remove outdated prototype:
 // void collect_and_send_task(void);
@@ -159,7 +158,7 @@ void collect_and_send_task(void) {
         if (batch_store_count() >= device_readingsPerBatch) {
             ESP_LOGI(TAG, "Batch full (%d/%d). Connecting to Wi-Fi to send data.", batch_store_count(), device_readingsPerBatch);
 
-            if (connect_to_wifi()) {
+            if (wifi_manager_connect_saved(15000)) {
                 if (!time_is_set) {
                     ESP_LOGI(TAG, "Syncing NTP time...");
                     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
@@ -402,103 +401,6 @@ static bool wifi_boot_flow(void) {
     ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");
     start_softap_and_rest_server();
     return false; // Stay in provisioning mode
-}
-
-// --- NEW: Helper function to connect to Wi-Fi on demand ---
-bool connect_to_wifi(void) {
-    // Fast path: already connected?
-    wifi_ap_record_t ap_info;
-    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (sta_netif &&
-        esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-        esp_netif_ip_info_t ip;
-        if (esp_netif_get_ip_info(sta_netif, &ip) == ESP_OK && ip.ip.addr != 0) {
-            // Already connected with valid IP
-            return true;
-        }
-    }
-
-    char ssid[33] = {0};
-    char pass[65] = {0};
-    if (!load_wifi_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
-        ESP_LOGE(TAG, "No Wi-Fi credentials found to connect.");
-        return false;
-    }
-
-    // Ensure STA netif exists (idempotent)
-    if (!sta_netif) {
-        sta_netif = esp_netif_create_default_wifi_sta(); // creates only once
-        if (!sta_netif) {
-            ESP_LOGE(TAG, "Failed to create default STA netif");
-            return false;
-        }
-    }
-
-    // Initialize Wi-Fi driver only once
-    if (!s_wifi_inited) {
-        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-        s_wifi_inited = true;
-    }
-
-    wifi_config_t wifi_config = {0};
-    strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
-    strlcpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
-
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-
-    // Start Wi-Fi driver once
-    if (!s_wifi_started) {
-        ESP_ERROR_CHECK(esp_wifi_start());
-        s_wifi_started = true;
-    }
-
-    // Event group per attempt
-    s_wifi_event_group = xEventGroupCreate();
-    if (!s_wifi_event_group) {
-        ESP_LOGE(TAG, "Failed to create event group");
-        return false;
-    }
-
-    esp_event_handler_instance_t instance_any_id = NULL, instance_got_ip = NULL;
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
-
-    ESP_ERROR_CHECK(esp_wifi_connect());
-
-    ESP_LOGI(TAG, "Waiting for connection...");
-    EventBits_t bits = xEventGroupWaitBits(
-        s_wifi_event_group,
-        WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-        pdFALSE,
-        pdFALSE,
-        pdMS_TO_TICKS(15000));
-
-    esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip);
-    esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id);
-    vEventGroupDelete(s_wifi_event_group);
-    s_wifi_event_group = NULL;
-
-    if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "WiFi Connected.");
-        return true;
-    }
-
-    ESP_LOGE(TAG, "Connection failed.");
-    return false;
-}
-
-// --- WiFi connection logic (unchanged) ---
-static EventGroupHandle_t s_wifi_event_group;
-#define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT      BIT1
-static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) { esp_wifi_connect(); }
-    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) { xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT); }
-    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) { xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT); }
 }
 
 // --- NEW: Start SoftAP with "ESP-{shortID}" and launch REST server ---

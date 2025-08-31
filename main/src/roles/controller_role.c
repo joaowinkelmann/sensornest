@@ -7,6 +7,7 @@
 #include "freertos/task.h"
 #include "esp_sntp.h"
 #include "net/rest_client.h"
+#include "net/wifi_manager.h"
 
 #define CONTROLLER_MAIN_STACK   8192   // Increase from 4096 (TLS & JSON need >6K)
 #define CONTROLLER_MAIN_PRIO    5
@@ -21,7 +22,6 @@ extern RTC_DATA_ATTR int  device_readingsPerBatch;
 extern RTC_DATA_ATTR int  device_wakeUpInterval;
 
 /* Reuse helper functions still in tempmesh.c */
-extern bool connect_to_wifi(void);
 extern bool send_batched_data(void);
 
 /* Local helpers (duplicated from worker for now; later unify) */
@@ -82,7 +82,7 @@ static void controller_main_task(void *arg) {
         if (batch_store_count() >= device_readingsPerBatch) {
             ESP_LOGI(TAG_CR, "Batch full (%d/%d). Ensuring Wi-Fi & sending.",
                      batch_store_count(), device_readingsPerBatch);
-            if (connect_to_wifi()) {
+            if (wifi_manager_connect_saved(15000)) {
                 ensure_time();
                 fetch_remote_config();
                 bool ok = send_batched_data();

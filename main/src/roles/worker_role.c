@@ -8,9 +8,9 @@
 #include "esp_wifi.h"
 #include "esp_sleep.h"
 #include "roles/role_manager.h"
+#include "net/wifi_manager.h"
 
 // Forward declare (temporarily reusing code from tempmesh.c until fully moved)
-extern bool connect_to_wifi(void);
 extern bool send_batched_data(void);
 extern void perform_sensor_reading(void);
 extern void simulate_or_sleep(uint64_t secs);
@@ -71,7 +71,7 @@ esp_err_t worker_role_start(void) {
         ESP_LOGI(TAG_WR, "Batch full (%d/%d). Connecting Wi-Fi.",
                  batch_store_count(), device_readingsPerBatch);
 
-        if (connect_to_wifi()) {
+        if (wifi_manager_connect_saved(15000)) {
             ensure_time();
             fetch_remote_config();
             bool ok = send_batched_data();

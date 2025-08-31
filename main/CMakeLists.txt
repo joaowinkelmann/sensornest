@@ -7,6 +7,7 @@ idf_component_register(
         "src/net/rest_client.c"
         "src/net/rest_server.c"
         "src/net/captive_dns.c"
+        "src/net/wifi_manager.c"
         "src/roles/role_manager.c"
         "src/roles/worker_role.c"
         "src/roles/controller_role.c"
