@@ -15,6 +15,10 @@
 #include "esp_mac.h"
 #include "cJSON.h"
 #include "certs.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_timer.h"
+#include <stdint.h>
 
 bool rc_get_token(char *out, size_t len);
 bool rc_has_token(void);
@@ -220,7 +224,7 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
         .cert_pem = winkels_root_ca_pem,
         .event_handler = rc_http_event_handler,
         .user_data = &acc,
-        .timeout_ms = 10000,
+        .timeout_ms = 3600,
         .buffer_size = 1024,
         .buffer_size_tx = 1024
     };
@@ -232,7 +236,27 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
     ESP_LOGI(RC_TAG, "login: request body (%d bytes): %s", (int)strlen(body), body);
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, body, strlen(body));
-    esp_err_t err = esp_http_client_perform(client);
+    // Retry transient connect failures a few times with a short backoff
+    esp_err_t err = ESP_FAIL;
+    int tries = 0;
+    const int max_tries = 3;
+    int64_t start_ms = esp_timer_get_time() / 1000;
+    const int64_t total_cap_ms = 25000; // overall cap ~25s
+    do {
+        err = esp_http_client_perform(client);
+        if (err == ESP_ERR_HTTP_CONNECT && tries < max_tries) {
+            ESP_LOGW(RC_TAG, "login: connect failed, retrying (%d/%d)", tries + 1, max_tries);
+            vTaskDelay(pdMS_TO_TICKS(1200));
+            tries++;
+            int64_t elapsed = (esp_timer_get_time() / 1000) - start_ms;
+            if (elapsed >= total_cap_ms) {
+                ESP_LOGW(RC_TAG, "login: total time cap reached (~%lld ms)", (long long)elapsed);
+                break;
+            }
+            continue;
+        }
+        break;
+    } while (1);
     int status = esp_http_client_get_status_code(client);
     int64_t cl = esp_http_client_get_content_length(client);
     bool chunked = esp_http_client_is_chunked_response(client);
@@ -287,7 +311,7 @@ esp_err_t rc_get_device_by_mac(const char *mac, char **out_json) {
         ESP_LOGW(RC_TAG, "device fetch: no token (call rc_login first)");
         return ESP_ERR_INVALID_STATE;
     }
-retry_once:
+retry_auth:
     char mac_buf[32];
     if (!mac || !mac[0]) {
         if (!rc_format_own_mac(mac_buf, sizeof(mac_buf))) return ESP_FAIL;
@@ -300,28 +324,39 @@ retry_once:
     rc_resp_accum_t acc = { .buf = malloc(4096), .cap = 4096, .len = 0 };
     if (!acc.buf) return ESP_ERR_NO_MEM;
 
-    esp_http_client_config_t cfg = {
-        .url = url,
-        .method = HTTP_METHOD_GET,
-        .cert_pem = winkels_root_ca_pem,
-        .timeout_ms = 10000,
-        .event_handler = rc_http_event_handler,
-        .user_data = &acc,
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    if (!client) {
-        free(acc.buf);
-        return ESP_FAIL;
+    esp_err_t err = ESP_FAIL;
+    int status = 0;
+    for (int attempt = 1; attempt <= 3; ++attempt) {
+        acc.len = 0;
+        esp_http_client_config_t cfg = {
+            .url = url,
+            .method = HTTP_METHOD_GET,
+            .cert_pem = winkels_root_ca_pem,
+            .timeout_ms = 15000,
+            .event_handler = rc_http_event_handler,
+            .user_data = &acc,
+            .keep_alive_enable = true,
+        };
+        esp_http_client_handle_t client = esp_http_client_init(&cfg);
+        if (!client) { free(acc.buf); return ESP_FAIL; }
+
+        char auth[600];
+        snprintf(auth, sizeof(auth), "Bearer %s", token);
+        esp_http_client_set_header(client, "Authorization", auth);
+
+        err = esp_http_client_perform(client);
+        status = esp_http_client_get_status_code(client);
+        if (acc.len < acc.cap) acc.buf[acc.len] = 0; else acc.buf[acc.cap - 1] = 0;
+        esp_http_client_cleanup(client);
+
+        if (err == ESP_ERR_HTTP_CONNECT) {
+            ESP_LOGW(RC_TAG, "device fetch connect timeout (attempt %d/3)", attempt);
+            if (attempt < 3) vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+        break; // either success or non-connect error
     }
 
-    char auth[600];
-    snprintf(auth, sizeof(auth), "Bearer %s", token);
-    esp_http_client_set_header(client, "Authorization", auth);
-
-    esp_err_t err = esp_http_client_perform(client);
-    int status = esp_http_client_get_status_code(client);
-    if (acc.len < acc.cap) acc.buf[acc.len] = 0; else acc.buf[acc.cap - 1] = 0;
-    esp_http_client_cleanup(client);
     if (err != ESP_OK) {
         ESP_LOGE(RC_TAG, "device fetch HTTP error: %s", esp_err_to_name(err));
         free(acc.buf);
@@ -336,8 +371,7 @@ retry_once:
         ESP_LOGW(RC_TAG, "device fetch 401 -> re-auth & retry");
         free(acc.buf);
         if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
-            /* refresh token header & retry */
-            goto retry_once;
+            goto retry_auth;
         }
         return ESP_ERR_INVALID_STATE;
     }
@@ -345,45 +379,54 @@ retry_once:
     free(acc.buf);
     if (status == 404) return ESP_ERR_NOT_FOUND;
     if (status == 401) return ESP_ERR_INVALID_STATE;
-    return ESP_FAIL;
+    return (status == 0) ? ESP_ERR_HTTP_CONNECT : ESP_FAIL;
 }
 
 /* --- NEW: Fetch all meshes for the authenticated user --- */
 esp_err_t rc_get_meshes(char **out_json) {
     if (!out_json) return ESP_ERR_INVALID_ARG;
     *out_json = NULL;
-
     char token[512];
     if (!rc_get_token(token, sizeof(token))) {
         ESP_LOGW(RC_TAG, "meshes fetch: no token (call rc_login first)");
         return ESP_ERR_INVALID_STATE;
     }
-retry_once:
-    rc_resp_accum_t acc = { .buf = malloc(8192), .cap = 8192, .len = 0 }; // Larger buffer for meshes list
+retry_auth:
+    rc_resp_accum_t acc = { .buf = malloc(8192), .cap = 8192, .len = 0 };
     if (!acc.buf) return ESP_ERR_NO_MEM;
 
-    esp_http_client_config_t cfg = {
-        .url = CLOUD_MESHES_URL,
-        .method = HTTP_METHOD_GET,
-        .cert_pem = winkels_root_ca_pem,
-        .timeout_ms = 10000,
-        .event_handler = rc_http_event_handler,
-        .user_data = &acc,
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    if (!client) {
-        free(acc.buf);
-        return ESP_FAIL;
+    esp_err_t err = ESP_FAIL;
+    int status = 0;
+    for (int attempt = 1; attempt <= 3; ++attempt) {
+        acc.len = 0;
+        esp_http_client_config_t cfg = {
+            .url = CLOUD_MESHES_URL,
+            .method = HTTP_METHOD_GET,
+            .cert_pem = winkels_root_ca_pem,
+            .timeout_ms = 15000,
+            .event_handler = rc_http_event_handler,
+            .user_data = &acc,
+            .keep_alive_enable = true,
+        };
+        esp_http_client_handle_t client = esp_http_client_init(&cfg);
+        if (!client) { free(acc.buf); return ESP_FAIL; }
+
+        char auth[600];
+        snprintf(auth, sizeof(auth), "Bearer %s", token);
+        esp_http_client_set_header(client, "Authorization", auth);
+
+        err = esp_http_client_perform(client);
+        status = esp_http_client_get_status_code(client);
+        if (acc.len < acc.cap) acc.buf[acc.len] = 0; else acc.buf[acc.cap - 1] = 0;
+        esp_http_client_cleanup(client);
+
+        if (err == ESP_ERR_HTTP_CONNECT) {
+            ESP_LOGW(RC_TAG, "meshes fetch connect timeout (attempt %d/3)", attempt);
+            if (attempt < 3) vTaskDelay(pdMS_TO_TICKS(1500));
+            continue;
+        }
+        break;
     }
-
-    char auth[600];
-    snprintf(auth, sizeof(auth), "Bearer %s", token);
-    esp_http_client_set_header(client, "Authorization", auth);
-
-    esp_err_t err = esp_http_client_perform(client);
-    int status = esp_http_client_get_status_code(client);
-    if (acc.len < acc.cap) acc.buf[acc.len] = 0; else acc.buf[acc.cap - 1] = 0;
-    esp_http_client_cleanup(client);
 
     if (err != ESP_OK) {
         ESP_LOGE(RC_TAG, "meshes fetch HTTP error: %s", esp_err_to_name(err));
@@ -399,18 +442,23 @@ retry_once:
         ESP_LOGW(RC_TAG, "meshes fetch 401 -> re-auth & retry");
         free(acc.buf);
         if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
-            goto retry_once;
+            goto retry_auth;
         }
         return ESP_ERR_INVALID_STATE;
     }
     ESP_LOGW(RC_TAG, "meshes fetch status=%d body=%s", status, acc.buf ? acc.buf : "");
     free(acc.buf);
-    return ESP_FAIL;
+    return (status == 0) ? ESP_ERR_HTTP_CONNECT : ESP_FAIL;
 }
 
-/* --- NEW: Bind the current device to a specific mesh --- */
-esp_err_t rc_bind_device_to_mesh(const char *mesh_id) {
-    if (!mesh_id || !mesh_id[0]) return ESP_ERR_INVALID_ARG;
+/* --- NEW: Update the current device on the cloud (name/readings/wake/mesh/role) --- */
+esp_err_t rc_update_device(const char *name, int readingsPerBatch, int wakeUpInterval,
+                           const char *mesh_id, const char *role) {
+     // At least one arg should be provided
+    if ((!name || !name[0]) && readingsPerBatch <= 0 && wakeUpInterval <= 0 &&
+        (!mesh_id || !mesh_id[0]) && (!role || !role[0])) {
+         return ESP_ERR_INVALID_ARG;
+     }
 
     char *device_json = NULL;
     char device_id[40] = {0};
@@ -418,7 +466,7 @@ esp_err_t rc_bind_device_to_mesh(const char *mesh_id) {
     // 1. Get the full device object to find its ID
     esp_err_t err = rc_get_device_by_mac(NULL, &device_json);
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "bind_device: could not get own device details first. err=%s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "update_device: could not get own device details first. err=%s", esp_err_to_name(err));
         return err;
     }
     if (!device_json) return ESP_FAIL;
@@ -434,20 +482,32 @@ esp_err_t rc_bind_device_to_mesh(const char *mesh_id) {
     free(device_json);
 
     if (!device_id[0]) {
-        ESP_LOGE(RC_TAG, "bind_device: could not parse device ID from cloud response.");
+        ESP_LOGE(RC_TAG, "update_device: could not parse device ID from cloud response.");
         return ESP_FAIL;
     }
 
-    // 2. Perform the POST request to update the meshId
+    // Build JSON body with only provided fields
+    cJSON *body_obj = cJSON_CreateObject();
+    if (!body_obj) return ESP_ERR_NO_MEM;
+    if (name && name[0]) cJSON_AddStringToObject(body_obj, "name", name);
+    if (readingsPerBatch > 0) cJSON_AddNumberToObject(body_obj, "readingsPerBatch", readingsPerBatch);
+    if (wakeUpInterval > 0) cJSON_AddNumberToObject(body_obj, "wakeUpInterval", wakeUpInterval);
+    if (mesh_id && mesh_id[0]) cJSON_AddStringToObject(body_obj, "meshId", mesh_id);
+    if (role && role[0]) cJSON_AddStringToObject(body_obj, "role", role);
+
+    char *body = cJSON_PrintUnformatted(body_obj);
+    cJSON_Delete(body_obj);
+    if (!body) return ESP_ERR_NO_MEM;
+
     char token[512];
-    if (!rc_get_token(token, sizeof(token))) return ESP_ERR_INVALID_STATE;
+    if (!rc_get_token(token, sizeof(token))) {
+        free(body);
+        return ESP_ERR_INVALID_STATE;
+    }
 
 retry_once:
     char url[256];
     snprintf(url, sizeof(url), "%s%s", CLOUD_DEVICE_UPDATE_URL, device_id);
-
-    char body[128];
-    snprintf(body, sizeof(body), "{\"meshId\":\"%s\"}", mesh_id);
 
     esp_http_client_config_t cfg = {
         .url = url,
@@ -456,7 +516,7 @@ retry_once:
         .timeout_ms = 10000,
     };
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    if (!client) return ESP_FAIL;
+    if (!client) { free(body); return ESP_FAIL; }
 
     char auth[600];
     snprintf(auth, sizeof(auth), "Bearer %s", token);
@@ -467,63 +527,70 @@ retry_once:
     err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
     esp_http_client_cleanup(client);
+    free(body);
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "bind_device: HTTP PATCH error: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "update_device: HTTP PATCH error: %s", esp_err_to_name(err));
         return err;
     }
-
     if (status >= 200 && status < 300) {
-        ESP_LOGI(RC_TAG, "bind_device: success. Device %s bound to mesh %s", device_id, mesh_id);
+        ESP_LOGI(RC_TAG, "update_device: success. Device %s updated", device_id);
         return ESP_OK;
     }
-
     if (status == 401) {
-        ESP_LOGW(RC_TAG, "bind_device: 401 -> re-auth & retry");
+        ESP_LOGW(RC_TAG, "update_device: 401 -> re-auth & retry");
         if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
             goto retry_once;
         }
         return ESP_ERR_INVALID_STATE;
     }
-
-    ESP_LOGE(RC_TAG, "bind_device: failed with HTTP status %d", status);
+    ESP_LOGE(RC_TAG, "update_device: failed with HTTP status %d", status);
     if (status == 404) return ESP_ERR_NOT_FOUND;
     return ESP_FAIL;
 }
 
 /* --- NEW: Register the current device with the cloud --- */
-esp_err_t rc_register_device(const char *name, const char *role) {
-    if (!name || !role) return ESP_ERR_INVALID_ARG;
+esp_err_t rc_register_device(const char *name, const char *role, const char *mesh_id, int readingsPerBatch, int wakeUpInterval, int x, int y) {
+    if (!name || !role || !mesh_id) return ESP_ERR_INVALID_ARG;
 
     char token[512];
-    if (!rc_get_token(token, sizeof(token))) return ESP_ERR_INVALID_STATE;
+    if (!rc_get_token(token, sizeof(token))) {
+        return ESP_ERR_INVALID_STATE; // Not logged in
+    }
+
+    char mac_str[18];
+    rc_format_own_mac(mac_str, sizeof(mac_str));
+
+    esp_err_t err = ESP_FAIL;
 
 retry_once:
-    char mac_buf[18];
-    if (!rc_format_own_mac(mac_buf, sizeof(mac_buf))) return ESP_FAIL;
-
     cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "macAddress", mac_buf);
     cJSON_AddStringToObject(root, "name", name);
     cJSON_AddStringToObject(root, "role", role);
-    // Add other fields with sensible defaults
-    cJSON_AddStringToObject(root, "description", "Newly registered device");
-    cJSON_AddNumberToObject(root, "x", 0);
-    cJSON_AddNumberToObject(root, "y", 0);
+    cJSON_AddStringToObject(root, "meshId", mesh_id);
+    cJSON_AddStringToObject(root, "macAddress", mac_str);
     cJSON_AddStringToObject(root, "status", "ACTIVE");
-    cJSON_AddStringToObject(root, "deviceColor", "#FFFFFF");
-    cJSON_AddNumberToObject(root, "readingsPerBatch", 10);
-    cJSON_AddNumberToObject(root, "wakeUpInterval", 3600);
-
+    cJSON_AddNumberToObject(root, "readingsPerBatch", readingsPerBatch);
+    cJSON_AddNumberToObject(root, "wakeUpInterval", wakeUpInterval);
+    cJSON_AddNumberToObject(root, "x", x);
+    cJSON_AddNumberToObject(root, "y", y);
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (!body) return ESP_ERR_NO_MEM;
+
+    rc_resp_accum_t acc = { .buf = malloc(1024), .cap = 1024, .len = 0 };
+    if (!acc.buf) {
+        free(body);
+        return ESP_ERR_NO_MEM;
+    }
 
     esp_http_client_config_t cfg = {
         .url = CLOUD_DEVICE_REGISTER_URL,
         .method = HTTP_METHOD_POST,
         .cert_pem = winkels_root_ca_pem,
-        .timeout_ms = 10000,
+        .timeout_ms = 20000,
+        .event_handler = rc_http_event_handler,
+        .user_data = &acc,
     };
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
     if (!client) {
@@ -537,8 +604,12 @@ retry_once:
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, body, strlen(body));
 
-    esp_err_t err = esp_http_client_perform(client);
+    err = esp_http_client_perform(client);
     int status = esp_http_client_get_status_code(client);
+    if (acc.len > 0) {
+        acc.buf[acc.len] = 0;
+        ESP_LOGI(RC_TAG, "register_device: response body: %s", acc.buf);
+    }
     esp_http_client_cleanup(client);
     free(body);
 
@@ -554,6 +625,7 @@ retry_once:
 
     if (status == 401) {
         ESP_LOGW(RC_TAG, "register_device: 401 -> re-auth & retry");
+        free(acc.buf);
         if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
             goto retry_once;
         }
@@ -561,6 +633,7 @@ retry_once:
     }
 
     ESP_LOGE(RC_TAG, "register_device: failed with HTTP status %d", status);
+    free(acc.buf);
     return ESP_FAIL;
 }
 

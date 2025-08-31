@@ -6,5 +6,5 @@ esp_err_t rc_post_readings(const char *json_payload);
 esp_err_t rc_get_device_by_mac(const char *mac, char **out_json);
 bool rc_load_creds(char *email, size_t e_len, char *pass, size_t p_len);
 esp_err_t rc_get_meshes(char **out_json);
-esp_err_t rc_bind_device_to_mesh(const char *mesh_id);
-esp_err_t rc_register_device(const char *name, const char *role);
+esp_err_t rc_update_device(const char *name, int readingsPerBatch, int wakeUpInterval, const char *mesh_id, const char *role);
+esp_err_t rc_register_device(const char *name, const char *role, const char *mesh_id, int readingsPerBatch, int wakeUpInterval, int x, int y);

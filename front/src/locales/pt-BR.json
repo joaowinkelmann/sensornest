@@ -20,6 +20,7 @@
   "status_connecting": "Conectando...",
   "status_enterPassword": "Rede selecionada. Digite a senha para continuar.",
   "status_selectNetwork": "Selecione uma rede para começar.",
+  "status_registerDevice": "Cadastrando novo dispositivo.",
   "status_complete": "Configuração completa! O dispositivo está conectado.",
   "status_selectMesh": "Selecione uma mesh.",
   "failedToSaveRole": "Falha ao salvar a função",
@@ -35,11 +36,17 @@
   "deviceBoundTitle": "Dispositivo Vinculado",
   "currentMesh": "Mesh Atual",
   "completeSetupBtn": "Finalizar Configuração",
-  "changeMeshBtn": "Alterar Mesh",
+  "changeDeviceParams": "Atualizar Dispositivo",
   "error_invalid_credentials": "Credenciais inválidas. Por favor, tente novamente.",
   "loginSuccess": "Login bem-sucedido!",
-  "bindDeviceBtn": "Vincular Dispositivo à Mesh",
+  "updateDeviceBtn": "Atualizar Dispositivo",
   "selectMeshTitle": "Selecionar Mesh",
   "selectMesh": "Selecionar Mesh",
-  "deviceBound": "Dispositivo Vinculado com Sucesso"
+  "deviceBound": "Dispositivo Vinculado com Sucesso",
+  "registerDeviceTitle": "Registrar Dispositivo",
+  "deviceName": "Nome do Dispositivo",
+  "deviceNameHint": "Forneça um nome para o dispositivo que está sendo configurado.",
+  "registerDeviceBtn": "Registrar Dispositivo",
+  "setupComplete": "Configuração Concluída",
+  "deviceWillRestart": "O dispositivo irá reiniciar e aplicar as novas configurações."
 }

@@ -138,27 +138,8 @@
             </div>
           </div>
 
-          <!-- Device Registration -->
-          <div v-if="loggedIn && !device">
-            <div class="text-h6 q-mt-lg">{{ $t("registerDeviceTitle") }}</div>
-            <q-input
-              v-model="newDeviceName"
-              class="q-mt-md"
-              filled
-              :label="$t('deviceName')"
-              :hint="$t('deviceNameHint')"
-            />
-            <q-btn
-              class="q-mt-md"
-              color="primary"
-              :label="$t('registerDeviceBtn')"
-              :disable="!newDeviceName"
-              @click="registerDevice"
-            />
-          </div>
-
           <!-- Mesh Selection -->
-          <div v-if="loggedIn && device && (!device.meshId || changingMesh)">
+          <div v-if="loggedIn && (!device?.meshId || changingMesh)">
             <div class="text-h6 q-mt-lg">{{ $t("selectMeshTitle") }}</div>
             <q-select
               v-model="selectedMeshId"
@@ -170,10 +151,94 @@
               map-options
               :loading="!meshes.length"
             />
+
+            <!-- Placeholder for creating a new mesh -->
+            <div class="q-mt-sm text-caption">
+              Need a new mesh? <a href="#" @click.prevent>Create one here</a> (coming soon).
+            </div>
+
+            <!-- If device is not yet registered, show registration form -->
+            <div v-if="!device" class="q-mt-lg">
+              <div class="text-subtitle1">{{ $t("registerDeviceTitle") }}</div>
+              <q-input
+                v-model="newDeviceName"
+                class="q-mt-md"
+                filled
+                :label="$t('deviceName')"
+                :hint="$t('deviceNameHint')"
+              />
+              <div class="row q-col-gutter-md q-mt-xs">
+                <div class="col-6">
+                  <q-input
+                    v-model.number="newDeviceReadingsPerBatch"
+                    type="number"
+                    filled
+                    :label="$t('readingsPerBatch')"
+                    :hint="$t('readingsPerBatchHint')"
+                  />
+                </div>
+                <div class="col-6">
+                  <q-input
+                    v-model.number="newDeviceWakeUpInterval"
+                    type="number"
+                    filled
+                    :label="$t('wakeUpInterval')"
+                    :hint="$t('wakeUpIntervalHint')"
+                  />
+                </div>
+              </div>
+              <q-btn
+                class="q-mt-md"
+                color="primary"
+                :label="$t('registerDeviceBtn')"
+                :disable="!selectedMeshId || !newDeviceName"
+                @click="registerDevice"
+              />
+            </div>
+
+            <!-- If device exists and user is editing params, show editable fields -->
+            <div v-else-if="changingMesh" class="q-mt-lg">
+              <div class="text-subtitle1">{{ $t("registerDeviceTitle") }}</div>
+              <q-input
+                v-model="newDeviceName"
+                class="q-mt-md"
+                filled
+                :label="$t('deviceName')"
+              />
+              <div class="row q-col-gutter-md q-mt-xs">
+                <div class="col-6">
+                  <q-input
+                    v-model.number="newDeviceReadingsPerBatch"
+                    type="number"
+                    filled
+                    :label="$t('readingsPerBatch')"
+                  />
+                </div>
+                <div class="col-6">
+                  <q-input
+                    v-model.number="newDeviceWakeUpInterval"
+                    type="number"
+                    filled
+                    :label="$t('wakeUpInterval')"
+                  />
+                </div>
+              </div>
+              <div class="row q-mt-md q-gutter-sm">
+                <q-btn
+                  color="primary"
+                  :label="$t('updateDeviceBtn')"
+                  :disable="!selectedMeshId"
+                  @click="asyncSaveDeviceParams"
+                />
+              </div>
+            </div>
+
+            <!-- Show bind button only if device exists but is not bound -->
             <q-btn
+              v-if="device && !device.meshId"
               class="q-mt-md"
               color="primary"
-              :label="$t('bindDeviceBtn')"
+              :label="$t('updateDeviceBtn')"
               :disable="!selectedMeshId"
               @click="bindDevice"
             />
@@ -195,7 +260,7 @@
               <q-btn
                 color="secondary"
                 outline
-                :label="$t('changeMeshBtn')"
+                :label="$t('changeDeviceParams')"
                 @click="changeMesh"
               />
             </div>
@@ -250,6 +315,8 @@ const loginLoading = ref(false);
 const loggedIn = ref(false);
 const device = ref(null);
 const newDeviceName = ref("");
+const newDeviceReadingsPerBatch = ref(5); // Default value
+const newDeviceWakeUpInterval = ref(15); // Default value
 const meshes = ref([]);
 const selectedMeshId = ref(null);
 const changingMesh = ref(false);
@@ -266,21 +333,19 @@ const step = computed(() => {
   }
   // Once connected to Wi-Fi, the steps depend on cloud status
   if (!loggedIn.value) return 3; // Login to cloud
-  if (!device.value) return 4; // Register device
-  if (!device.value.meshId || changingMesh.value) return 5; // Select mesh
-  return 6; // Complete
+  if (!device?.meshId || changingMesh.value) return 4; // Select mesh and/or register device
+  return 5; // Complete
 });
 
 const progressValue = computed(() => {
   // Map step to a progress value from 0 to 1
   const stepProgress = {
     0: 0,       // Role
-    1: 1/6,     // Wi-Fi Select
-    2: 2/6,     // Wi-Fi Connecting
-    3: 3/6,     // Login
-    4: 4/6,     // Register
-    5: 5/6,     // Bind Mesh
-    6: 1,       // Done
+    1: 1/5,     // Wi-Fi Select
+    2: 2/5,     // Wi-Fi Connecting
+    3: 3/5,     // Login
+    4: 4/5,     // Select Mesh / Register
+    5: 1,       // Done
   };
   return stepProgress[step.value] || 0;
 });
@@ -292,8 +357,7 @@ const statusText = computed(() => {
     return t("status_selectNetwork");
   }
   if (!loggedIn.value) return t("status_login");
-  if (!device.value) return t("status_registerDevice");
-  if (!device.value.meshId || changingMesh.value) return t("status_selectMesh");
+  if (!device?.meshId || changingMesh.value) return t("status_selectMesh");
   return t("status_complete");
 });
 const ssidOptions = computed(() =>
@@ -384,6 +448,11 @@ async function scan() {
       }, {})
     );
     ssidList.value = unique.sort((a, b) => b.rssi - a.rssi);
+
+    // Automatically select the strongest SSID if the user hasn't picked one yet
+    if (!ssid.value && ssidList.value.length > 0) {
+      ssid.value = ssidList.value[0].ssid;
+    }
   } catch (e) {
     showError(e, "failedToScan");
   } finally {
@@ -404,12 +473,8 @@ async function doLogin() {
     });
     device.value = loginResponse.device;
     console.log("Device state after login:", device.value); // <-- ADDED
-    if (device.value?.id) {
-      console.log("Device has ID, fetching meshes..."); // <-- ADDED
-      await fetchMeshes(); // Fetch meshes to show name or for selection
-    } else {
-      console.log("Device has no ID, proceeding to registration step."); // <-- ADDED
-    }
+    // Always fetch meshes after login to prepare for the next step
+    await fetchMeshes();
   } catch (e) {
     showError(e, "loginFailed");
   } finally {
@@ -444,7 +509,14 @@ async function checkDevice() {
 
 async function registerDevice() {
   try {
-    const regResponse = await api.registerDevice(newDeviceName.value, role.value);
+    // Pass selected meshId and new params during registration
+    const regResponse = await api.registerDevice(
+      newDeviceName.value,
+      role.value,
+      selectedMeshId.value,
+      newDeviceReadingsPerBatch.value,
+      newDeviceWakeUpInterval.value
+    );
     console.log("Register Response:", regResponse); // <-- Added log
     $q.notify({ type: "positive", message: t("deviceRegistered") });
     await checkDevice(); // Re-check to proceed to mesh selection
@@ -465,8 +537,14 @@ async function fetchMeshes() {
 
 async function bindDevice() {
   try {
-    const bindResponse = await api.bindDevice(selectedMeshId.value);
-    console.log("Bind Response:", bindResponse); // <-- Added log
+    // Use updateDevice to set mesh + optional name/readings/interval
+    const resp = await api.updateDevice(
+      newDeviceName.value || undefined,
+      newDeviceReadingsPerBatch.value || undefined,
+      newDeviceWakeUpInterval.value || undefined,
+      selectedMeshId.value || undefined
+    );
+    console.log("Update Response:", resp);
     $q.notify({ type: "positive", message: t("deviceBound") });
     await checkDevice(); // Re-check to update UI
     changingMesh.value = false;
@@ -476,17 +554,53 @@ async function bindDevice() {
 }
 
 async function changeMesh() {
+  // kept for backward compatibility: redirect to the new "changeDeviceParams" flow
+  return changeDeviceParams();
+}
+
+async function changeDeviceParams() {
   changingMesh.value = true;
-  selectedMeshId.value = null;
+  // prefill with current device values when available
+  selectedMeshId.value = device.value?.meshId || null;
+  newDeviceName.value = device.value?.name || newDeviceName.value || "";
+  newDeviceReadingsPerBatch.value = device.value?.readingsPerBatch || newDeviceReadingsPerBatch.value;
+  newDeviceWakeUpInterval.value = device.value?.wakeUpInterval || newDeviceWakeUpInterval.value;
   await fetchMeshes();
 }
 
-function completeSetup() {
-  setupDone.value = true;
-  // Optionally, you could trigger a device restart here
-  setTimeout(() => window.location.reload(), 5000);
+// Save handler used by the edit screen: bind if mesh changed, or register if device missing
+async function asyncSaveDeviceParams() {
+  try {
+    if (!device.value) {
+      // device not registered yet -> register
+      await registerDevice();
+    } else {
+      // If mesh changed or other params changed, call updateDevice
+      await api.updateDevice(
+        newDeviceName.value || undefined,
+        newDeviceReadingsPerBatch.value || undefined,
+        newDeviceWakeUpInterval.value || undefined,
+        selectedMeshId.value || device.value.meshId || undefined,
+        role.value
+      );
+      // Note: device name / interval update endpoint now implemented
+      $q.notify({ type: "positive", message: t("deviceBound") });
+      changingMesh.value = false;
+      await checkDevice();
+    }
+  } catch (e) {
+    showError(e, "failedToBindDevice");
+  }
 }
 
+async function completeSetup() {
+  try {
+    await api.completeSetup();
+    setupDone.value = true;
+  } catch (e) {
+    showError(e, "failedToCompleteSetup");
+  }
+}
 
 async function connect() {
   connecting.value = true;

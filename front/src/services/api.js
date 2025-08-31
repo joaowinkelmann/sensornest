@@ -138,18 +138,31 @@ export const api = {
 
   // --- NEW: Cloud device and mesh APIs ---
   getDevice: () => doFetch(`${base}/api/v1/cloud/device`),
-  registerDevice: (name, role) =>
+  registerDevice: (name, role, meshId, readingsPerBatch, wakeUpInterval) =>
     doFetch(`${base}/api/v1/cloud/device/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, role }),
+      body: JSON.stringify({
+        name,
+        role,
+        meshId,
+        readingsPerBatch,
+        wakeUpInterval,
+      }),
     }),
   getMeshes: () => doFetch(`${base}/api/v1/cloud/meshes`),
-  bindDevice: (meshId) =>
-    doFetch(`${base}/api/v1/cloud/device/bind`, {
+
+  updateDevice: (name, readingsPerBatch, wakeUpInterval, meshId, role) =>
+    doFetch(`${base}/api/v1/cloud/device/update`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ meshId }),
+      body: JSON.stringify({
+        name,
+        readingsPerBatch,
+        wakeUpInterval,
+        meshId,
+        role,
+      }),
     }),
 
   setDebug: (enabled) =>
@@ -158,4 +171,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
     }),
+
+  completeSetup: () =>
+    doFetch(`${base}/api/v1/setup/complete`, { method: "POST" }),
 };

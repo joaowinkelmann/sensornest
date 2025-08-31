@@ -35,11 +35,13 @@
   "deviceBoundTitle": "Dispositivo Vinculado",
   "currentMesh": "Malla Actual",
   "completeSetupBtn": "Finalizar Configuración",
-  "changeMeshBtn": "Cambiar Malla",
+  "changeDeviceParams": "Actualizar Dispositivo",
   "error_invalid_credentials": "Credenciales inválidas. Por favor, inténtelo de nuevo.",
   "loginSuccess": "¡Inicio de sesión exitoso!",
-  "bindDeviceBtn": "Vincular Dispositivo a la Malla",
+  "updateDeviceBtn": "Actualizar Dispositivo",
   "selectMeshTitle": "Seleccionar Malla",
   "selectMesh": "Seleccionar Malla",
-  "deviceBound": "Dispositivo Vinculado con Éxito"
+  "deviceBound": "Dispositivo Vinculado con Éxito",
+  "setupComplete": "Configuración Completa",
+  "deviceWillRestart": "El dispositivo se reiniciará y aplicará las nuevas configuraciones."
 }

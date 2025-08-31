@@ -57,11 +57,12 @@ static esp_err_t rs_captive_redirect_handler(httpd_req_t *req);
 // REMOVED: static esp_err_t rs_cloud_login_post_handler(httpd_req_t *req);
 static esp_err_t rs_cloud_device_get_handler(httpd_req_t *req);
 static esp_err_t rs_cloud_meshes_get_handler(httpd_req_t *req);
-static esp_err_t rs_cloud_device_bind_post_handler(httpd_req_t *req);
+// static esp_err_t rs_cloud_device_bind_post_handler(httpd_req_t *req);
 static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req);
 static esp_err_t rs_cors_options_handler(httpd_req_t *req);
 static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx);
 static void wifi_test_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req);
 
 #define CHECK_FILE_EXTENSION(filename, ext) (strcasecmp(&filename[strlen(filename) - strlen(ext)], ext) == 0)
 
@@ -804,51 +805,6 @@ static esp_err_t rs_cloud_meshes_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// --- POST /api/v1/cloud/device/bind ---
-static esp_err_t rs_cloud_device_bind_post_handler(httpd_req_t *req) {
-    rest_server_context_t *ctx = (rest_server_context_t*)req->user_ctx;
-    if (!rs_read_body(req, ctx->scratch, sizeof(ctx->scratch))) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
-        return ESP_FAIL;
-    }
-    cJSON *root = cJSON_Parse(ctx->scratch);
-    if (!root) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
-        return ESP_FAIL;
-    }
-    cJSON *j_mesh_id = cJSON_GetObjectItem(root, "meshId");
-    if (!cJSON_IsString(j_mesh_id) || !j_mesh_id->valuestring[0]) {
-        cJSON_Delete(root);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "meshId required");
-        return ESP_FAIL;
-    }
-
-    esp_err_t err = rc_bind_device_to_mesh(j_mesh_id->valuestring);
-    cJSON_Delete(root);
-
-    httpd_resp_set_type(req, "application/json");
-    if (err == ESP_OK) {
-        nvs_set_setup_stage("mesh_selected");
-        httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
-        return ESP_OK;
-    }
-    if (err == ESP_ERR_INVALID_STATE) { // Not logged in
-        httpd_resp_set_status(req, "401 Unauthorized");
-        httpd_resp_sendstr(req, "{\"error\":\"unauthorized\"}");
-        return ESP_OK;
-    }
-    if (err == ESP_ERR_NOT_FOUND) { // Device not found on cloud
-        httpd_resp_set_status(req, "404 Not Found");
-        httpd_resp_sendstr(req, "{\"error\":\"device_not_found\"}");
-        return ESP_OK;
-    }
-
-    httpd_resp_set_status(req, "502 Bad Gateway");
-    httpd_resp_sendstr(req, "{\"error\":\"cloud_error_binding_device\"}");
-    return ESP_OK;
-}
-
-// --- NEW: POST /api/v1/cloud/device/register ---
 static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req) {
     rest_server_context_t *ctx = (rest_server_context_t*)req->user_ctx;
     if (!rs_read_body(req, ctx->scratch, sizeof(ctx->scratch))) {
@@ -860,31 +816,149 @@ static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
         return ESP_FAIL;
     }
-    cJSON *j_name = cJSON_GetObjectItem(root, "name");
-    cJSON *j_role = cJSON_GetObjectItem(root, "role");
 
-    if (!cJSON_IsString(j_name) || !j_name->valuestring[0] || !cJSON_IsString(j_role) || !j_role->valuestring[0]) {
+    cJSON *j_name  = cJSON_GetObjectItem(root, "name");
+    cJSON *j_role  = cJSON_GetObjectItem(root, "role");
+    cJSON *j_mesh  = cJSON_GetObjectItem(root, "meshId");
+    cJSON *j_batch = cJSON_GetObjectItem(root, "readingsPerBatch");
+    cJSON *j_wake  = cJSON_GetObjectItem(root, "wakeUpInterval");
+    cJSON *j_x     = cJSON_GetObjectItem(root, "x");
+    cJSON *j_y     = cJSON_GetObjectItem(root, "y");
+
+    if (!cJSON_IsString(j_name) || !j_name->valuestring[0] ||
+        !cJSON_IsString(j_role) || !j_role->valuestring[0] ||
+        !cJSON_IsString(j_mesh) || !j_mesh->valuestring[0] ||
+        !cJSON_IsNumber(j_batch) || !cJSON_IsNumber(j_wake)) {
         cJSON_Delete(root);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "name and role required");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing required fields");
         return ESP_FAIL;
     }
 
-    esp_err_t err = rc_register_device(j_name->valuestring, j_role->valuestring);
-    cJSON_Delete(root);
+    const char *role = j_role->valuestring;
+    if (strcmp(role, "CONTROLLER") && strcmp(role, "WORKER")) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid role");
+        return ESP_FAIL;
+    }
 
+    int x = (j_x && cJSON_IsNumber(j_x)) ? j_x->valueint : 0;
+    int y = (j_y && cJSON_IsNumber(j_y)) ? j_y->valueint : 0;
+
+    esp_err_t err = rc_register_device(
+        j_name->valuestring,
+        role,
+        j_mesh->valuestring,
+        j_batch->valueint,
+        j_wake->valueint,
+        x,
+        y
+    );
+
+    cJSON_Delete(root);
     httpd_resp_set_type(req, "application/json");
+
     if (err == ESP_OK) {
-        httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
+        // Save role to NVS if not already saved
+        nvs_handle_t nvs;
+        if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
+            nvs_set_str(nvs, "role", role);
+            nvs_commit(nvs);
+            nvs_close(nvs);
+        }
+        nvs_set_setup_stage("device_registered");
+        httpd_resp_sendstr(req, "{\"status\":\"ok\",\"registered\":true}");
         return ESP_OK;
     }
-    if (err == ESP_ERR_INVALID_STATE) { // Not logged in
+    if (err == ESP_ERR_INVALID_STATE) {
         httpd_resp_set_status(req, "401 Unauthorized");
         httpd_resp_sendstr(req, "{\"error\":\"unauthorized\"}");
         return ESP_OK;
     }
-
+    if (err == ESP_ERR_INVALID_ARG) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "{\"error\":\"invalid_payload\"}");
+        return ESP_OK;
+    }
     httpd_resp_set_status(req, "502 Bad Gateway");
     httpd_resp_sendstr(req, "{\"error\":\"cloud_error_registering_device\"}");
+    return ESP_OK;
+}
+
+// --- POST /api/v1/cloud/device/update ---
+static esp_err_t rs_cloud_device_update_post_handler(httpd_req_t *req) {
+    rest_server_context_t *ctx = (rest_server_context_t*)req->user_ctx;
+    if (!rs_read_body(req, ctx->scratch, sizeof(ctx->scratch))) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
+        return ESP_FAIL;
+    }
+    cJSON *root = cJSON_Parse(ctx->scratch);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_FAIL;
+    }
+    cJSON *j_name     = cJSON_GetObjectItem(root, "name");
+    cJSON *j_batch    = cJSON_GetObjectItem(root, "readingsPerBatch");
+    cJSON *j_interval = cJSON_GetObjectItem(root, "wakeUpInterval");
+    cJSON *j_mesh     = cJSON_GetObjectItem(root, "meshId");
+    cJSON *j_role     = cJSON_GetObjectItem(root, "role");
+
+    bool have_field = false;
+    const char *name = NULL, *meshId = NULL, *role = NULL;
+    int batch = -1, interval = -1;
+
+    if (j_name && cJSON_IsString(j_name) && j_name->valuestring[0]) {
+        name = j_name->valuestring; have_field = true;
+    }
+    if (j_mesh && cJSON_IsString(j_mesh) && j_mesh->valuestring[0]) {
+        meshId = j_mesh->valuestring; have_field = true;
+    }
+    if (j_role && cJSON_IsString(j_role) && j_role->valuestring[0]) {
+        role = j_role->valuestring; have_field = true;
+    }
+    if (j_batch && cJSON_IsNumber(j_batch) && j_batch->valueint > 0) {
+        batch = j_batch->valueint; have_field = true;
+    }
+    if (j_interval && cJSON_IsNumber(j_interval) && j_interval->valueint > 0) {
+        interval = j_interval->valueint; have_field = true;
+    }
+    if (!have_field) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no updatable fields");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = rc_update_device(name, batch, interval, meshId, role);
+    // If role updated locally, persist to NVS
+    if (err == ESP_OK && role && role[0]) {
+        if (strcmp(role, "CONTROLLER") == 0 || strcmp(role, "WORKER") == 0) {
+            nvs_handle_t nvs;
+            if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
+                nvs_set_str(nvs, "role", role);
+                nvs_commit(nvs);
+                nvs_close(nvs);
+            }
+        }
+    }
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK) {
+        if (meshId && meshId[0]) nvs_set_setup_stage("mesh_selected");
+        httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_INVALID_STATE) {
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_sendstr(req, "{\"error\":\"unauthorized\"}");
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_NOT_FOUND) {
+        httpd_resp_set_status(req, "404 Not Found");
+        httpd_resp_sendstr(req, "{\"error\":\"device_not_found\"}");
+        return ESP_OK;
+    }
+    httpd_resp_set_status(req, "502 Bad Gateway");
+    httpd_resp_sendstr(req, "{\"error\":\"cloud_error_updating_device\"}");
     return ESP_OK;
 }
 
@@ -1025,14 +1099,6 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &cloud_meshes_get_uri);
 
-    httpd_uri_t cloud_device_bind_post_uri = {
-        .uri = "/api/v1/cloud/device/bind",
-        .method = HTTP_POST,
-        .handler = rs_cloud_device_bind_post_handler,
-        .user_ctx = rest_context
-    };
-    httpd_register_uri_handler(server, &cloud_device_bind_post_uri);
-
     httpd_uri_t cloud_device_register_post_uri = {
         .uri = "/api/v1/cloud/device/register",
         .method = HTTP_POST,
@@ -1042,7 +1108,22 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_register_uri_handler(server, &cloud_device_register_post_uri);
 
 
-    /* REMOVED all individual OPTIONS handler registrations */
+    // device update handler
+    httpd_uri_t cloud_device_update_post_uri = {
+        .uri = "/api/v1/cloud/device/update",
+        .method = HTTP_POST,
+        .handler = rs_cloud_device_update_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &cloud_device_update_post_uri);
+
+    httpd_uri_t setup_complete_post_uri = {
+        .uri = "/api/v1/setup/complete",
+        .method = HTTP_POST,
+        .handler = rs_setup_complete_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &setup_complete_post_uri);
 
 
     /* Register captive portal probe handlers (specific paths) */
@@ -1122,4 +1203,25 @@ static void rs_register_captive_handlers(httpd_handle_t server, rest_server_cont
 
 static inline void rs_add_close_hdr(httpd_req_t *req) {
     httpd_resp_set_hdr(req, "Connection", "close");
+}
+
+/* --- POST /api/v1/setup/complete ---
+ * Marks provisioning as complete and restarts device so main task starts sensor flow. */
+static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req) {
+    // No body needed, but consume if present
+    if (req->content_len > 0) {
+        char *scratch = ((rest_server_context_t*)req->user_ctx)->scratch;
+        if (!rs_read_body(req, scratch, SCRATCH_BUFSIZE)) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
+            return ESP_FAIL;
+        }
+    }
+    nvs_set_setup_stage("complete");
+    ESP_LOGI(TAG, "Setup marked complete. Restarting to begin sensor cycle.");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\",\"restarting\":true}");
+    // Allow response flush
+    vTaskDelay(pdMS_TO_TICKS(150));
+    esp_restart();
+    return ESP_OK;
 }

@@ -29,6 +29,11 @@
 
 static bool g_debug_mode_enabled = false;
 
+// Track one‑time creation/initialization of STA netif & Wi-Fi driver
+static bool s_sta_netif_created = false;
+static bool s_wifi_inited = false;
+static bool s_wifi_started = false;
+
 static int custom_log_vprintf(const char *format, va_list arg) {
     // Default color
     const char* color = LOG_RESET_COLOR;
@@ -86,7 +91,6 @@ extern void captive_dns_task(void *pv);
 esp_err_t start_rest_server(const char *base_path);
 static bool wifi_boot_flow(void);
 static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len);
-static bool connect_sta_with(const char *ssid, const char *pass);
 static bool connect_to_wifi(void);
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
@@ -119,6 +123,15 @@ static void send_batched_data(void);
 static void go_to_sleep(uint64_t sleep_time_seconds);
 
 static void go_to_sleep(uint64_t sleep_time_seconds) {
+    // if debug mode is on, don't go to sleep
+    if (g_debug_mode_enabled) {
+        ESP_LOGI(TAG, "Debug mode is enabled, not going to sleep.");
+        // wait for the specified time, but don't power off the chipset
+        vTaskDelay(pdMS_TO_TICKS(sleep_time_seconds * 1000));
+        return;
+    }
+
+
     ESP_LOGI(TAG, "Entrando em deep sleep por %llu segundos.", sleep_time_seconds);
     
     // Desliga o Wi-Fi para economizar energia
@@ -132,73 +145,86 @@ static void go_to_sleep(uint64_t sleep_time_seconds) {
 }
 
 
+static void simulate_or_sleep(uint64_t seconds) {
+    if (g_debug_mode_enabled) {
+        ESP_LOGI(TAG, "[SIM] Sleeping (simulated) for %llu s (no deep sleep / serial kept).", seconds);
+        vTaskDelay(pdMS_TO_TICKS(seconds * 1000));
+    } else {
+        go_to_sleep(seconds); // real deep sleep (does not return)
+    }
+}
+
 void collect_and_send_task(void) {
-    // First, perform a sensor reading and increment the counter.
-    // This happens on every wake-up, without Wi-Fi.
-    perform_sensor_reading();
+    for (;;) {
+        perform_sensor_reading();
 
-    // Check if the batch is full.
-    if (readings_count >= device_readingsPerBatch) {
-        ESP_LOGI(TAG, "Batch is full (%d/%d). Connecting to Wi-Fi to send data.", readings_count, device_readingsPerBatch);
+        if (readings_count >= device_readingsPerBatch) {
+            ESP_LOGI(TAG, "Batch full (%d/%d). Connecting to Wi-Fi to send data.", readings_count, device_readingsPerBatch);
 
-        // --- Connect to Wi-Fi ---
-        if (connect_to_wifi()) {
-            // --- Sync time if needed ---
-            if (!time_is_set) {
-                ESP_LOGI(TAG, "Syncing NTP time...");
-                esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-                esp_sntp_setservername(0, "pool.ntp.org");
-                esp_sntp_init();
-                setenv("TZ", "GMT+3", 1);
-                tzset();
-                int retry = 0;
-                while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 15) {
-                    vTaskDelay(2000 / portTICK_PERIOD_MS);
-                }
-                if (retry < 15) {
-                    time_is_set = true;
-                    ESP_LOGI(TAG, "Time synced successfully.");
-                } else {
-                    ESP_LOGE(TAG, "Failed to sync time.");
-                }
-            }
-
-            // --- Login and get device config if it's the first time ---
-            if (!device_config_initialized) {
-                char user_email[128], user_pass[128];
-                if (rc_load_creds(user_email, sizeof(user_email), user_pass, sizeof(user_pass)) &&
-                    rc_login(user_email, user_pass, true) == ESP_OK) {
-                    char *device_json = NULL;
-                    if (rc_get_device_by_mac(NULL, &device_json) == ESP_OK && device_json) {
-                        int batch = -1, interval = -1;
-                        rc_extract_device_config(device_json, &batch, &interval);
-                        ESP_LOGI(TAG, "Fetched device config: wakeUpInterval=%d, readingsPerBatch=%d", interval, batch);
-                        free(device_json);
-                        if (batch > 0) device_readingsPerBatch = batch;
-                        if (interval > 0) device_wakeUpInterval = interval;
-                        device_config_initialized = true;
+            if (connect_to_wifi()) {
+                if (!time_is_set) {
+                    ESP_LOGI(TAG, "Syncing NTP time...");
+                    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+                    esp_sntp_setservername(0, "pool.ntp.org");
+                    esp_sntp_init();
+                    setenv("TZ", "GMT+3", 1);
+                    tzset();
+                    int retry = 0;
+                    while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 15) {
+                        vTaskDelay(pdMS_TO_TICKS(2000));
+                    }
+                    if (retry < 15) {
+                        time_is_set = true;
+                        ESP_LOGI(TAG, "Time synced.");
+                    } else {
+                        ESP_LOGE(TAG, "Time sync failed.");
                     }
                 }
+
+                if (!device_config_initialized) {
+                    char user_email[128], user_pass[128];
+                    if (rc_load_creds(user_email, sizeof(user_email), user_pass, sizeof(user_pass)) &&
+                        rc_login(user_email, user_pass, true) == ESP_OK) {
+                        char *device_json = NULL;
+                        if (rc_get_device_by_mac(NULL, &device_json) == ESP_OK && device_json) {
+                            int batch = -1, interval = -1;
+                            rc_extract_device_config(device_json, &batch, &interval);
+                            ESP_LOGI(TAG, "Fetched device config: wakeUpInterval=%d, readingsPerBatch=%d", interval, batch);
+                            free(device_json);
+                            if (batch > 0) device_readingsPerBatch = batch;
+                            if (interval > 0) device_wakeUpInterval = interval;
+                            device_config_initialized = true;
+                        }
+                    }
+                }
+
+                send_batched_data();
+                readings_count = 0;
+
+                if (!g_debug_mode_enabled) { // keep Wi-Fi up in debug if you want quick repeats
+                    esp_wifi_disconnect();
+                    esp_wifi_stop();
+                    ESP_LOGI(TAG, "Wi-Fi stopped.");
+                } else {
+                    ESP_LOGI(TAG, "[SIM] Keeping Wi-Fi session (debug mode).");
+                }
+            } else {
+                ESP_LOGE(TAG, "Wi-Fi connect failed; will retry next cycle.");
+                // keep readings_count so we retry sending next cycle
             }
-
-            // --- Send data and reset counter ---
-            send_batched_data();
-            readings_count = 0;
-
-            // --- Disconnect Wi-Fi ---
-            esp_wifi_disconnect();
-            esp_wifi_stop();
-            ESP_LOGI(TAG, "Wi-Fi stopped.");
-
         } else {
-            ESP_LOGE(TAG, "Failed to connect to Wi-Fi. Data not sent. Will retry on next batch.");
-            // The batch remains full, so it will try to send again on the next wake-up.
+            ESP_LOGI(TAG, "Batch incomplete (%d/%d).", readings_count, device_readingsPerBatch);
         }
-    } else {
-        ESP_LOGI(TAG, "Batch incomplete (%d/%d). Going back to sleep.", readings_count, device_readingsPerBatch);
-    }
 
-    go_to_sleep(device_wakeUpInterval);
+        // Simulated or real sleep
+        simulate_or_sleep(device_wakeUpInterval);
+
+        if (!g_debug_mode_enabled) {
+            // real deep sleep never returns; loop not needed further
+            break;
+        }
+        // Loop continues in debug mode to simulate wake cycle.
+    }
 }
 
 static void perform_sensor_reading() {
@@ -416,8 +442,8 @@ static bool wifi_boot_flow(void) {
 
     // If setup is fully complete, just return true to proceed to main task.
     // We will NOT connect to Wi-Fi here anymore.
-    if (strcmp(stage, "user_saved") == 0) {
-        ESP_LOGI(TAG, "Setup is complete. Proceeding to main task.");
+    if (strcmp(stage, "complete") == 0) {
+        ESP_LOGI(TAG, "Setup complete (stage='%s'). Proceeding to main task.", stage);
         return true;
     }
 
@@ -429,6 +455,18 @@ static bool wifi_boot_flow(void) {
 
 // --- NEW: Helper function to connect to Wi-Fi on demand ---
 static bool connect_to_wifi(void) {
+    // Fast path: already connected?
+    wifi_ap_record_t ap_info;
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (sta_netif &&
+        esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        esp_netif_ip_info_t ip;
+        if (esp_netif_get_ip_info(sta_netif, &ip) == ESP_OK && ip.ip.addr != 0) {
+            // Already connected with valid IP
+            return true;
+        }
+    }
+
     char ssid[33] = {0};
     char pass[65] = {0};
     if (!load_wifi_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
@@ -436,14 +474,21 @@ static bool connect_to_wifi(void) {
         return false;
     }
 
-    esp_netif_create_default_wifi_sta();
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    // Ensure STA netif exists (idempotent)
+    if (!sta_netif) {
+        sta_netif = esp_netif_create_default_wifi_sta(); // creates only once
+        if (!sta_netif) {
+            ESP_LOGE(TAG, "Failed to create default STA netif");
+            return false;
+        }
+    }
 
-    s_wifi_event_group = xEventGroupCreate();
-    esp_event_handler_instance_t instance_any_id, instance_got_ip;
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
+    // Initialize Wi-Fi driver only once
+    if (!s_wifi_inited) {
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+        s_wifi_inited = true;
+    }
 
     wifi_config_t wifi_config = {0};
     strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
@@ -451,23 +496,47 @@ static bool connect_to_wifi(void) {
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
+
+    // Start Wi-Fi driver once
+    if (!s_wifi_started) {
+        ESP_ERROR_CHECK(esp_wifi_start());
+        s_wifi_started = true;
+    }
+
+    // Event group per attempt
+    s_wifi_event_group = xEventGroupCreate();
+    if (!s_wifi_event_group) {
+        ESP_LOGE(TAG, "Failed to create event group");
+        return false;
+    }
+
+    esp_event_handler_instance_t instance_any_id = NULL, instance_got_ip = NULL;
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_any_id));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
+
     ESP_ERROR_CHECK(esp_wifi_connect());
 
     ESP_LOGI(TAG, "Waiting for connection...");
-    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(15000)); // 15s timeout
+    EventBits_t bits = xEventGroupWaitBits(
+        s_wifi_event_group,
+        WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+        pdFALSE,
+        pdFALSE,
+        pdMS_TO_TICKS(15000));
 
     esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip);
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id);
     vEventGroupDelete(s_wifi_event_group);
+    s_wifi_event_group = NULL;
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "WiFi Connected.");
         return true;
     }
-    
+
     ESP_LOGE(TAG, "Connection failed.");
-    esp_wifi_stop();
     return false;
 }
 
@@ -488,10 +557,15 @@ static void start_softap_and_rest_server(void) {
     // Create both AP and STA default interfaces so we can scan/connect while AP is up
     // It's safe to call these multiple times.
     esp_netif_create_default_wifi_ap();
-    esp_netif_create_default_wifi_sta();
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    if (!s_sta_netif_created) {
+        esp_netif_create_default_wifi_sta();
+        s_sta_netif_created = true;
+    }
+    if (!s_wifi_inited) {
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+        s_wifi_inited = true;
+    }
 
     // Generate AP SSID "ESP-{MODEL}-{6 char from MAC}"
     uint8_t mac[6];
@@ -521,7 +595,7 @@ static void start_softap_and_rest_server(void) {
     ESP_ERROR_CHECK(start_rest_server("/www"));
 
     // Start the captive DNS task
-    xTaskCreate(&captive_dns_task, "captive_dns", 4096, NULL, 5, NULL);
+    xTaskCreate(&captive_dns_task, "captive_dns", 4096, NULL, 3, NULL);
 }
 
 // --- NEW: LittleFS mount helper ---

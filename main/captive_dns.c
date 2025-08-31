@@ -271,7 +271,7 @@ static void dns_server_task(void *pvParameters) {
             continue;
         }
         
-        ESP_LOGI(TAG, "DNS query from %s: '%s' (type %d)", 
+        ESP_LOGD(TAG, "DNS query from %s: '%s' (type %d)",
                  inet_ntoa(client_addr.sin_addr), domain_name, query_type);
         
         // Only respond to A record queries (type 1)
@@ -302,7 +302,7 @@ static void dns_server_task(void *pvParameters) {
             ESP_LOGW(TAG, "DNS response send error: sent %d of %d bytes (errno=%d)",
                      (int)sent_bytes, (int)response_len, errno);
         } else {
-            ESP_LOGI(TAG, "DNS response sent: '%s' -> " IPSTR " (%d bytes)",
+            ESP_LOGD(TAG, "DNS response sent: '%s' -> " IPSTR " (%d bytes)",
                      domain_name, IP2STR((esp_ip4_addr_t*)&ap_ip), (int)response_len);
         }
         
