@@ -1270,10 +1270,49 @@ static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req) {
 static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
     ESP_LOGI(TAG, "Controller scan request received.");
 
-    // Optional query param ?ms=5000
-    int duration_ms = 5000; // increased default
-    char query[64];
+    // Read query string (optional params: fast, ms, force)
+    char query[128] = {0};
+    bool fast = false;
+    bool force = false;
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char fast_str[8];
+        if (httpd_query_key_value(query, "fast", fast_str, sizeof(fast_str)) == ESP_OK) {
+            fast = atoi(fast_str) == 1;
+        }
+        char force_str[8];
+        if (httpd_query_key_value(query, "force", force_str, sizeof(force_str)) == ESP_OK) {
+            force = atoi(force_str) == 1;
+        }
+    }
+
+    // If a fresh scan wasn't explicitly requested, prefer the cached pre-provision results
+    // saved by [`wifi_boot_flow`](main/src/app/tempmesh.c) under NVS key "pre_ctrls".
+    if (!force && !fast) {
+        nvs_handle_t nvs;
+        if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
+            size_t needed = 0;
+            esp_err_t e = nvs_get_str(nvs, "pre_ctrls", NULL, &needed);
+            if (e == ESP_OK && needed > 1 && needed < 4096) {
+                char *buf = malloc(needed);
+                if (buf && nvs_get_str(nvs, "pre_ctrls", buf, &needed) == ESP_OK) {
+                    httpd_resp_set_type(req, "application/json");
+                    httpd_resp_sendstr(req, buf);
+                    free(buf);
+                    nvs_close(nvs);
+                    ESP_LOGI(TAG, "Served cached pre-provision controller list (len=%u).", (unsigned)needed);
+                    return ESP_OK;
+                }
+                free(buf);
+            }
+            nvs_close(nvs);
+        }
+        ESP_LOGI(TAG, "No cached controller list or client requested fresh scan; proceeding with active scan.");
+    }
+
+    // Optional query param ?ms=5000 (reuse existing query buffer)
+    int duration_ms = 5000;
+    if (query[0] == 0) httpd_req_get_url_query_str(req, query, sizeof(query));
+    if (query[0]) {
         char ms_str[16];
         if (httpd_query_key_value(query, "ms", ms_str, sizeof(ms_str)) == ESP_OK) {
             int v = atoi(ms_str);
@@ -1292,12 +1331,12 @@ static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
     } else {
         ESP_LOGD(TAG, "ESPNOW already initialized, proceeding with scan.");
     }
+
     char *json = NULL;
     esp_err_t err = espnow_manager_collect_controllers(duration_ms, &json);
     httpd_resp_set_type(req, "application/json");
     if (err == ESP_OK && json) {
-        ESP_LOGI(TAG, "Controller scan success (duration=%d) payload_len=%d",
-                 duration_ms, (int)strlen(json));
+        ESP_LOGI(TAG, "Controller scan success (duration=%d) payload_len=%d", duration_ms, (int)strlen(json));
         httpd_resp_sendstr(req, json);
         free(json);
         return ESP_OK;

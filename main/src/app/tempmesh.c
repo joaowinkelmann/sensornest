@@ -32,6 +32,7 @@
 #include "roles/worker_role.h"
 #include "roles/controller_role.h"
 #include "net/wifi_manager.h"
+#include "net/espnow_manager.h"
 
 static bool g_debug_mode_enabled = false;
 
@@ -390,17 +391,46 @@ static bool wifi_boot_flow(void) {
         nvs_close(nvs);
     }
 
-    // If setup is fully complete, just return true to proceed to main task.
-    // We will NOT connect to Wi-Fi here anymore.
+    // NEW: load role (if any)
+    char role[16] = {0};
+    if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
+        size_t rl = sizeof(role);
+        nvs_get_str(nvs, "role", role, &rl);
+        nvs_close(nvs);
+    }
+
+    // If setup complete => proceed
     if (strcmp(stage, "complete") == 0) {
         ESP_LOGI(TAG, "Setup complete (stage='%s'). Proceeding to main task.", stage);
         return true;
     }
 
-    // If setup is not complete, start provisioning server
+    // NEW: Pre-provision quick controller discovery for WORKER role (3s) before starting SoftAP
+    if (strcmp(role, "WORKER") == 0) {
+        ESP_LOGI(TAG, "Pre-provision: attempting quick controller discovery (3s) before starting AP.");
+        if (espnow_manager_init(false, NULL) == ESP_OK) {
+            char *json = NULL;
+            if (espnow_manager_collect_controllers(3000, &json) == ESP_OK && json) {
+                ESP_LOGI(TAG, "Pre-provision discovery result: %s", json);
+                // Cache JSON in NVS (device namespace) under key 'pre_ctrls'
+                if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
+                    nvs_set_str(nvs, "pre_ctrls", json);
+                    nvs_commit(nvs);
+                    nvs_close(nvs);
+                }
+                free(json);
+            } else {
+                ESP_LOGI(TAG, "Pre-provision discovery found no controllers.");
+            }
+        } else {
+            ESP_LOGW(TAG, "Pre-provision ESPNOW init failed; skipping quick discovery.");
+        }
+    }
+
+    // Not complete yet -> start provisioning server
     ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");
     start_softap_and_rest_server();
-    return false; // Stay in provisioning mode
+    return false;
 }
 
 // --- NEW: Start SoftAP with "ESP-{shortID}" and launch REST server ---
@@ -411,8 +441,14 @@ static void start_softap_and_rest_server(void) {
     // It's safe to call these multiple times.
     esp_netif_create_default_wifi_ap();
     if (!s_sta_netif_created) {
-        esp_netif_create_default_wifi_sta();
-        s_sta_netif_created = true;
+        // Avoid creating STA netif if another module (e.g. wifi_manager) already did.
+        if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) {
+            ESP_LOGI(TAG, "STA netif already exists (detected). Reusing.");
+            s_sta_netif_created = true;
+        } else {
+            esp_netif_create_default_wifi_sta();
+            s_sta_netif_created = true;
+        }
     }
     if (!s_wifi_inited) {
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();

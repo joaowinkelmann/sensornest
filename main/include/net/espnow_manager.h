@@ -35,3 +35,7 @@ esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json);
 bool espnow_manager_is_initialized(void);
 
 esp_err_t espnow_manager_debug_set_channel(uint8_t ch); // debug helper
+
+// NEW: set/get fixed ESPNOW channel (0 = no fixed channel; 1-13 valid)
+esp_err_t espnow_manager_set_fixed_channel(uint8_t ch);
+uint8_t  espnow_manager_get_fixed_channel(void);

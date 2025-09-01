@@ -15,6 +15,9 @@ static bool s_inited = false;
 static bool s_is_controller = false;
 static espnow_mgr_rx_cb_t s_rx = NULL;
 
+/* NEW: fixed channel (0 = none) */
+static uint8_t s_fixed_channel = 6;
+
 #define CTRL_PREFIX "CTRL|"
 #define DISCOVERY_PROBE "DISC?"
 #define MAX_DISCOVERED 12
@@ -203,6 +206,16 @@ bool espnow_manager_is_initialized(void) {
     return s_inited;
 }
 
+esp_err_t espnow_manager_set_fixed_channel(uint8_t ch) {
+    if (ch > 13) return ESP_ERR_INVALID_ARG;
+    s_fixed_channel = ch;
+    ESP_LOGI(TAG_EN, "ESPNOW fixed channel set to %u", s_fixed_channel);
+    return ESP_OK;
+}
+uint8_t espnow_manager_get_fixed_channel(void) {
+    return s_fixed_channel;
+}
+
 esp_err_t espnow_manager_init(bool controller, espnow_mgr_rx_cb_t rx_cb) {
     ESP_LOGI(TAG_EN, "espnow_manager_init called (controller=%d) current_state: inited=%d",
              controller, s_inited);
@@ -228,10 +241,12 @@ esp_err_t espnow_manager_init(bool controller, espnow_mgr_rx_cb_t rx_cb) {
         esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);   // now valid
         snprintf((char*)apcfg.ap.ssid, sizeof(apcfg.ap.ssid), "TMCTRL-%02X%02X%02X", mac[3],mac[4],mac[5]);
         apcfg.ap.ssid_len       = strlen((char*)apcfg.ap.ssid);
-        apcfg.ap.channel        = 1;          // initial channel (will follow STA if STA connects)
+        /* Use fixed channel if configured, otherwise default to 1 */
+        apcfg.ap.channel        = s_fixed_channel ? s_fixed_channel : 1;
         apcfg.ap.max_connection = 4;
         apcfg.ap.authmode       = WIFI_AUTH_OPEN;
-        ESP_LOGI(TAG_EN, "Enabling APSTA (AP SSID=%s ch=%d)", apcfg.ap.ssid, apcfg.ap.channel);
+        ESP_LOGI(TAG_EN, "Enabling APSTA (AP SSID=%s ch=%d) (fixed_channel=%u)",
+                 apcfg.ap.ssid, apcfg.ap.channel, s_fixed_channel);
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &apcfg));
         mode = WIFI_MODE_APSTA;
@@ -278,9 +293,9 @@ esp_err_t espnow_manager_init(bool controller, espnow_mgr_rx_cb_t rx_cb) {
     if (controller) {
         s_is_controller = true;
         s_rx = rx_cb;
-        ESP_LOGI(TAG_EN, "Controller ESPNOW ready (mode=%d ch=%u)", mode, primary_ch);
+        ESP_LOGI(TAG_EN, "Controller ESPNOW ready (mode=%d ch=%u fixed=%u)", mode, primary_ch, s_fixed_channel);
     } else {
-        ESP_LOGI(TAG_EN, "Worker ESPNOW ready (mode=%d ch=%u)", mode, primary_ch);
+        ESP_LOGI(TAG_EN, "Worker ESPNOW ready (mode=%d ch=%u fixed=%u)", mode, primary_ch, s_fixed_channel);
     }
 
     s_inited = true;
@@ -301,7 +316,7 @@ esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
         return ESP_ERR_INVALID_STATE;
     }
     if (duration_ms < 1000) duration_ms = 1000;
-    if (duration_ms > 15000) duration_ms = 15000; // clamp
+    if (duration_ms > 15000) duration_ms = 15000;
 
     s_ctrl_count = 0;
     memset(s_ctrls, 0, sizeof(s_ctrls));
@@ -316,9 +331,48 @@ esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
     int elapsed = 0;
     const int step = 100;
     int midProbeSent = 0;
+
+    // If fixed channel set, prefer it and disable hopping
+    const int hop_interval_ms = 400;
+    int next_hop_ms = hop_interval_ms;
+    int hop_index = 0;
+    const uint8_t hop_channels[] = {1,6,11,3,9,2,4,5,7,8,10}; // fallback
+    int busy_sets = 0;
+    bool hopping_allowed = (s_fixed_channel == 0);
+
+    if (s_fixed_channel) {
+        esp_err_t e = esp_wifi_set_channel(s_fixed_channel, WIFI_SECOND_CHAN_NONE);
+        if (e == ESP_OK) {
+            ESP_LOGI(TAG_EN, "Discovery: set fixed channel %u for scan", s_fixed_channel);
+        } else {
+            ESP_LOGW(TAG_EN, "Discovery: failed to set fixed channel %u: %s", s_fixed_channel, esp_err_to_name(e));
+            // allow hopping as fallback
+            hopping_allowed = true;
+        }
+    }
+
     while (elapsed < duration_ms) {
         vTaskDelay(pdMS_TO_TICKS(step));
         elapsed += step;
+
+        if (hopping_allowed && elapsed >= next_hop_ms && elapsed < duration_ms) {
+            uint8_t ch = hop_channels[hop_index % (int)(sizeof(hop_channels))];
+            esp_err_t ce = esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+            if (ce == ESP_OK) {
+                ESP_LOGD(TAG_EN, "Discovery hop -> channel %u (elapsed=%d)", ch, elapsed);
+                busy_sets = 0;
+            } else {
+                if (++busy_sets == 1) {
+                    ESP_LOGW(TAG_EN, "Channel hop blocked (AP client or scan active) – staying on current channel.");
+                } else if (busy_sets == 3) {
+                    ESP_LOGW(TAG_EN, "Repeated channel set failures (3). Disabling hopping this scan.");
+                    hopping_allowed = false;
+                }
+            }
+            hop_index++;
+            next_hop_ms += hop_interval_ms;
+        }
+
         if (!midProbeSent && duration_ms >= 3000 && elapsed >= duration_ms/2) {
             espnow_manager_send_broadcast(probe, sizeof(probe)-1);
             ESP_LOGI(TAG_EN, "Mid-scan discovery probe sent at %d ms", elapsed);
