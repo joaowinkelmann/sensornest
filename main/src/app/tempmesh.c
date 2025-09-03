@@ -75,7 +75,17 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_FAIL_BIT      BIT1
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
-#define BOOT_BTN_GPIO           GPIO_NUM_0     // BOOT button (IO0)
+// BOOT button: per-target defaults.
+#ifndef BOOT_BTN_GPIO
+#if CONFIG_IDF_TARGET_ESP32S3
+#define BOOT_BTN_GPIO           GPIO_NUM_0     // typical S3 devkit BOOT
+#elif CONFIG_IDF_TARGET_ESP32C3
+#define BOOT_BTN_GPIO           GPIO_NUM_9     // common C3 devkit BOOT (change if yours differs)
+#else
+#define BOOT_BTN_GPIO           GPIO_NUM_0     // fallback
+#endif
+#endif
+
 #define BOOT_BTN_HOLD_RESET_MS  300           // segurar BOOT por 0.3 segundo para reset de fábrica
 static void factory_reset_button_task(void *pvParameters);
 static void do_factory_reset(void);
@@ -101,6 +111,7 @@ static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pas
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 const char* get_esp_model(void);
+static void run_pre_provision_controller_scan(int duration_ms);  // <--- NEW
 
 // REMOVE old MAX_READINGS_IN_BATCH + RTC arrays:
 // #define MAX_READINGS_IN_BATCH 50
@@ -381,6 +392,31 @@ static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pas
     return true;
 }
 
+/* NEW: pre‑provision controller discovery helper (always runs in provisioning mode) */
+static void run_pre_provision_controller_scan(int duration_ms) {
+    if (duration_ms < 1000) duration_ms = 1000;
+    if (duration_ms > 15000) duration_ms = 15000;
+    ESP_LOGI(TAG, "Pre-provision: scanning for controllers (%d ms).", duration_ms);
+    if (espnow_manager_init(false, NULL) != ESP_OK) {
+        ESP_LOGW(TAG, "ESPNOW init failed; skipping controller scan.");
+        return;
+    }
+    char *json = NULL;
+    if (espnow_manager_collect_controllers(duration_ms, &json) == ESP_OK && json) {
+        ESP_LOGI(TAG, "Controller discovery result: %s", json);
+        nvs_handle_t nvs;
+        if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
+            nvs_set_str(nvs, "pre_ctrls", json);
+            nvs_commit(nvs);
+            nvs_close(nvs);
+        }
+        free(json);
+    } else {
+        ESP_LOGI(TAG, "No controllers discovered in pre-provision scan.");
+        free(json);
+    }
+}
+
 // --- REFACTORED: Boot flow orchestrator ---
 static bool wifi_boot_flow(void) {
     char stage[32] = {0};
@@ -391,7 +427,6 @@ static bool wifi_boot_flow(void) {
         nvs_close(nvs);
     }
 
-    // NEW: load role (if any)
     char role[16] = {0};
     if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
         size_t rl = sizeof(role);
@@ -399,35 +434,14 @@ static bool wifi_boot_flow(void) {
         nvs_close(nvs);
     }
 
-    // If setup complete => proceed
     if (strcmp(stage, "complete") == 0) {
         ESP_LOGI(TAG, "Setup complete (stage='%s'). Proceeding to main task.", stage);
         return true;
     }
 
-    // NEW: Pre-provision quick controller discovery for WORKER role (3s) before starting SoftAP
-    if (strcmp(role, "WORKER") == 0) {
-        ESP_LOGI(TAG, "Pre-provision: attempting quick controller discovery (3s) before starting AP.");
-        if (espnow_manager_init(false, NULL) == ESP_OK) {
-            char *json = NULL;
-            if (espnow_manager_collect_controllers(3000, &json) == ESP_OK && json) {
-                ESP_LOGI(TAG, "Pre-provision discovery result: %s", json);
-                // Cache JSON in NVS (device namespace) under key 'pre_ctrls'
-                if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
-                    nvs_set_str(nvs, "pre_ctrls", json);
-                    nvs_commit(nvs);
-                    nvs_close(nvs);
-                }
-                free(json);
-            } else {
-                ESP_LOGI(TAG, "Pre-provision discovery found no controllers.");
-            }
-        } else {
-            ESP_LOGW(TAG, "Pre-provision ESPNOW init failed; skipping quick discovery.");
-        }
-    }
+    /* ALWAYS attempt a short controller discovery while in provisioning/factory_reset/new state */
+    run_pre_provision_controller_scan(10000);
 
-    // Not complete yet -> start provisioning server
     ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");
     start_softap_and_rest_server();
     return false;

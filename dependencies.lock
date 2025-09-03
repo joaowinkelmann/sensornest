@@ -76,7 +76,7 @@ dependencies:
   protocol_examples_common:
     dependencies: []
     source:
-      path: C:\Users\kami_\esp\v5.5\esp-idf\examples\common_components\protocol_examples_common
+      path: /home/imply/esp/v5.5/esp-idf/examples/common_components/protocol_examples_common
       type: local
     version: '*'
 direct_dependencies:
@@ -86,5 +86,5 @@ direct_dependencies:
 - joltwallet/littlefs
 - protocol_examples_common
 manifest_hash: 35a8b01e257e0d6ce0d480ed58dc12fac3c35d3bf44464d89890ac4a0821552a
-target: esp32s3
+target: esp32c3
 version: 2.0.0
