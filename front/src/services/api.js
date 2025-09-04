@@ -179,7 +179,7 @@ export const api = {
   bindWorker: (name, controllerMac) =>
     doFetch(`${base}/api/v1/worker/bind`, {
       method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ name, controllerMac })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, controllerMac }),
     }),
 };

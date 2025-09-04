@@ -22,6 +22,7 @@
 #include "app/app_state.h"
 #include "esp_http_client.h"
 #include "net/espnow_manager.h"
+#include "net/wifi_manager.h"
 
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
@@ -396,6 +397,19 @@ static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
             cJSON_AddStringToObject(resp_root, "status", "ok");
             cJSON *device_obj = cJSON_Parse(device_json);
             if (device_obj) {
+                // Persist device name from cloud to NVS so controller beacon can use it
+                cJSON *j_name = cJSON_GetObjectItem(device_obj, "name");
+                if (j_name && cJSON_IsString(j_name) && j_name->valuestring[0]) {
+                    nvs_handle_t nvs;
+                    if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
+                        nvs_set_str(nvs, "name", j_name->valuestring);
+                        nvs_commit(nvs);
+                        nvs_close(nvs);
+                        // If ESPNOW beacon already running, update payload immediately
+                        espnow_manager_set_controller_name(j_name->valuestring);
+                        ESP_LOGI(TAG, "Persisted device name from cloud into NVS: %s", j_name->valuestring);
+                    }
+                }
                 cJSON_AddItemToObject(resp_root, "device", device_obj);
             }
             char *resp_str = cJSON_PrintUnformatted(resp_root);
@@ -630,6 +644,18 @@ static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req)
 
 /* --- NEW: Wi-Fi scan (GET /api/v1/wifi/scan) --- */
 static esp_err_t rs_wifi_scan_get_handler(httpd_req_t *req) {
+    // First try cached prefetch result
+    char *cached = NULL;
+    if (wifi_manager_get_cached_scan(&cached) == ESP_OK && cached) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, cached);
+        free(cached);
+        ESP_LOGI(TAG, "Served cached Wi-Fi scan results");
+        return ESP_OK;
+    }
+    if (cached) free(cached);
+
+    // Fallback to performing immediate scan (existing behavior)
     // Ensure we're in APSTA so scan can run without dropping AP
     wifi_mode_t mode;
     esp_wifi_get_mode(&mode);
@@ -954,6 +980,12 @@ static esp_err_t rs_cloud_device_update_post_handler(httpd_req_t *req) {
             nvs_handle_t nvs;
             if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
                 nvs_set_str(nvs, "role", role);
+                // Persist name if provided
+                if (name && name[0]) {
+                    nvs_set_str(nvs, "name", name);
+                    // update beacon name immediately
+                    espnow_manager_set_controller_name(name);
+                }
                 nvs_commit(nvs);
                 nvs_close(nvs);
             }
@@ -1016,6 +1048,8 @@ esp_err_t start_rest_server(const char *base_path)
 
     ESP_LOGI(TAG, "Starting HTTP Server");
     ESP_GOTO_ON_ERROR(httpd_start(&server, &config), err, TAG, "Failed to start http server");
+
+    wifi_manager_prefetch_scan(20000);
 
     /* --- REFACTORED: Register a single, global CORS OPTIONS handler --- */
     /* This should be registered first to catch all OPTIONS requests */
@@ -1157,7 +1191,6 @@ esp_err_t start_rest_server(const char *base_path)
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &controllers_scan_get);
-    ESP_LOGI(TAG, "Registered endpoint: %s", controllers_scan_get.uri);
 
     httpd_uri_t worker_bind_post = {
         .uri      = "/api/v1/worker/bind",
@@ -1166,7 +1199,6 @@ esp_err_t start_rest_server(const char *base_path)
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &worker_bind_post);
-    ESP_LOGI(TAG, "Registered endpoint: %s", worker_bind_post.uri);
 
 #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
     /* Register file server LAST as a fallback */

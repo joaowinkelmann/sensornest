@@ -24,7 +24,7 @@ bool rc_get_token(char *out, size_t len);
 bool rc_has_token(void);
 
 static const char *RC_TAG = "REST_client";
-extern const char *winkels_root_ca_pem;
+extern const char *cloud_ca_pem;
 
 #define CLOUD_BASE_URL          "https://winkels.com.br/tempmesh/api"
 #define CLOUD_LOGIN_URL           CLOUD_BASE_URL "/auth/login/"
@@ -179,14 +179,14 @@ static esp_err_t rc_http_event_handler(esp_http_client_event_t *evt) {
 /* Debug helper to log a safe snippet of a (possibly large) PEM */
 static void rc_log_cert_snippet(void) {
     return;
-    if (!winkels_root_ca_pem) {
+    if (!cloud_ca_pem) {
         ESP_LOGW(RC_TAG, "cert pointer NULL");
         return;
     }
     char snippet[81];
-    size_t n = strlen(winkels_root_ca_pem);
+    size_t n = strlen(cloud_ca_pem);
     if (n > 80) n = 80;
-    memcpy(snippet, winkels_root_ca_pem, n);
+    memcpy(snippet, cloud_ca_pem, n);
     snippet[n] = 0;
     ESP_LOGI(RC_TAG, "Root CA first %u chars:\n%s", (unsigned)n, snippet);
 }
@@ -229,7 +229,7 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
         esp_http_client_config_t cfg = {
             .url = CLOUD_LOGIN_URL,
             .method = HTTP_METHOD_POST,
-            .cert_pem = winkels_root_ca_pem,
+            .cert_pem = cloud_ca_pem,
             .event_handler = rc_http_event_handler,
             .user_data = &acc,
             .timeout_ms = 8000,            // reduced
@@ -367,7 +367,7 @@ retry_auth:
         esp_http_client_config_t cfg = {
             .url = url,
             .method = HTTP_METHOD_GET,
-            .cert_pem = winkels_root_ca_pem,
+            .cert_pem = cloud_ca_pem,
             .timeout_ms = 15000,
             .event_handler = rc_http_event_handler,
             .user_data = &acc,
@@ -438,7 +438,7 @@ retry_auth:
         esp_http_client_config_t cfg = {
             .url = CLOUD_MESHES_URL,
             .method = HTTP_METHOD_GET,
-            .cert_pem = winkels_root_ca_pem,
+            .cert_pem = cloud_ca_pem,
             .timeout_ms = 15000,
             .event_handler = rc_http_event_handler,
             .user_data = &acc,
@@ -548,7 +548,7 @@ retry_once:
     esp_http_client_config_t cfg = {
         .url = url,
         .method = HTTP_METHOD_PATCH,
-        .cert_pem = winkels_root_ca_pem,
+        .cert_pem = cloud_ca_pem,
         .timeout_ms = 10000,
     };
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
@@ -623,7 +623,7 @@ retry_once:
     esp_http_client_config_t cfg = {
         .url = CLOUD_DEVICE_REGISTER_URL,
         .method = HTTP_METHOD_POST,
-        .cert_pem = winkels_root_ca_pem,
+        .cert_pem = cloud_ca_pem,
         .timeout_ms = 20000,
         .event_handler = rc_http_event_handler,
         .user_data = &acc,
@@ -727,7 +727,7 @@ retry_send:
     esp_http_client_config_t cfg = {
         .url = CLOUD_READINGS_URL,
         .method = HTTP_METHOD_POST,
-        .cert_pem = winkels_root_ca_pem,
+        .cert_pem = cloud_ca_pem,
         .timeout_ms = 10000
     };
     esp_http_client_handle_t client = esp_http_client_init(&cfg);

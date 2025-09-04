@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include "esp_mac.h"
+#include "security/pmk.h"
 
 static const char *TAG_EN = "ESPNOW_MGR"; // ensure single tag
 
@@ -16,7 +17,7 @@ static bool s_is_controller = false;
 static espnow_mgr_rx_cb_t s_rx = NULL;
 
 /* NEW: fixed channel (0 = none) */
-static uint8_t s_fixed_channel = 6;
+static uint8_t s_fixed_channel = 0;
 
 #define CTRL_PREFIX "CTRL|"
 #define DISCOVERY_PROBE "DISC?"
@@ -133,7 +134,7 @@ static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data,
         s_ctrls[s_ctrl_count].name[name_len]=0;
         s_ctrls[s_ctrl_count].last_seen_ms = now_ms;
         s_ctrl_count++;
-        ESP_LOGI(TAG_EN, "Discovered controller #%d '%s'", s_ctrl_count, s_ctrls[s_ctrl_count-1].name);
+        ESP_LOGV(TAG_EN, "Discovered controller #%d '%s'", s_ctrl_count, s_ctrls[s_ctrl_count-1].name);
     } else {
         ESP_LOGW(TAG_EN, "Discovery list full; ignoring new controller");
     }
@@ -265,8 +266,7 @@ esp_err_t espnow_manager_init(bool controller, espnow_mgr_rx_cb_t rx_cb) {
         return err;
     }
 
-    static const uint8_t pmk[16] = { 'T','M','e','s','h','P','M','K','1','2','3','4','5','6','7','8' };
-    esp_now_set_pmk(pmk);
+    esp_now_set_pmk(espnow_pmk);
 
     // Always add STA broadcast peer
     esp_now_peer_info_t peer_sta = {0};
@@ -400,6 +400,11 @@ esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
     cJSON_Delete(arr);
     if (!json) return ESP_ERR_NO_MEM;
     *out_json = json;
+
+    if (s_ctrl_count == 0) {
+        ESP_LOGW(TAG_EN, "WARNING: No controllers discovered!");
+    }
+
     ESP_LOGI(TAG_EN, "collect_controllers done found=%d", s_ctrl_count);
     return ESP_OK;
 }
@@ -428,4 +433,15 @@ esp_err_t espnow_manager_debug_set_channel(uint8_t ch) {
     ESP_LOGI(TAG_EN, "Force set channel=%u result=%s", ch, esp_err_to_name(e));
     return e;
 }
-// (Add prototype to header if you want to expose)
+
+void espnow_manager_set_controller_name(const char *name)
+{
+    if (name && name[0]) {
+        strlcpy(s_beacon_name, name, sizeof(s_beacon_name));
+    } else {
+        strlcpy(s_beacon_name, "Controller", sizeof(s_beacon_name));
+    }
+    update_beacon_payload_locked();
+    ESP_LOGI(TAG_EN, "Controller beacon name set to '%s' (task=%s)",
+             s_beacon_name, s_beacon_task ? "running" : "stopped");
+}

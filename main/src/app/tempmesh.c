@@ -41,26 +41,6 @@ static bool s_sta_netif_created = false;
 static bool s_wifi_inited = false;
 static bool s_wifi_started = false;
 
-static int custom_log_vprintf(const char *format, va_list arg) {
-    // Default color
-    const char* color = LOG_RESET_COLOR;
-
-    // Check for specific tags and assign colors
-    if (strstr(format, "(REST_SERVER)")) {
-        color = LOG_COLOR(LOG_COLOR_CYAN);
-    } else if (strstr(format, "(REST_client)")) {
-        color = LOG_COLOR(LOG_COLOR_YELLOW);
-    } else if (strstr(format, "(MAIN_APP)")) {
-        color = LOG_COLOR(LOG_COLOR_BLUE);
-    }
-
-    // Print with color, then the original formatted log message
-    printf("%s", color);
-    int ret = vprintf(format, arg);
-    printf(LOG_RESET_COLOR); // Reset to default color
-    return ret;
-}
-
 // Constants
 #define us_PER_SECOND 1000000ULL  /* Conversion factor for micro seconds to seconds */
 
@@ -91,7 +71,7 @@ static void factory_reset_button_task(void *pvParameters);
 static void do_factory_reset(void);
 
 static const char *TAG = "MAIN_APP";
-extern const char *winkels_root_ca_pem;
+extern const char *cloud_ca_pem;
 
 // --- NEW: Struct to hold response data for the event handler ---
 typedef struct {
@@ -282,7 +262,7 @@ bool send_batched_data() {
 
 void app_main(void)
 {
-    esp_log_set_vprintf(custom_log_vprintf);
+    // esp_log_set_vprintf(custom_log_vprintf);
 
     // Log Levels
     esp_log_level_set("wifi", ESP_LOG_WARN);
@@ -294,7 +274,6 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-
 
     // Init Batch Store
     ESP_ERROR_CHECK(batch_store_init(false));
@@ -335,7 +314,7 @@ void app_main(void)
         }
         return;
     } else {
-        ESP_LOGW(TAG, "Modo de provisionamento iniciado. Conecte-se ao AP e acesse http://192.168.4.1/");
+        ESP_LOGW(TAG, "Modo de provisionamento iniciado.");
         // O dispositivo permanecerá acordado no modo de provisionamento.
         // --- FIX: Keep main task alive in provisioning mode ---
         while(1) {
@@ -449,8 +428,6 @@ static bool wifi_boot_flow(void) {
 
 // --- NEW: Start SoftAP with "ESP-{shortID}" and launch REST server ---
 static void start_softap_and_rest_server(void) {
-    ESP_LOGW(TAG, "Starting SoftAP for provisioning...");
-
     // Create both AP and STA default interfaces so we can scan/connect while AP is up
     // It's safe to call these multiple times.
     esp_netif_create_default_wifi_ap();
@@ -479,8 +456,8 @@ static void start_softap_and_rest_server(void) {
     wifi_config_t wifi_config = {
         .ap = {
             .ssid_len = strlen(ssid),
-            .channel = 1,
-            .password = "", // Open network
+            .channel = 0, // auto
+            .password = "",
             .max_connection = 4,
             .authmode = WIFI_AUTH_OPEN,
         },
@@ -491,7 +468,7 @@ static void start_softap_and_rest_server(void) {
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGW(TAG, "SoftAP SSID: %s, open auth. DHCP at 192.168.4.1", ssid);
+    ESP_LOGI(TAG, "SoftAP SSID: %s @ ch. %d", ssid, wifi_config.ap.channel);
 
     // Start the REST server
     ESP_ERROR_CHECK(mount_www_fs());
@@ -517,7 +494,7 @@ static esp_err_t mount_www_fs(void) {
     size_t total = 0, used = 0;
     ret = esp_littlefs_info(conf.partition_label, &total, &used);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "LittleFS mounted: total=%u, used=%u", (unsigned)total, (unsigned)used);
+        ESP_LOGI(TAG, "LittleFS mounted: total=%u KB, used=%u KB", (unsigned)(total/1024), (unsigned)(used/1024));
     }
     return ESP_OK;
 }
@@ -532,11 +509,8 @@ static void set_setup_stage(const char *stage) {
     }
 }
 
-// +++ ADD: factory reset implementation
 static void do_factory_reset(void) {
     ESP_LOGW(TAG, "Factory reset requested: erasing NVS and restarting...");
-    // Option A: erase all NVS (clears Wi-Fi, device setup, etc.)
-    // Note: PHY will recalibrate on next boot.
     ESP_ERROR_CHECK(nvs_flash_erase());
     ESP_ERROR_CHECK(nvs_flash_init());
     set_setup_stage("factory_reset");

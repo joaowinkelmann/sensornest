@@ -25,6 +25,10 @@ void espnow_manager_set_controller_mac(const uint8_t mac[6]);
 /* Controller: start periodic broadcast beacon with name. interval_ms >= 500. */
 esp_err_t espnow_manager_start_controller_beacon(const char *name, int interval_ms);
 
+/* Set controller beacon name at runtime (updates payload if beacon running).
+ * Passing NULL or empty string clears to default "Controller". */
+void espnow_manager_set_controller_name(const char *name);
+
 /* Worker: collect controller beacons for duration_ms (blocking delay loop).
  * On success *out_json holds a malloc'd JSON array string; caller must free().
  * Format: [{"mac":"AA:BB:CC:DD:EE:FF","name":"ControllerName"}]
