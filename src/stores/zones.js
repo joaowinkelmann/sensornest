@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import apiClient from '@/api';
 import { useDevicesStore } from './devices';
+import { useMeshesStore } from './meshes'; // added import
 
 export const useZonesStore = defineStore('zones', {
   state: () => ({
@@ -53,9 +54,10 @@ export const useZonesStore = defineStore('zones', {
       this.activeZoneId = zoneId;
       this.isZoneDirty = false; // Reset dirty state when changing zone
 
-      // Fetch devices for the new active zone
+      // Fetch devices for the current mesh (devices endpoint is mesh-scoped now)
       const devicesStore = useDevicesStore();
-      devicesStore.fetchDevices(zoneId);
+      const meshesStore = useMeshesStore();
+      devicesStore.fetchDevices(meshesStore.selectedMeshId);
     },
     // Action to optimistically update a zone locally
     updateLocalZone(zoneId, zoneData) {

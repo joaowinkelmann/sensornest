@@ -95,7 +95,7 @@ onMounted(() => {
 watch(() => zonesStore.activeZoneId, (newZoneId) => {
   backupVertices.value = null;
   if (newZoneId) {
-    devicesStore.fetchDevices(newZoneId);
+    devicesStore.fetchDevices(meshesStore.selectedMeshId);
   } else {
     devicesStore.clearDevices();
   }
