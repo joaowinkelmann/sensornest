@@ -12,8 +12,11 @@ typedef void (*espnow_mgr_rx_cb_t)(const uint8_t *mac, const uint8_t *data, int 
  */
 esp_err_t espnow_manager_init(bool controller, espnow_mgr_rx_cb_t rx_cb);
 
-/* Broadcast send (truncates >200 bytes). */
+/* Broadcast send (truncates >1000 bytes). */
 esp_err_t espnow_manager_send_broadcast(const void *data, size_t len);
+
+/* Send data to the controller (truncates >1000 bytes). */
+esp_err_t espnow_manager_send_to_controller(const void *data, size_t len);
 
 /* Helper to fetch (and cache) controller MAC if later you move away from broadcast.
  * Currently unused (broadcast only). */

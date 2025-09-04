@@ -65,6 +65,28 @@ static void fetch_remote_config(void) {
     }
 }
 
+static void load_controller_binding(void) {
+    nvs_handle_t nvs;
+    if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
+        char mac_str[24]={0};
+        size_t l = sizeof(mac_str);
+        if (nvs_get_str(nvs,"controller_mac", mac_str, &l) == ESP_OK && mac_str[0]) {
+            int v[6];
+            if (sscanf(mac_str,"%x:%x:%x:%x:%x:%x",&v[0],&v[1],&v[2],&v[3],&v[4],&v[5])==6) {
+                uint8_t mac[6];
+                for (int i=0;i<6;i++) mac[i]=(uint8_t)v[i];
+                espnow_manager_set_controller_mac(mac);
+                ESP_LOGI(TAG_WR, "Loaded controller MAC %s for unicast.", mac_str);
+            }
+        }
+        char name[33]={0}; l=sizeof(name);
+        if (nvs_get_str(nvs,"name", name, &l) == ESP_OK) {
+            ESP_LOGI(TAG_WR, "Worker name: %s", name);
+        }
+        nvs_close(nvs);
+    }
+}
+
 esp_err_t worker_role_start(void) {
     static bool espnow_inited = false;
     if (!espnow_inited) {
@@ -74,6 +96,7 @@ esp_err_t worker_role_start(void) {
             ESP_LOGW(TAG_WR, "Failed to init ESPNOW (will still attempt legacy Wi-Fi path).");
         }
     }
+    load_controller_binding();  // NEW
 
     /* Debug identification flash */
     if (s_debug) {
@@ -81,7 +104,59 @@ esp_err_t worker_role_start(void) {
         led_indicator_flash_worker_debug();
     }
 
-    // Single cycle (mirrors existing loop) – deep sleep ends task.
+    /* If debug mode is enabled, keep running in a loop (no deep sleep).
+     * In production (non-debug) keep the single-shot behavior that will
+     * simulate sleep or actually deep-sleep via simulate_or_sleep().
+     */
+    if (s_debug) {
+        for (;;) {
+            perform_sensor_reading();
+            if (s_debug) {
+                vTaskDelay(pdMS_TO_TICKS(150));
+                led_indicator_off();
+            }
+
+            if (batch_store_count() >= device_readingsPerBatch) {
+                ESP_LOGI(TAG_WR, "Batch full (%d/%d). Sending via ESPNOW (unicast preferred).",
+                         batch_store_count(), device_readingsPerBatch);
+
+                if (espnow_inited) {
+                    char *json_payload = NULL;
+                    if (batch_store_build_json(&json_payload) == ESP_OK && json_payload) {
+                        size_t len = strlen(json_payload);
+                        esp_err_t se = espnow_manager_send_to_controller(json_payload, len);
+                        if (se == ESP_OK) {
+                            ESP_LOGI(TAG_WR, "ESPNOW batch sent (%u bytes).", (unsigned)len);
+                            batch_store_clear();
+                        } else {
+                            ESP_LOGW(TAG_WR, "ESPNOW send failed (%s); retaining batch.", esp_err_to_name(se));
+                        }
+                        free(json_payload);
+                    } else {
+                        ESP_LOGE(TAG_WR, "Failed to build batch JSON; retaining batch.");
+                    }
+                } else {
+                    ESP_LOGI(TAG_WR, "ESPNOW unavailable; falling back to Wi-Fi/cloud.");
+                    if (wifi_manager_connect_saved(15000)) {
+                        ensure_time();
+                        fetch_remote_config();
+                        bool ok = send_batched_data();
+                        if (ok) batch_store_clear();
+                    } else {
+                        ESP_LOGW(TAG_WR, "Wi-Fi connect failed; retaining batch.");
+                    }
+                }
+            } else {
+                ESP_LOGI(TAG_WR, "Batch incomplete (%d/%d).",
+                         batch_store_count(), device_readingsPerBatch);
+            }
+
+            // In debug mode wait using vTaskDelay (no deep sleep)
+            vTaskDelay(pdMS_TO_TICKS(device_wakeUpInterval * 1000));
+        }
+    }
+
+    // Single-cycle (production/deep-sleep) behavior preserved
     perform_sensor_reading();
     if (s_debug) {
         vTaskDelay(pdMS_TO_TICKS(150));
@@ -89,16 +164,16 @@ esp_err_t worker_role_start(void) {
     }
 
     if (batch_store_count() >= device_readingsPerBatch) {
-        ESP_LOGI(TAG_WR, "Batch full (%d/%d). Sending via ESPNOW.",
+        ESP_LOGI(TAG_WR, "Batch full (%d/%d). Sending via ESPNOW (unicast preferred).",
                  batch_store_count(), device_readingsPerBatch);
 
         if (espnow_inited) {
             char *json_payload = NULL;
             if (batch_store_build_json(&json_payload) == ESP_OK && json_payload) {
                 size_t len = strlen(json_payload);
-                esp_err_t se = espnow_manager_send_broadcast(json_payload, len);
+                esp_err_t se = espnow_manager_send_to_controller(json_payload, len); // CHANGED earlier
                 if (se == ESP_OK) {
-                    ESP_LOGI(TAG_WR, "ESPNOW batch sent (%u bytes, may be truncated).", (unsigned)len);
+                    ESP_LOGI(TAG_WR, "ESPNOW batch sent (%u bytes).", (unsigned)len);
                     batch_store_clear();
                 } else {
                     ESP_LOGW(TAG_WR, "ESPNOW send failed (%s); retaining batch.", esp_err_to_name(se));
@@ -108,7 +183,6 @@ esp_err_t worker_role_start(void) {
                 ESP_LOGE(TAG_WR, "Failed to build batch JSON; retaining batch.");
             }
         } else {
-            /* Fallback: old Wi-Fi/cloud path (optional). */
             ESP_LOGI(TAG_WR, "ESPNOW unavailable; falling back to Wi-Fi/cloud.");
             if (wifi_manager_connect_saved(15000)) {
                 ensure_time();
@@ -125,9 +199,5 @@ esp_err_t worker_role_start(void) {
     }
 
     simulate_or_sleep(device_wakeUpInterval);
-
-    if (s_debug) {
-        return worker_role_start();
-    }
-    return ESP_OK; // Deep sleep path never reaches here
+    return (s_debug ? ESP_OK : ESP_OK);
 }

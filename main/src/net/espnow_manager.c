@@ -413,9 +413,9 @@ esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
 esp_err_t espnow_manager_send_broadcast(const void *data, size_t len) {
     if (!s_inited) return ESP_ERR_INVALID_STATE;
     if (!data || len == 0) return ESP_ERR_INVALID_ARG;
-    if (len > 200) {
-        ESP_LOGW(TAG_EN, "Truncating payload %u -> 200 bytes", (unsigned)len);
-        len = 200;
+    if (len > 1000) {
+        ESP_LOGW(TAG_EN, "Truncating payload %u -> 1000 bytes", (unsigned)len);
+        len = 1000;
     }
     uint8_t bcast[6]; memset(bcast, 0xFF, 6);
     esp_err_t err = esp_now_send(bcast, (const uint8_t *)data, len);
@@ -444,4 +444,62 @@ void espnow_manager_set_controller_name(const char *name)
     update_beacon_payload_locked();
     ESP_LOGI(TAG_EN, "Controller beacon name set to '%s' (task=%s)",
              s_beacon_name, s_beacon_task ? "running" : "stopped");
+}
+
+// Static storage for optional controller MAC (kept in RAM)
+static uint8_t s_controller_mac[6];
+static bool    s_have_controller_mac = false;
+
+/* Store controller MAC in RAM (NULL clears). */
+void espnow_manager_set_controller_mac(const uint8_t mac[6])
+{
+    if (!mac) {
+        s_have_controller_mac = false;
+        memset(s_controller_mac, 0, sizeof(s_controller_mac));
+        ESP_LOGI(TAG_EN, "Controller MAC cleared");
+        return;
+    }
+    memcpy(s_controller_mac, mac, sizeof(s_controller_mac));
+    s_have_controller_mac = true;
+    ESP_LOGI(TAG_EN, "Controller MAC set to %02X:%02X:%02X:%02X:%02X:%02X",
+             s_controller_mac[0], s_controller_mac[1], s_controller_mac[2],
+             s_controller_mac[3], s_controller_mac[4], s_controller_mac[5]);
+}
+
+/* Retrieve controller MAC if set. Returns true if MAC was copied. */
+bool espnow_manager_get_controller_mac(uint8_t mac[6])
+{
+    if (!s_have_controller_mac) return false;
+    if (mac) memcpy(mac, s_controller_mac, sizeof(s_controller_mac));
+    return true;
+}
+
+/* Existing helpers set/get controller MAC (already declared in header).
+ * Add unicast send that prefers controller MAC, falls back to broadcast.
+ */
+esp_err_t espnow_manager_send_to_controller(const void *data, size_t len) {
+    if (!s_inited || !data || len == 0) return ESP_ERR_INVALID_STATE;
+    if (len > 1000) {
+        ESP_LOGW(TAG_EN, "Truncating payload %u -> 1000 bytes", (unsigned)len);
+        len = 1000;
+    }
+    uint8_t mac[6];
+    if (espnow_manager_get_controller_mac(mac)) {
+        esp_now_peer_info_t peer = {0};
+        memcpy(peer.peer_addr, mac, 6);
+        peer.ifidx = WIFI_IF_STA;   // prefer STA
+        peer.channel = 0;
+        peer.encrypt = false;
+        bool add_needed = true;
+        // Cheap check: try to add (ignore EXIST)
+        if (esp_now_add_peer(&peer) == ESP_ERR_ESPNOW_EXIST) add_needed = false;
+        esp_err_t e = esp_now_send(mac, (const uint8_t*)data, len);
+        if (e == ESP_OK) {
+            ESP_LOGD(TAG_EN, "Unicast ESPNOW %uB to controller %02X:%02X:%02X:%02X:%02X:%02X",
+                     (unsigned)len, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+            return ESP_OK;
+        }
+        ESP_LOGW(TAG_EN, "Unicast send failed (%s); falling back to broadcast", esp_err_to_name(e));
+    }
+    return espnow_manager_send_broadcast(data, len);
 }

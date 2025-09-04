@@ -8,12 +8,6 @@
 
 #if CONFIG_IDF_TARGET_ESP32C3
 #include "driver/gpio.h"
-#include "driver/ledc.h"
-/* Some IDF versions/targets may only define LEDC_LOW_SPEED_MODE.
- * Provide a fallback so LEDC_HIGH_SPEED_MODE compiles even if absent. */
-#ifndef LEDC_HIGH_SPEED_MODE
-#define LEDC_HIGH_SPEED_MODE LEDC_LOW_SPEED_MODE
-#endif
 #endif
 
 // Target-dependent indicator GPIO. Adjust if your board uses a different pin.
@@ -32,103 +26,148 @@
 #define PULSE_STEP_MS           60
 
 static const char *TAG_IND = "LED_IND";
-#if !CONFIG_IDF_TARGET_ESP32C3
-static led_strip_handle_t s_strip = NULL;
-#endif
 static bool s_inited = false;
 static TaskHandle_t s_pulse_task = NULL;
 
 #if CONFIG_IDF_TARGET_ESP32C3
-// LEDC config for single-color PWM on C3 Super Mini
-static const ledc_channel_t s_ledc_chan = LEDC_CHANNEL_0;
-static const ledc_timer_t   s_ledc_timer = LEDC_TIMER_0;
-static const int s_ledc_freq_hz = 500; // PWM frequency
-static const ledc_mode_t s_ledc_mode = LEDC_HIGH_SPEED_MODE;
-static const ledc_timer_bit_t s_ledc_resolution = LEDC_TIMER_8_BIT;
+/* --------------------------------------------------------------------------
+ * ESP32C3 REFACTORED SIMPLE GPIO INDICATOR (GPIO 8 active LOW)
+ * -------------------------------------------------------------------------- */
+#ifndef INDICATOR_GPIO
+#define INDICATOR_GPIO 8
 #endif
+#define INDICATOR_ACTIVE_LOW 1
+#define CTRL_BLINK_ON_MS   800
+#define CTRL_BLINK_OFF_MS  800
+#define WORKER_FLASH_MS    120
 
-// One-shot worker flash task (non-blocking caller)
-static void worker_flash_task(void *arg) {
-    const uint32_t on_ms = (uint32_t)(uintptr_t)arg;
-#if CONFIG_IDF_TARGET_ESP32C3
-    // Simple on/off flash using LEDC (single-color)
-    if (!s_inited) { vTaskDelete(NULL); return; }
-    uint32_t max_duty = (1 << s_ledc_resolution) - 1;
-    ledc_set_duty(s_ledc_mode, s_ledc_chan, max_duty);
-    ledc_update_duty(s_ledc_mode, s_ledc_chan);
-    vTaskDelay(pdMS_TO_TICKS(on_ms));
-    ledc_set_duty(s_ledc_mode, s_ledc_chan, 0);
-    ledc_update_duty(s_ledc_mode, s_ledc_chan);
+static inline void ind_drive(bool on) {
+#if INDICATOR_ACTIVE_LOW
+    gpio_set_level(INDICATOR_GPIO, on ? 0 : 1);
 #else
-    // Yellow flash (R+G) for RGB strips
-    led_indicator_set(255, 180, 0);
-    vTaskDelay(pdMS_TO_TICKS(on_ms));
-    led_indicator_off();
-#endif
-    vTaskDelete(NULL);
-}
-
-static void apply_color(uint8_t r, uint8_t g, uint8_t b) {
-    if (!s_inited) return;
-#if CONFIG_IDF_TARGET_ESP32C3
-    // For single-color LED, use the max of RGB as brightness
-    uint8_t bright = r;
-    if (g > bright) bright = g;
-    if (b > bright) bright = b;
-    uint32_t duty = (uint32_t)bright * ((1 << s_ledc_resolution) - 1) / 255;
-    ledc_set_duty(s_ledc_mode, s_ledc_chan, duty);
-    ledc_update_duty(s_ledc_mode, s_ledc_chan);
-#else
-    led_strip_set_pixel(s_strip, 0, r, g, b);
-    led_strip_refresh(s_strip);
+    gpio_set_level(INDICATOR_GPIO, on ? 1 : 0);
 #endif
 }
 
-esp_err_t led_indicator_init(void) {
-    if (s_inited) return ESP_OK;
-
-#if CONFIG_IDF_TARGET_ESP32C3
-    // Configure GPIO and LEDC for single-color LED
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << INDICATOR_GPIO),
+static void ensure_inited_gpio(void) {
+    if (s_inited) return;
+    gpio_config_t io = {
+        .pin_bit_mask = 1ULL << INDICATOR_GPIO,
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = 0,
         .pull_down_en = 0,
         .intr_type = GPIO_INTR_DISABLE
     };
-    gpio_config(&io_conf);
-
-    ledc_timer_config_t ledc_timer = {
-        .speed_mode       = s_ledc_mode,
-        .duty_resolution  = s_ledc_resolution,
-        .timer_num        = s_ledc_timer,
-        .freq_hz          = s_ledc_freq_hz,
-        .clk_cfg          = LEDC_AUTO_CLK
-    };
-    esp_err_t err = ledc_timer_config(&ledc_timer);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG_IND, "ledc_timer_config failed: %s", esp_err_to_name(err));
-        return err;
-    }
-    ledc_channel_config_t ledc_chan = {
-        .gpio_num   = INDICATOR_GPIO,
-        .speed_mode = s_ledc_mode,
-        .channel    = s_ledc_chan,
-        .intr_type  = LEDC_INTR_DISABLE,
-        .timer_sel  = s_ledc_timer,
-        .duty       = 0
-    };
-    err = ledc_channel_config(&ledc_chan);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG_IND, "ledc_channel_config failed: %s", esp_err_to_name(err));
-        return err;
-    }
+    gpio_config(&io);
+    ind_drive(false); // OFF
     s_inited = true;
-    // ensure LED off
-    led_indicator_off();
-    ESP_LOGI(TAG_IND, "Initialized single-color indicator (GPIO=%d).", INDICATOR_GPIO);
+    ESP_LOGI(TAG_IND, "Init (C3 simple mode) GPIO=%d active_low=%d", INDICATOR_GPIO, INDICATOR_ACTIVE_LOW);
+}
+
+/* Worker flash: brief ON then OFF (non-blocking) */
+static void worker_flash_task(void *arg) {
+    uint32_t dur = (uint32_t)(uintptr_t)arg;
+    ESP_LOGD(TAG_IND, "worker_flash_task start dur=%u", (unsigned)dur);
+    ensure_inited_gpio();
+    ind_drive(true);
+    vTaskDelay(pdMS_TO_TICKS(dur));
+    ind_drive(false);
+    ESP_LOGD(TAG_IND, "worker_flash_task done");
+    vTaskDelete(NULL);
+}
+
+/* Controller blink task: slow periodic flash while running role */
+static void controller_blink_task(void *arg) {
+    ESP_LOGI(TAG_IND, "controller_blink_task start (slow flash)");
+    ensure_inited_gpio();
+    bool on = false;
+    while (true) {
+        on = !on;
+        ind_drive(on);
+        vTaskDelay(pdMS_TO_TICKS(on ? CTRL_BLINK_ON_MS : CTRL_BLINK_OFF_MS));
+    }
+}
+
+esp_err_t led_indicator_init(void) {
+    ensure_inited_gpio();
     return ESP_OK;
-#else
+}
+
+void led_indicator_set(uint8_t r, uint8_t g, uint8_t b) {
+    /* Any non-zero => ON */
+    ensure_inited_gpio();
+    bool on = (r | g | b) != 0;
+    ind_drive(on);
+    ESP_LOGI(TAG_IND, "set r=%u g=%u b=%u -> %s", r,g,b,on?"ON":"OFF");
+}
+
+void led_indicator_off(void) {
+    ensure_inited_gpio();
+    ind_drive(false);
+    ESP_LOGI(TAG_IND, "off");
+}
+
+void led_indicator_flash_worker_debug(void) {
+    ensure_inited_gpio();
+    // Increased stack to avoid stack-protection/vfprintf panics on C3
+    if (xTaskCreate(worker_flash_task, "led_wflash", 2048, (void*)(uintptr_t)WORKER_FLASH_MS, 2, NULL) != pdPASS) {
+        ESP_LOGW(TAG_IND, "flash task create failed, doing inline flash");
+        ind_drive(true);
+        vTaskDelay(pdMS_TO_TICKS(WORKER_FLASH_MS));
+        ind_drive(false);
+    } else {
+        ESP_LOGI(TAG_IND, "flash task spawned");
+    }
+}
+
+void led_indicator_controller_pulse_start(void) {
+    ensure_inited_gpio();
+    if (s_pulse_task) {
+        ESP_LOGI(TAG_IND, "controller blink already running");
+        return;
+    }
+    // Increase stack to 2K for safe logging / runtime on C3
+    if (xTaskCreate(controller_blink_task, "led_ctrl_blink", 2048, NULL, 1, &s_pulse_task) != pdPASS) {
+        ESP_LOGE(TAG_IND, "controller blink task create failed");
+        s_pulse_task = NULL;
+    } else {
+        ESP_LOGI(TAG_IND, "controller blink started");
+    }
+}
+
+void led_indicator_controller_pulse_stop(void) {
+    if (!s_pulse_task) return;
+    TaskHandle_t h = s_pulse_task;
+    s_pulse_task = NULL;
+    vTaskDelete(h);
+    ind_drive(false);
+    ESP_LOGI(TAG_IND, "controller blink stopped");
+}
+
+#else  /* ------------------ OTHER TARGETS (retain existing implementation) ------------------ */
+
+ // LED strip handle used by non-ESP32C3 targets
+ static led_strip_t *s_strip = NULL;
+
+// One-shot worker flash task (non-blocking caller)
+static void worker_flash_task(void *arg) {
+    const uint32_t on_ms = (uint32_t)(uintptr_t)arg;
+    // Yellow flash (R+G) for RGB strips
+    led_indicator_set(255, 180, 0);
+    vTaskDelay(pdMS_TO_TICKS(on_ms));
+    led_indicator_off();
+    vTaskDelete(NULL);
+}
+
+static void apply_color(uint8_t r, uint8_t g, uint8_t b) {
+    if (!s_inited) return;
+    led_strip_set_pixel(s_strip, 0, r, g, b);
+    led_strip_refresh(s_strip);
+}
+
+esp_err_t led_indicator_init(void) {
+    if (s_inited) return ESP_OK;
+
     led_strip_config_t strip_config = {
         .strip_gpio_num = INDICATOR_GPIO,
         .max_leds = INDICATOR_MAX_LEDS,
@@ -151,7 +190,6 @@ esp_err_t led_indicator_init(void) {
     led_indicator_off();
     ESP_LOGI(TAG_IND, "Initialized (GPIO=%d).", INDICATOR_GPIO);
     return ESP_OK;
-#endif
 }
 
 void led_indicator_set(uint8_t r, uint8_t g, uint8_t b) { apply_color(r,g,b); }
@@ -159,23 +197,12 @@ void led_indicator_off(void) { apply_color(0,0,0); }
 
 void led_indicator_flash_worker_debug(void) {
     // Start short one-shot task to flash the worker LED without blocking caller.
-    // 150 ms is a typical brief flash duration; adjust if desired.
     const uint32_t flash_ms = 150;
-    // Task stack and priority are small since work is minimal.
-    if (xTaskCreate(worker_flash_task, "led_wflash", 1024, (void *)(uintptr_t)flash_ms, 2, NULL) != pdPASS) {
+    if (xTaskCreate(worker_flash_task, "led_wflash", 2048, (void *)(uintptr_t)flash_ms, 2, NULL) != pdPASS) {
         // Fallback: do a blocking flash if task creation failed.
-#if CONFIG_IDF_TARGET_ESP32C3
-        uint32_t max_duty = (1 << s_ledc_resolution) - 1;
-        ledc_set_duty(s_ledc_mode, s_ledc_chan, max_duty);
-        ledc_update_duty(s_ledc_mode, s_ledc_chan);
-        vTaskDelay(pdMS_TO_TICKS(flash_ms));
-        ledc_set_duty(s_ledc_mode, s_ledc_chan, 0);
-        ledc_update_duty(s_ledc_mode, s_ledc_chan);
-#else
         led_indicator_set(255, 180, 0);
         vTaskDelay(pdMS_TO_TICKS(flash_ms));
         led_indicator_off();
-#endif
     }
 }
 
@@ -228,3 +255,5 @@ void led_indicator_controller_pulse_stop(void) {
     vTaskDelete(h);
     led_indicator_off();
 }
+
+#endif /* CONFIG_IDF_TARGET_ESP32C3 */

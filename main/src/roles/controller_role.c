@@ -13,6 +13,7 @@
 #include "nvs.h"
 #include "esp_wifi.h"
 #include "esp_mac.h"
+#include "cJSON.h"
 
 #define CONTROLLER_MAIN_STACK   8192   // Increase from 4096 (TLS & JSON need >6K)
 #define CONTROLLER_MAIN_PRIO    5
@@ -67,13 +68,74 @@ static void fetch_remote_config(void) {
     }
 }
 
+/* NEW: accumulate worker batches (raw JSON) for merge */
+#define MAX_WORKER_BATCHES 6
+static char *s_worker_batches[MAX_WORKER_BATCHES];
+static int   s_worker_batch_count = 0;
+
+static void free_worker_batches(void) {
+    for (int i=0;i<s_worker_batch_count;i++) {
+        free(s_worker_batches[i]);
+        s_worker_batches[i]=NULL;
+    }
+    s_worker_batch_count=0;
+}
+
+static void stash_worker_batch(const char *json, int len) {
+    if (!json || len<=0) return;
+    if (s_worker_batch_count == MAX_WORKER_BATCHES) {
+        free(s_worker_batches[0]);
+        memmove(&s_worker_batches[0], &s_worker_batches[1],
+                sizeof(char*)*(MAX_WORKER_BATCHES-1));
+        s_worker_batch_count--;
+    }
+    s_worker_batches[s_worker_batch_count++] = strndup(json, len);
+    ESP_LOGI(TAG_CR, "Stashed worker batch (%d stored).", s_worker_batch_count);
+}
+
+static char *merge_local_and_worker_batches(char *local_json) {
+    if (s_worker_batch_count == 0) return local_json;
+    // Expect format: {"readings":[ ... ]}
+    cJSON *root = cJSON_Parse(local_json ? local_json : "{\"readings\":[]}");
+    if (!root) return local_json;
+    cJSON *main_arr = cJSON_GetObjectItem(root,"readings");
+    if (!cJSON_IsArray(main_arr)) {
+        cJSON_Delete(root);
+        return local_json;
+    }
+    for (int i=0;i<s_worker_batch_count;i++) {
+        cJSON *wr = cJSON_Parse(s_worker_batches[i]);
+        if (!wr) continue;
+        cJSON *arr = cJSON_GetObjectItem(wr,"readings");
+        if (cJSON_IsArray(arr)) {
+            int sz = cJSON_GetArraySize(arr);
+            for (int j=0;j<sz;j++) {
+                cJSON *itm = cJSON_DetachItemFromArray(arr, 0);
+                if (itm) cJSON_AddItemToArray(main_arr, itm);
+            }
+        }
+        cJSON_Delete(wr);
+    }
+    char *merged = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    if (merged) {
+        free(local_json);
+        free_worker_batches();
+        return merged;
+    } else {
+        ESP_LOGW(TAG_CR, "Failed to merge local and worker batches.");
+        // keep original local_json if merge failed
+        free_worker_batches();
+        return local_json;
+    }
+}
+
 /* Periodic controller loop (always-on, no deep sleep) */
 static void controller_main_task(void *arg) {
     ESP_LOGI(TAG_CR, "Controller loop started (interval=%d s, batch=%d, debug=%d, stack=%d)",
              device_wakeUpInterval, device_readingsPerBatch, s_debug, CONTROLLER_MAIN_STACK);
-
     for (;;) {
-        /* Take a reading if space */
         if (!batch_store_is_full()) {
             sensor_reading_t r;
             if (sensor_read_once(s_debug, &r) == ESP_OK &&
@@ -83,26 +145,30 @@ static void controller_main_task(void *arg) {
             }
         }
 
-        /* Send if batch full */
-        if (batch_store_count() >= device_readingsPerBatch) {
-            ESP_LOGI(TAG_CR, "Batch full (%d/%d). Ensuring Wi-Fi & sending.",
-                     batch_store_count(), device_readingsPerBatch);
+        if (batch_store_count() >= device_readingsPerBatch ||
+            (s_worker_batch_count > 0 && batch_store_count() > 0)) {
+            ESP_LOGI(TAG_CR, "Preparing combined batch (local=%d worker_batches=%d)",
+                     batch_store_count(), s_worker_batch_count);
             if (wifi_manager_connect_saved(15000)) {
                 ensure_time();
                 fetch_remote_config();
-                bool ok = send_batched_data();
-                if (ok) {
-                    batch_store_clear();
-                    ESP_LOGI(TAG_CR, "Batch cleared after send.");
-                } else {
-                    ESP_LOGW(TAG_CR, "Send failed; retaining batch (%d).", batch_store_count());
+                char *local_json = NULL;
+                if (batch_store_build_json(&local_json) == ESP_OK && local_json) {
+                    char *merged = merge_local_and_worker_batches(local_json);
+                    if (rc_post_readings(merged) == ESP_OK) {
+                        ESP_LOGI(TAG_CR, "Combined batch posted successfully.");
+                        batch_store_clear();
+                    } else {
+                        ESP_LOGW(TAG_CR, "Combined batch post failed; retaining local batch.");
+                    }
+                    free(merged);
                 }
             } else {
-                ESP_LOGE(TAG_CR, "Wi-Fi connect failed; will retry next interval.");
+                ESP_LOGW(TAG_CR, "Wi-Fi connect failed; will retry next interval.");
             }
         } else {
-            ESP_LOGD(TAG_CR, "Batch incomplete (%d/%d).",
-                     batch_store_count(), device_readingsPerBatch);
+            ESP_LOGD(TAG_CR, "Batch incomplete (%d/%d) worker_batches=%d",
+                     batch_store_count(), device_readingsPerBatch, s_worker_batch_count);
         }
 
         int wait_s = device_wakeUpInterval > 0 ? device_wakeUpInterval : 10;
@@ -111,14 +177,15 @@ static void controller_main_task(void *arg) {
 }
 
 static void controller_rx_espnow_cb(const uint8_t *mac, const uint8_t *data, int len) {
-    // Log a safe snippet
-    char buf[128];
-    int n = len < (int)sizeof(buf)-1 ? len : (int)sizeof(buf)-1;
-    memcpy(buf, data, n);
-    buf[n] = 0;
-    ESP_LOGI(TAG_CR, "ESPNOW RX %dB from %02X:%02X:%02X:%02X:%02X:%02X data='%s'%s",
-             len, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5], buf, (len>n?"...":""));
-    // TODO: parse JSON and store readings (future)
+    if (!data || len <= 0) return;
+    int n = len < 120 ? len : 120;
+    char snippet[121]; memcpy(snippet,data,n); snippet[n]=0;
+    ESP_LOGI(TAG_CR, "ESPNOW RX %dB from %02X:%02X:%02X:%02X:%02X:%02X '%s'%s",
+             len, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5],
+             snippet, (len>n?"...":""));
+    // Assume payload is JSON batch {"readings":[...]} – stash for merge
+    if (len < 10) return;
+    stash_worker_batch((const char*)data, len);
 }
 
 void controller_role_set_debug(bool enabled) { s_debug = enabled; }

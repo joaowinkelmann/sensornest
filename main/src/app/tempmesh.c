@@ -266,6 +266,7 @@ void app_main(void)
 
     // Log Levels
     esp_log_level_set("wifi", ESP_LOG_WARN);
+    esp_log_level_set("LED_IND", ESP_LOG_DEBUG);
 
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();

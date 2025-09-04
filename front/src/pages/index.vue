@@ -93,6 +93,8 @@
             <q-select
               v-model="selectedControllerMac"
               :options="controllers.map(c=>({label:`${c.name||'Controller'} (${c.mac})`, value:c.mac}))"
+              emit-value
+              map-options
               filled class="q-mt-sm"
               :label="$t('availableControllers')"
               :loading="controllersLoading"
@@ -103,6 +105,7 @@
             </q-select>
             <q-btn class="q-mt-md" color="primary"
                    :disable="!workerName || !selectedControllerMac"
+                   :loading="bindingWorker"
                    :label="$t('bindWorker')" @click="bindWorker"/>
           </div>
 
@@ -350,6 +353,7 @@ const controllers = ref([]);
 const selectedControllerMac = ref("");
 const workerName = ref("");
 const controllersLoading = ref(false);
+const bindingWorker = ref(false); // <--- MISSING REF (caused bind to abort with ReferenceError)
 
 const connected = computed(() => !!status.value?.connected);
 const step = computed(() => {
@@ -504,6 +508,32 @@ async function scanControllers() {
     showError(e, "failedToScanControllers");
   } finally {
     controllersLoading.value = false;
+  }
+}
+
+async function bindWorker() {
+  console.log("[bindWorker] starting", { workerName: workerName.value, selectedControllerMac: selectedControllerMac.value });
+  if (!workerName.value || !selectedControllerMac.value) {
+    console.warn("[bindWorker] missing required fields");
+    return;
+  }
+  bindingWorker.value = true;
+  connecting.value = true;
+  try {
+    console.log("[bindWorker] POST /api/v1/worker/bind");
+    await api.bindWorker(workerName.value, selectedControllerMac.value);
+    $q.notify({
+      type: "positive",
+      message: t("workerBound"),
+    });
+    setupDone.value = true;
+  } catch (e) {
+    console.error("[bindWorker] error", e);
+    showError(e, "failedToBindWorker");
+  } finally {
+    bindingWorker.value = false;
+    connecting.value = false;
+    console.log("[bindWorker] finished");
   }
 }
 

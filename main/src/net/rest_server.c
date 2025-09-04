@@ -75,6 +75,8 @@ static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req);
 
 static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap) {
     int total = req->content_len;
+    ESP_LOGI(TAG, "rs_read_body called: uri=%s content_len=%d cap=%zu",
+             req->uri ? req->uri : "(null)", total, cap);
     if (total <= 0 || total >= (int)cap) {
         ESP_LOGE(TAG, "Invalid body length: %d (max %zu)", total, cap - 1);
         return false;
@@ -89,6 +91,13 @@ static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap) {
         off += r;
     }
     buf[total] = 0;
+
+    // Log a short safe snippet to help debug client payloads (avoid huge logs)
+    int snip = total < 128 ? total : 128;
+    char snippet[129]; memcpy(snippet, buf, snip); snippet[snip] = 0;
+    ESP_LOGI(TAG, "rs_read_body: read %d bytes, snippet='%s'%s",
+             total, snippet, (total > snip ? "..." : ""));
+
     return true;
 }
 
@@ -1382,32 +1391,104 @@ static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
 
 /* POST /api/v1/worker/bind  body: { "name":"Worker1","controllerMac":"AA:BB:.."} */
 static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req) {
+    ESP_LOGI(TAG, "rs_worker_bind_post_handler invoked: uri=%s method=%d content_len=%d",
+             req->uri ? req->uri : "(null)", (int)req->method, req->content_len);
+
+    char host_hdr[128] = {0}, ct_hdr[64] = {0}, ua_hdr[128] = {0};
+    httpd_req_get_hdr_value_str(req, "Host", host_hdr, sizeof(host_hdr));
+    httpd_req_get_hdr_value_str(req, "Content-Type", ct_hdr, sizeof(ct_hdr));
+    httpd_req_get_hdr_value_str(req, "User-Agent", ua_hdr, sizeof(ua_hdr));
+    ESP_LOGI(TAG, "Incoming headers: Host=%s Content-Type=%s UA=%s",
+             host_hdr[0] ? host_hdr : "(none)", ct_hdr[0] ? ct_hdr : "(none)", ua_hdr[0] ? ua_hdr : "(none)");
+
     char *buf = ((rest_server_context_t*)req->user_ctx)->scratch;
     if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
+        ESP_LOGW(TAG, "rs_worker_bind_post_handler: failed to read body");
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body"); return ESP_FAIL;
     }
+    ESP_LOGI(TAG, "rs_worker_bind_post_handler: body read successfully (%d bytes)", (int)strlen(buf));
+
     cJSON *root = cJSON_Parse(buf);
-    if (!root) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad json"); return ESP_FAIL; }
+    if (!root) {
+        ESP_LOGW(TAG, "rs_worker_bind_post_handler: bad json body='%s'", buf);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad json"); return ESP_FAIL;
+    }
     cJSON *j_name = cJSON_GetObjectItem(root,"name");
     cJSON *j_mac  = cJSON_GetObjectItem(root,"controllerMac");
+    const char *mac_str = NULL;
+    char mac_buf[64] = {0};
+    // Accept either a string or an object { value: "AA:BB:..." }
+    if (cJSON_IsString(j_mac)) {
+        mac_str = j_mac->valuestring;
+    } else if (cJSON_IsObject(j_mac)) {
+        cJSON *j_val = cJSON_GetObjectItem(j_mac, "value");
+        if (cJSON_IsString(j_val)) mac_str = j_val->valuestring;
+        else {
+            // try 'mac' key as fallback
+            j_val = cJSON_GetObjectItem(j_mac, "mac");
+            if (cJSON_IsString(j_val)) mac_str = j_val->valuestring;
+        }
+        if (!mac_str && (int)strlen(buf) < (int)sizeof(mac_buf)) {
+            // last resort: attempt to stringify the object into mac_buf
+            char *tmp = cJSON_PrintUnformatted(j_mac);
+            if (tmp) {
+                strlcpy(mac_buf, tmp, sizeof(mac_buf));
+                free(tmp);
+                mac_str = mac_buf;
+            }
+        }
+    }
+    // j_mac may still be NULL or invalid string -> validation below will fail
     if (!cJSON_IsString(j_name) || !j_name->valuestring[0] ||
-        !cJSON_IsString(j_mac)  || !j_mac->valuestring[0]) {
+        !mac_str || !mac_str[0]) {
         cJSON_Delete(root);
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing fields");
         return ESP_FAIL;
     }
-    nvs_handle_t nvs;
-    if (nvs_open("device", NVS_READWRITE, &nvs)==ESP_OK) {
-        nvs_set_str(nvs,"name", j_name->valuestring);
-        nvs_set_str(nvs,"controller_mac", j_mac->valuestring);
-        nvs_set_str(nvs,"setup","complete");
-        nvs_commit(nvs);
-        nvs_close(nvs);
+
+    ESP_LOGI(TAG, "rs_worker_bind_post_handler: requested name='%s' controllerMac='%s'",
+             j_name->valuestring, mac_str);
+
+    // Parse MAC "AA:BB:CC:DD:EE:FF"
+    uint8_t mac_bytes[6] = {0};
+    int vals[6]={0};
+    if (sscanf(mac_str,"%x:%x:%x:%x:%x:%x",
+                &vals[0],&vals[1],&vals[2],&vals[3],&vals[4],&vals[5]) == 6) {
+        for (int i=0;i<6;i++) mac_bytes[i]=(uint8_t)vals[i];
+        espnow_manager_set_controller_mac(mac_bytes);
+        ESP_LOGI(TAG, "Worker bind: stored controller MAC %s", j_mac->valuestring);
+    } else {
+        ESP_LOGW(TAG, "Worker bind: invalid controllerMac format '%s' (continuing)", mac_str);
     }
+
+    nvs_handle_t nvs;
+    esp_err_t nerr = nvs_open("device", NVS_READWRITE, &nvs);
+    if (nerr == ESP_OK) {
+        esp_err_t e1 = nvs_set_str(nvs,"name", j_name->valuestring);
+        esp_err_t e2 = nvs_set_str(nvs,"controller_mac", j_mac->valuestring);
+        esp_err_t e3 = nvs_set_str(nvs,"setup","complete");
+        esp_err_t ec = ESP_FAIL;
+        if (e1 == ESP_OK && e2 == ESP_OK && e3 == ESP_OK) {
+            ec = nvs_commit(nvs);
+        } else {
+            ESP_LOGW(TAG, "NVS set_str failures: name=%s controller_mac=%s setup=%s",
+                     esp_err_to_name(e1), esp_err_to_name(e2), esp_err_to_name(e3));
+        }
+        if (ec != ESP_OK) {
+            ESP_LOGW(TAG, "NVS commit failed: %s", esp_err_to_name(ec));
+        }
+         ESP_LOGI(TAG, "nvs write results: name=%s controller_mac=%s commit=%s",
+                  esp_err_to_name(e1), esp_err_to_name(e2), esp_err_to_name(ec));
+         nvs_close(nvs);
+     } else {
+         ESP_LOGW(TAG, "Failed to open NVS for writing: %s", esp_err_to_name(nerr));
+     }
+
     cJSON_Delete(root);
     httpd_resp_set_type(req,"application/json");
     httpd_resp_sendstr(req,"{\"status\":\"ok\",\"restarting\":true}");
     vTaskDelay(pdMS_TO_TICKS(150));
+    ESP_LOGI(TAG, "rs_worker_bind_post_handler: restarting now");
     esp_restart();
     return ESP_OK;
 }
