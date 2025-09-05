@@ -136,6 +136,56 @@ const convertDeviceToLatLng = (device) => {
   };
 };
 
+const pointToSegmentDistanceSq = (p, a, b) => {
+  // Handle identical points
+  const vx = b.x - a.x;
+  const vy = b.y - a.y;
+  const wx = p.x - a.x;
+  const wy = p.y - a.y;
+
+  const segLenSq = vx * vx + vy * vy;
+  if (segLenSq === 0) {
+    const dx = p.x - a.x;
+    const dy = p.y - a.y;
+    return dx * dx + dy * dy;
+  }
+
+  // Project p onto segment ab (parameterized t in [0,1])
+  let t = (wx * vx + wy * vy) / segLenSq;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+
+  const projX = a.x + t * vx;
+  const projY = a.y + t * vy;
+
+  const dx = p.x - projX;
+  const dy = p.y - projY;
+  return dx * dx + dy * dy;
+};
+
+const findInsertionIndex = (vertices, newPoint) => {
+  // vertices: array of {x,y}; polygon considered closed
+  let bestIndex = vertices.length; // default append
+  let bestDist = Infinity;
+
+  const n = vertices.length;
+  if (n < 3) return n; // keep natural building until polygon has 3 points
+
+  for (let i = 0; i < n; i++) {
+    const a = vertices[i];
+    const b = vertices[(i + 1) % n];
+    const distSq = pointToSegmentDistanceSq(newPoint, a, b);
+    if (distSq < bestDist) {
+      bestDist = distSq;
+      // insertion position is after a (i), i.e. before b (i+1)
+      bestIndex = i + 1;
+      if (bestIndex > n) bestIndex = n;
+    }
+  }
+  return bestIndex;
+};
+// --- end helpers ---
+
 // Map event handlers
 const handleVertexAdded = (latlng) => {
   const activeZone = zonesStore.activeZone;
@@ -148,13 +198,28 @@ const handleVertexAdded = (latlng) => {
     return;
   }
 
-  // create backup before the first local modification
   if (backupVertices.value === null) {
     backupVertices.value = JSON.parse(JSON.stringify(activeZone.vertices || []));
   }
 
   const newApiVertex = convertToApiVertex(latlng);
-  const updatedVertices = [...activeZone.vertices, newApiVertex];
+  const current = activeZone.vertices || [];
+
+  // Determine insertion index based on closest segment
+  const insertionIndex = findInsertionIndex(current, newApiVertex);
+
+  let updatedVertices;
+  if (insertionIndex >= current.length) {
+    // append
+    updatedVertices = [...current, newApiVertex];
+  } else {
+    updatedVertices = [
+      ...current.slice(0, insertionIndex),
+      newApiVertex,
+      ...current.slice(insertionIndex)
+    ];
+  }
+
   zonesStore.updateLocalZone(activeZone.id, { vertices: updatedVertices });
 };
 
