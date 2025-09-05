@@ -99,6 +99,14 @@ const handleMapClick = (event) => {
   }
 };
 
+// Helper to refresh device positions (re-draw markers)
+const refreshDevicePositions = () => {
+  // Only show devices when not in an edit mode
+  if (mode.value === null) {
+    drawDevices(props.devices, props.conversionFn);
+  }
+};
+
 // Lifecycle hooks
 onMounted(async () => {
   await initializeMap(props.centerLat, props.centerLng);
@@ -106,10 +114,20 @@ onMounted(async () => {
     map.value.on('click', handleMapClick);
     drawZones(props.zones, props.activeZoneId, mode.value);
     drawDevices(props.devices, props.conversionFn);
+
+    // Recalculate device marker positions after zoom or pan ends
+    map.value.on('zoomend', refreshDevicePositions);
+    map.value.on('moveend', refreshDevicePositions);
   }
 });
 
 onUnmounted(() => {
+  // Clean up listeners
+  if (map.value) {
+    map.value.off('zoomend', refreshDevicePositions);
+    map.value.off('moveend', refreshDevicePositions);
+    map.value.off('click', handleMapClick);
+  }
   clearZoneLayers();
   clearDeviceMarkers();
   destroyMap();
