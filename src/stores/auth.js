@@ -17,7 +17,7 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true;
       this.error = null;
       try {
-        const response = await apiClient.post('/auth/login/', credentials);
+        const response = await apiClient.post('auth/login', credentials);
         this.token = response.data.access_token;
         localStorage.setItem('token', this.token);
         await this.getProfile(); // Fetch user profile after login
@@ -32,20 +32,35 @@ export const useAuthStore = defineStore('auth', {
     async getProfile() {
       if (!this.token) return;
       try {
-        // This corresponds to your GET /auth/profile endpoint
-        const response = await apiClient.get('/auth/profile');
-        this.user = response.data;
+        const response = await apiClient.get('auth/profile');
+        this.user = response.data.user;
       } catch (e) {
         console.error('Failed to fetch profile:', e);
         this.logout(); // Logout if token is invalid
+      }
+    },
+    async updateProfile(userData) {
+      this.loading = true;
+      this.error = null;
+      try {
+        // The API does not return the updated user object, so we don't expect a body.
+        await apiClient.patch(`users/${userData.id}`, { name: userData.name });
+        // Manually update the user in the store on success.
+        if (this.user) {
+          this.user.name = userData.name;
+        }
+      } catch (e) {
+        this.error = 'Failed to update profile.';
+        console.error('Profile update failed:', e);
+      } finally {
+        this.loading = false;
       }
     },
     logout() {
       this.token = null;
       this.user = null;
       localStorage.removeItem('token');
-      // No longer need to redirect, the UI will reactively update.
-      // router.push('/login');
+      router.push('/login');
     },
   },
 });

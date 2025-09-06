@@ -7,6 +7,7 @@ import MainLayout from '@/layouts/MainLayout.vue';
 // Views
 import LoginView from '@/views/auth/LoginView.vue';
 import RegisterView from '@/views/auth/RegisterView.vue';
+import ProfileView from '@/views/auth/ProfileView.vue';
 import HomeView from '@/views/home/HomeView.vue';
 import MapEditorView from '@/views/map-editor/MapEditorView.vue';
 
@@ -35,8 +36,13 @@ const routes = [
         path: 'map-editor',
         name: 'map-editor',
         component: MapEditorView,
+        meta: { navbarHidden: true },
       },
-      // TODO: Add other authenticated routes here
+      {
+        path: 'profile',
+        name: 'profile',
+        component: ProfileView,
+      },
     ],
   },
   // Catch-all redirect
