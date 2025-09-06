@@ -44,6 +44,10 @@ const props = defineProps({
   conversionFn: {
     type: Function,
     required: true
+  },
+  editMode: {
+    type: String,
+    default: 'zones'
   }
 });
 
@@ -52,6 +56,7 @@ const emit = defineEmits([
   'vertex-added',
   'vertex-removed',
   'vertex-moved',
+  'device-moved',
 ]);
 
 // Reactive references
@@ -75,7 +80,7 @@ const {
 const {
   drawDevices,
   clearDeviceMarkers
-} = useDeviceRenderer(map);
+} = useDeviceRenderer(map, props, emit);
 
 // Mode management
 const handleModeChange = (newMode) => {
@@ -153,6 +158,10 @@ watch(() => props.devices, (newDevices) => {
     drawDevices(newDevices, props.conversionFn);
   }
 }, { deep: true });
+
+watch(() => props.editMode, () => {
+  drawDevices(props.devices, props.conversionFn);
+});
 
 watch(() => [props.centerLat, props.centerLng], (newCenter) => {
   if (map.value && newCenter[0] && newCenter[1]) {

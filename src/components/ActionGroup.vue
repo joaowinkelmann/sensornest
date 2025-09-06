@@ -4,7 +4,7 @@
       v-for="action in actions" 
       :key="action.id"
       :action="action"
-      @click="$emit('action-click', action.id)"
+      @click="handleClick(action)"
     />
     <div v-if="showDivider" class="sidebar-divider"></div>
   </div>
@@ -24,7 +24,15 @@ defineProps({
   }
 });
 
-defineEmits(['action-click']);
+const emit = defineEmits(['action-click']);
+
+const handleClick = (action) => {
+  if (typeof action.action === 'function') {
+    action.action();
+  } else {
+    emit('action-click', action.id);
+  }
+};
 </script>
 
 <style scoped>

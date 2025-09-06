@@ -43,7 +43,8 @@ const props = defineProps({
   canCreateZone: { type: Boolean, default: false },
   canSaveZone: { type: Boolean, default: false },
   showSaveButton: { type: Boolean, default: false },
-  showUndoButton: { type: Boolean, default: false }
+  showUndoButton: { type: Boolean, default: false },
+  editMode: { type: String, default: 'zones' }
 });
 
 const emit = defineEmits([
@@ -53,7 +54,8 @@ const emit = defineEmits([
   'zone-create-clicked',
   'save-zone-clicked',
   'undo-zone-clicked',
-  'logout-clicked'
+  'logout-clicked',
+  'update:editMode'
 ]);
 
 const expanded = ref(false);
@@ -63,6 +65,10 @@ const actionGroups = computed(() => [
   [
     { id: 'select-mesh', icon: 'grid_on', tooltip: 'Select Mesh', action: 'mesh-select-clicked' },
     { id: 'create-mesh', icon: 'add_box', tooltip: 'Create New Mesh', action: 'mesh-create-clicked' }
+  ],
+  [
+    { id: 'edit-zones', icon: 'layers', tooltip: 'Edit Zones', action: () => emit('update:editMode', 'zones'), active: props.editMode === 'zones' },
+    { id: 'edit-devices', icon: 'developer_board', tooltip: 'Edit Devices', action: () => emit('update:editMode', 'devices'), active: props.editMode === 'devices' }
   ],
   [
     { id: 'manage-zones', icon: 'place', tooltip: 'Manage Zones', action: 'zone-manage-clicked' },
