@@ -62,7 +62,6 @@ onMounted(() => {
     $q.notify({
       type: 'info',
       message: 'Please select a mesh to start editing.',
-      position: 'top'
     });
   }
 });
@@ -145,7 +144,7 @@ const findInsertionIndex = (vertices, newPoint) => {
 const handleVertexAdded = (latlng) => {
   const activeZone = zonesStore.activeZone;
   if (!activeZone) {
-    $q.notify({ type: 'warning', message: 'Please select or create a zone first.', position: 'top' });
+    $q.notify({ type: 'warning', message: 'Please select or create a zone first.'});
     return;
   }
   if (backupVertices.value === null) {
@@ -186,7 +185,6 @@ const handleDeviceMoved = async ({ id, latlng }) => {
     $q.notify({
       type: 'positive',
       message: 'Device position updated successfully!',
-      position: 'top',
       timeout: 2000
     });
   } catch (error) {
@@ -194,7 +192,6 @@ const handleDeviceMoved = async ({ id, latlng }) => {
     $q.notify({
       type: 'negative',
       message: 'Failed to update device position.',
-      position: 'top'
     });
     // Optional: revert device position on failure
     devicesStore.fetchDevices(meshesStore.selectedMeshId);
@@ -204,7 +201,7 @@ const handleDeviceMoved = async ({ id, latlng }) => {
 const saveZone = async () => {
   const zone = zonesStore.activeZone;
   if (!zone) {
-    $q.notify({ type: 'warning', message: 'No active zone to save.', position: 'top' });
+    $q.notify({ type: 'warning', message: 'No active zone to save.'});
     return;
   }
   try {
@@ -212,23 +209,23 @@ const saveZone = async () => {
     mapRef.value?.setMode(null);
     backupVertices.value = null;
     zonesStore.isZoneDirty = false;
-    $q.notify({ type: 'positive', message: 'Zone saved successfully!', position: 'top' });
+    $q.notify({ type: 'positive', message: 'Zone saved successfully!'});
   } catch (error) {
     console.error('Failed to save zone:', error);
-    $q.notify({ type: 'negative', message: 'Failed to save zone. Please try again.', position: 'top' });
+    $q.notify({ type: 'negative', message: 'Failed to save zone. Please try again.'});
   }
 };
 
 const onMeshSelected = (meshId) => {
   meshesStore.selectMesh(meshId);
   showMeshDialog.value = false;
-  $q.notify({ type: 'positive', message: 'Mesh selected successfully!', position: 'top' });
+  $q.notify({ type: 'positive', message: 'Mesh selected successfully!'});
 };
 
 const onZoneSelected = (zoneId) => {
   zonesStore.setActiveZone(zoneId);
   showZonesDialog.value = false;
-  $q.notify({ type: 'info', message: 'Zone selected. You can now edit it on the map.', position: 'top' });
+  $q.notify({ type: 'info', message: 'Zone selected. You can now edit it on the map.'});
 };
 
 const promptCreateMesh = () => {
@@ -243,10 +240,10 @@ const promptCreateMesh = () => {
     if (name.trim()) {
       try {
         await meshesStore.createMesh(name.trim());
-        $q.notify({ type: 'positive', message: `Mesh "${name}" created successfully!`, position: 'top' });
+        $q.notify({ type: 'positive', message: `Mesh "${name}" created successfully!`});
       } catch (error) {
         console.error('Failed to create mesh:', error);
-        $q.notify({ type: 'negative', message: 'Failed to create mesh. Please try again.', position: 'top' });
+        $q.notify({ type: 'negative', message: 'Failed to create mesh. Please try again.'});
       }
     }
   });
@@ -254,7 +251,7 @@ const promptCreateMesh = () => {
 
 const promptCreateZone = () => {
   if (!meshesStore.selectedMeshId) {
-    $q.notify({ type: 'warning', message: 'Please select a mesh first.', position: 'top' });
+    $q.notify({ type: 'warning', message: 'Please select a mesh first.'});
     return;
   }
   $q.dialog({
@@ -268,13 +265,13 @@ const promptCreateZone = () => {
     if (name.trim()) {
       try {
         const newZone = await zonesStore.createZone(meshesStore.selectedMeshId, { name: name.trim(), vertices: [] });
-        $q.notify({ type: 'positive', message: `Zone "${name}" created! You can now add points on the map.`, position: 'top', timeout: 4000 });
+        $q.notify({ type: 'positive', message: `Zone "${name}" created! You can now add points on the map.` });
         if (newZone && newZone.id) {
           zonesStore.setActiveZone(newZone.id);
         }
       } catch (error) {
         console.error('Failed to create zone:', error);
-        $q.notify({ type: 'negative', message: 'Failed to create zone. Please try again.', position: 'top' });
+        $q.notify({ type: 'negative', message: 'Failed to create zone. Please try again.'});
       }
     }
   });
@@ -291,7 +288,7 @@ const restoreZoneChanges = () => {
   } catch (err) {
     console.warn('Failed to focus on zone after undo:', err);
   }
-  $q.notify({ type: 'info', message: 'Undid unsaved changes.', position: 'top' });
+  $q.notify({ type: 'info', message: 'Undid unsaved changes.'});
 };
 </script>
 

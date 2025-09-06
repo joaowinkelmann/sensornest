@@ -16,7 +16,10 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.use(Quasar, {
-  plugins: { Dialog, Notify }, // import Quasar plugins here
+  plugins: { Dialog, Notify },
+  config: {
+    notify: { position: 'bottom-left', timeout: 3000 },
+  },
 })
 
 app.mount('#app')

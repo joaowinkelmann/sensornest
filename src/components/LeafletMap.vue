@@ -189,12 +189,12 @@ defineExpose({
 .leaflet-map-wrapper {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: 100%; /* fill parent, not viewport */
   background: #f0f0f0;
 }
 
 .leaflet-map-container {
-  height: 100vh;
+  height: 100%; /* fill wrapper, not viewport */
   width: 100%;
   border-radius: 0;
 }
@@ -211,16 +211,14 @@ defineExpose({
   z-index: 1000;
 }
 
-/* Responsive adjustments */
+/* Mobile adjustments */
 @media (max-width: 768px) {
-  .leaflet-map-container {
-    height: 100vh;
-    height: 100dvh;
-    /* Dynamic viewport height for mobile */
+  .leaflet-map-wrapper {
+    height: 100%; /* keep consistent */
   }
 }
 
-/* Dark mode support */
+/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .leaflet-map-wrapper {
     background: #1a1a1a;

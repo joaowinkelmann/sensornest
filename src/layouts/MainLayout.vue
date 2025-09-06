@@ -3,17 +3,11 @@
     <q-header
       elevated
       class="bg-primary text-white"
-      :style="{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1000 }"
+      :class="{ hidden: !navbarVisible }"
+      dense
     >
       <q-toolbar>
-        <q-btn
-          dense
-          flat
-          round
-          :icon="navbarVisible ? 'visibility_off' : 'visibility'"
-          @click="toggleNavbar"
-        />
-
+        <!-- Nav content -->
         <template v-if="navbarVisible">
           <q-toolbar-title> TempMesh </q-toolbar-title>
 
@@ -42,9 +36,34 @@
           <q-toolbar-title> TempMesh </q-toolbar-title>
         </template>
       </q-toolbar>
+
+      <!-- Collapse button (visible when navbar is expanded) -->
+      <div v-if="navbarVisible" class="navbar-toggle-wrapper">
+        <q-btn
+          round
+          dense
+          color="primary"
+          icon="expand_less"
+          @click="toggleNavbar"
+          aria-label="Collapse navbar"
+        />
+      </div>
     </q-header>
 
-    <q-page-container :style="{ paddingTop: '50px' }">
+    <!-- Expand button (visible when navbar is hidden) -->
+    <div v-if="!navbarVisible" class="navbar-reveal-wrapper">
+      <q-btn
+        round
+        dense
+        color="primary"
+        icon="expand_more"
+        @click="toggleNavbar"
+        aria-label="Expand navbar"
+      />
+    </div>
+
+    <!-- Let QLayout manage the header offset; do not add extra padding -->
+    <q-page-container>
       <router-view />
     </q-page-container>
   </q-layout>
@@ -73,11 +92,7 @@ const handleLogout = () => {
 watch(
   () => route.meta,
   (meta) => {
-    if (meta.navbarHidden) {
-      navbarVisible.value = false;
-    } else {
-      navbarVisible.value = true;
-    }
+    navbarVisible.value = !meta.navbarHidden;
   },
   { immediate: true }
 );
@@ -85,10 +100,35 @@ watch(
 
 <style scoped>
 .q-header {
-  transition: transform 0.3s ease-in-out;
+  transition: transform 0.25s ease-in-out;
+}
+.q-header.hidden {
+  transform: translateY(-100%);
 }
 
-.q-page-container {
-  transition: padding-top 0.3s ease-in-out;
+/* Collapse button below expanded navbar */
+.navbar-toggle-wrapper {
+  position: absolute;
+  left: 50%;
+  bottom: -14px;
+  transform: translateX(-50%);
+  z-index: 950;
+  pointer-events: none; /* don't block content */
+}
+.navbar-toggle-wrapper :deep(.q-btn) {
+  pointer-events: auto; /* only the button is clickable */
+}
+
+/* Expand button at the very top when navbar is hidden */
+.navbar-reveal-wrapper {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 950; /* below FloatingSidebar (which is 1000) */
+  pointer-events: none;
+}
+.navbar-reveal-wrapper :deep(.q-btn) {
+  pointer-events: auto;
 }
 </style>

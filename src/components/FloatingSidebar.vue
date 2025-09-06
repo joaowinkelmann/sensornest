@@ -107,7 +107,7 @@ defineExpose({
 <style scoped>
 .sidebar-container {
   position: fixed;
-  top: 20px;
+  top: 60px;
   right: 20px;
   z-index: 1000;
   display: flex;
@@ -285,7 +285,7 @@ defineExpose({
 /* Responsive design */
 @media (max-width: 768px) {
   .sidebar-container {
-    top: 16px;
+    top: 64px;
     right: 16px;
     gap: 8px;
   }
