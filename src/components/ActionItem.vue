@@ -3,7 +3,8 @@
     class="action-item" 
     :class="{
       'disabled': action.disabled,
-      'danger': action.variant === 'danger'
+      'danger': action.variant === 'danger',
+      'active': action.active
     }"
     @click="handleClick"
   >
@@ -75,6 +76,12 @@ const handleClick = () => {
 
 .action-item.disabled:hover {
   transform: none;
+}
+
+.action-item.active {
+  background: rgba(44, 12, 161, 0.85);
+  transform: scale(1.1);
+  border-color: rgba(94, 23, 235, 0.8);
 }
 
 /* save button */

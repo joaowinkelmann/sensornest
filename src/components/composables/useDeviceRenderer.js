@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import L from 'leaflet'
 
-export function useDeviceRenderer(map) {
+export function useDeviceRenderer(map, props, emit) {
   const deviceLayers = ref({})
 
   const createDeviceMarker = (device, latlng) => {
@@ -20,7 +20,17 @@ export function useDeviceRenderer(map) {
       iconAnchor: [12, 12],
     })
 
-    const marker = L.marker(latlng, { icon })
+    const marker = L.marker(latlng, {
+      icon,
+      draggable: props.editMode === 'devices'
+    })
+
+    marker.on('dragend', (event) => {
+      emit('device-moved', {
+        id: device.id,
+        latlng: event.target.getLatLng()
+      });
+    });
 
     marker.bindPopup(`
       <div class="device-popup">
