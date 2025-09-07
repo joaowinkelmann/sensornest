@@ -1,172 +1,215 @@
 <template>
-  <q-dialog v-model="dialogOpen" @hide="$emit('close')">
-    <q-card style="min-width: 300px" class="modern-dialog">
-      <q-card-section class="dialog-header">
-        <div class="text-h6">Select Mesh</div>
-        <q-btn 
-          flat 
-          round 
-          dense 
-          icon="close" 
-          @click="$emit('close')"
-          class="close-btn"
-        />
+  <q-dialog :model-value="show" @update:model-value="$emit('close')" persistent>
+    <q-card style="width: 700px; max-width: 80vw;">
+      <q-card-section>
+        <div class="text-h6">{{ isEditing ? 'Edit Mesh' : 'Create New Mesh' }}</div>
       </q-card-section>
-      
-      <q-card-section class="dialog-content">
-        <q-select
-          filled
-          v-model="selectedMesh"
-          :options="meshOptions"
-          label="Selected Mesh"
-          emit-value
-          map-options
-          class="modern-select"
-        >
-          <template v-slot:no-option>
-            <q-item>
-              <q-item-section class="text-grey">
-                No meshes available
-              </q-item-section>
-            </q-item>
-          </template>
-        </q-select>
+
+      <q-card-section class="q-pt-none">
+        <q-input v-model="meshData.name" label="Mesh Name" autofocus :rules="[val => !!val || 'Name is required']" />
+
+        <q-tabs v-model="tab" class="text-grey" active-color="primary" indicator-color="primary" align="justify"
+          narrow-indicator>
+          <q-tab name="osm" label="OpenStreetMap" />
+          <q-tab name="custom" label="Custom Map" />
+        </q-tabs>
+
+        <q-separator />
+
+        <q-tab-panels v-model="tab" animated>
+          <q-tab-panel name="osm">
+            <div class="q-my-md">
+              <q-btn @click="getUserLocation" label="Get Current Location" icon="my_location" color="secondary" />
+            </div>
+            <div ref="mapContainer" style="height: 300px; width: 100%;"></div>
+            <div class="row q-col-gutter-sm q-mt-sm">
+              <div class="col">
+                <q-input v-model.number="meshData.lat" type="number" label="Latitude" />
+              </div>
+              <div class="col">
+                <q-input v-model.number="meshData.lon" type="number" label="Longitude" />
+              </div>
+            </div>
+          </q-tab-panel>
+
+          <q-tab-panel name="custom">
+            <q-file v-model="customMapFile" label="Upload Custom Map Image" accept="image/*" class="q-mt-md">
+              <template v-slot:prepend>
+                <q-icon name="attach_file" />
+              </template>
+            </q-file>
+            <div v-if="meshData.mapUrl" class="q-mt-sm">
+              <p>Current map URL: <code>{{ meshData.mapUrl }}</code></p>
+            </div>
+          </q-tab-panel>
+        </q-tab-panels>
       </q-card-section>
-      
-      <q-card-actions align="right" class="dialog-actions">
-        <q-btn 
-          flat 
-          label="Cancel" 
-          color="grey-7" 
-          @click="$emit('close')"
-          class="action-btn"
-        />
-        <q-btn 
-          unelevated
-          label="Select" 
-          color="primary" 
-          :disable="!selectedMesh"
-          @click="handleSelect"
-          class="action-btn primary-btn"
-        />
+
+      <q-card-actions align="right">
+        <q-btn flat label="Cancel" color="primary" @click="$emit('close')" />
+        <q-btn :label="isEditing ? 'Save Changes' : 'Create'" color="primary" @click="handleSubmit" />
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, watch, onMounted, nextTick } from 'vue';
+import { useQuasar } from 'quasar';
+import L from 'leaflet';
+import { useMeshesStore } from '@/stores/meshes';
+import 'leaflet/dist/leaflet.css';
 
 const props = defineProps({
-  show: {
-    type: Boolean,
-    default: false
-  },
-  meshes: {
-    type: Array,
-    default: () => []
-  },
-  currentMeshId: {
-    type: [String, Number],
-    default: null
+  show: Boolean,
+  meshToEdit: Object,
+});
+
+const emit = defineEmits(['close', 'mesh-created', 'mesh-updated']);
+
+const $q = useQuasar();
+const meshesStore = useMeshesStore();
+
+const isEditing = ref(false);
+const tab = ref('osm');
+const meshData = ref({
+  name: '',
+  lat: -23.5505,
+  lon: -46.6333,
+  mapUrl: null,
+});
+const customMapFile = ref(null);
+const mapContainer = ref(null);
+let map = null;
+let marker = null;
+
+watch(() => props.show, (newVal) => {
+  if (newVal) {
+    isEditing.value = !!props.meshToEdit;
+    if (isEditing.value) {
+      meshData.value = { ...props.meshToEdit };
+      tab.value = props.meshToEdit.mapUrl ? 'custom' : 'osm';
+    } else {
+      meshData.value = { name: '', lat: -23.5505, lon: -46.6333, mapUrl: null };
+      tab.value = 'osm';
+    }
+    customMapFile.value = null;
+
+    if (tab.value === 'osm') {
+      nextTick(initMap);
+    }
+  } else {
+    destroyMap();
   }
 });
 
-const emit = defineEmits(['close', 'mesh-selected']);
-
-const dialogOpen = ref(props.show);
-const selectedMesh = ref(props.currentMeshId);
-
-const meshOptions = computed(() =>
-  props.meshes.map(mesh => ({ 
-    label: mesh.name, 
-    value: mesh.id 
-  }))
-);
-
-watch(() => props.show, (newValue) => {
-  dialogOpen.value = newValue;
+watch(tab, (newTab) => {
+  if (newTab === 'osm' && props.show) {
+    nextTick(initMap);
+  } else {
+    destroyMap();
+  }
 });
 
-watch(() => props.currentMeshId, (newValue) => {
-  selectedMesh.value = newValue;
+watch(() => [meshData.value.lat, meshData.value.lon], () => {
+  if (map && marker) {
+    const newLatLng = L.latLng(meshData.value.lat, meshData.value.lon);
+    map.setView(newLatLng);
+    marker.setLatLng(newLatLng);
+  }
 });
 
-const handleSelect = () => {
-  if (selectedMesh.value) {
-    emit('mesh-selected', selectedMesh.value);
-    emit('close');
+
+const initMap = () => {
+  if (mapContainer.value && !map) {
+    map = L.map(mapContainer.value).setView([meshData.value.lat, meshData.value.lon], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    marker = L.marker([meshData.value.lat, meshData.value.lon], { draggable: true }).addTo(map);
+
+    marker.on('dragend', (event) => {
+      const position = event.target.getLatLng();
+      meshData.value.lat = position.lat;
+      meshData.value.lon = position.lng;
+    });
+
+    map.on('click', (event) => {
+      const position = event.latlng;
+      meshData.value.lat = position.lat;
+      meshData.value.lon = position.lng;
+      marker.setLatLng(position);
+    });
   }
 };
+
+const destroyMap = () => {
+  if (map) {
+    map.remove();
+    map = null;
+    marker = null;
+  }
+};
+
+const getUserLocation = () => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        meshData.value.lat = position.coords.latitude;
+        meshData.value.lon = position.coords.longitude;
+      },
+      (error) => {
+        $q.notify({ type: 'negative', message: 'Could not get your location.' });
+      }
+    );
+  } else {
+    $q.notify({ type: 'negative', message: 'Geolocation is not supported by your browser.' });
+  }
+};
+
+const handleSubmit = async () => {
+  if (!meshData.value.name) {
+    $q.notify({ type: 'negative', message: 'Please enter a name for the mesh.' });
+    return;
+  }
+
+  let payload = { ...meshData.value };
+
+  if (tab.value === 'custom') {
+    payload.lat = null;
+    payload.lon = null;
+    if (customMapFile.value) {
+      try {
+        const response = await meshesStore.uploadMapImage(customMapFile.value);
+        payload.mapUrl = response.mapUrl;
+      } catch (error) {
+        $q.notify({ type: 'negative', message: 'Failed to upload map image.' });
+        return;
+      }
+    }
+  } else {
+    payload.mapUrl = null;
+  }
+
+  try {
+    if (isEditing.value) {
+      const { id, ...updatePayload } = payload;
+      const updatedMesh = await meshesStore.updateMesh(id, updatePayload);
+      emit('mesh-updated', updatedMesh);
+    } else {
+      const newMesh = await meshesStore.createMesh(payload);
+      emit('mesh-created', newMesh);
+    }
+  } catch (error) {
+    $q.notify({ type: 'negative', message: 'An error occurred.' });
+  }
+};
+
+onMounted(() => {
+  if (props.show) {
+    //
+  }
+});
+
 </script>
-
-<style scoped>
-.modern-dialog {
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-}
-
-.dialog-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px 16px;
-}
-
-.close-btn {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-}
-
-.dialog-content {
-  padding: 24px;
-  background: #fafafa;
-}
-
-.modern-select {
-  background: white;
-  border-radius: 8px;
-}
-
-.dialog-actions {
-  padding: 16px 24px 24px;
-  background: #fafafa;
-  gap: 12px;
-}
-
-.action-btn {
-  border-radius: 8px;
-  padding: 8px 20px;
-  font-weight: 500;
-  text-transform: none;
-  min-width: 80px;
-}
-
-.primary-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.primary-btn:not(.disabled):hover {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .dialog-content,
-  .dialog-actions {
-    background: #2d2d2d;
-  }
-  
-  .modern-select {
-    background: #3d3d3d;
-  }
-}
-</style>

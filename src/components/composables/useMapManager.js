@@ -4,22 +4,46 @@ import L from 'leaflet';
 export function useMapManager(mapContainer) {
   const map = ref(null);
 
-  const initializeMap = (lat, lon) => {
+  const initializeMap = (options) => {
+    const { lat, lon, mapUrl } = options;
     return new Promise((resolve) => {
       if (map.value) {
-        resolve(map.value);
-        return;
+        destroyMap();
       }
-      map.value = L.map(mapContainer.value, {
-        center: [lat, lon],
+
+      let mapOptions = {
         zoom: 15,
         zoomControl: true,
         attributionControl: false,
-      });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
-      }).addTo(map.value);
+      };
+
+      let tileLayerUrl;
+      let tileLayerOptions = {};
+
+      if (mapUrl) {
+        mapOptions.crs = L.CRS.Simple;
+        mapOptions.center = [0, 0];
+        mapOptions.zoom = 1;
+        tileLayerUrl = mapUrl;
+        tileLayerOptions = {
+          minZoom: 0,
+          maxZoom: 5,
+          attribution: 'Custom Map',
+          noWrap: true,
+        };
+      } else {
+        mapOptions.center = [lat, lon];
+        tileLayerUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        tileLayerOptions = {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap contributors'
+        };
+      }
+
+      map.value = L.map(mapContainer.value, mapOptions);
+
+      L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map.value);
+
       resolve(map.value);
     });
   };
