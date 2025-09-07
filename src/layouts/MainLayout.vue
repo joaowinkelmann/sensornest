@@ -4,14 +4,15 @@
       <q-toolbar>
         <q-btn v-if="$q.screen.lt.md" dense flat round icon="menu" @click="toggleLeftDrawer" />
         <q-toolbar-title>
-          <q-avatar>
-            <img src="https://cdn.quasar.dev/logo-v2/svg/logo-mono-white.svg">
-          </q-avatar>
+          <!-- <q-avatar>
+            <img src="">
+          </q-avatar> -->
           TempMesh
         </q-toolbar-title>
 
         <!-- Desktop Navigation -->
         <q-tabs v-if="$q.screen.gt.sm" align="right" class="desktop-tabs">
+          <q-route-tab to="/" label="Home" />
           <q-route-tab to="/meshes" label="Meshes" />
           <q-route-tab to="/reports" label="My Reports" />
           <q-route-tab to="/data" label="View Data" />
