@@ -1,68 +1,72 @@
 <template>
   <q-layout view="hHh lpR fFf">
-    <q-header
-      elevated
-      class="bg-primary text-white"
-      :class="{ hidden: !navbarVisible }"
-      dense
-    >
+    <q-header elevated class="bg-primary text-white">
       <q-toolbar>
-        <!-- Nav content -->
-        <template v-if="navbarVisible">
-          <q-toolbar-title> TempMesh </q-toolbar-title>
+        <q-btn v-if="$q.screen.lt.md" dense flat round icon="menu" @click="toggleLeftDrawer" />
+        <q-toolbar-title>
+          <!-- <q-avatar>
+            <img src="">
+          </q-avatar> -->
+          TempMesh
+        </q-toolbar-title>
 
-          <q-btn flat to="/meshes">Meshes</q-btn>
-          <q-btn flat to="/reports">My Reports</q-btn>
-          <q-btn flat to="/data">View Data</q-btn>
-          <q-btn flat to="/map-editor">Map Editor</q-btn>
+        <!-- Desktop Navigation -->
+        <q-tabs v-if="$q.screen.gt.sm" align="right" class="desktop-tabs">
+          <q-route-tab to="/" label="Home" />
+          <q-route-tab to="/meshes" label="Meshes" />
+          <q-route-tab to="/reports" label="My Reports" />
+          <q-route-tab to="/data" label="View Data" />
+          <q-route-tab to="/map-editor" label="Map Editor" />
+        </q-tabs>
 
-          <q-btn flat round>
-            <q-avatar icon="person" />
-            <q-menu>
-              <q-list style="min-width: 100px">
-                <q-item clickable v-close-popup to="/profile">
-                  <q-item-section>Edit Profile</q-item-section>
-                </q-item>
-                <q-separator />
-                <q-item clickable v-close-popup @click="handleLogout">
-                  <q-item-section>Logout</q-item-section>
-                </q-item>
-              </q-list>
-            </q-menu>
-          </q-btn>
-        </template>
-        <template v-else>
-          <q-space />
-          <q-toolbar-title> TempMesh </q-toolbar-title>
-        </template>
+        <q-btn flat round>
+          <q-avatar icon="person" />
+          <q-menu>
+            <q-list style="min-width: 150px">
+              <q-item clickable v-close-popup to="/profile">
+                <q-item-section>Edit Profile</q-item-section>
+              </q-item>
+              <q-separator />
+              <q-item clickable v-close-popup @click="handleLogout">
+                <q-item-section>Logout</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
+        </q-btn>
       </q-toolbar>
-
-      <!-- Collapse button (visible when navbar is expanded) -->
-      <div v-if="navbarVisible" class="navbar-toggle-wrapper">
-        <q-btn
-          round
-          dense
-          color="primary"
-          icon="expand_less"
-          @click="toggleNavbar"
-          aria-label="Collapse navbar"
-        />
-      </div>
     </q-header>
 
-    <!-- Expand button (visible when navbar is hidden) -->
-    <div v-if="!navbarVisible" class="navbar-reveal-wrapper">
-      <q-btn
-        round
-        dense
-        color="primary"
-        icon="expand_more"
-        @click="toggleNavbar"
-        aria-label="Expand navbar"
-      />
-    </div>
+    <!-- Mobile Navigation Drawer -->
+    <q-drawer v-model="leftDrawerOpen" side="left" bordered>
+      <q-list>
+        <q-item-label header>Navigation</q-item-label>
+        <q-item clickable v-ripple to="/meshes">
+          <q-item-section avatar>
+            <q-icon name="grid_on" />
+          </q-item-section>
+          <q-item-section>Meshes</q-item-section>
+        </q-item>
+        <q-item clickable v-ripple to="/reports">
+          <q-item-section avatar>
+            <q-icon name="assessment" />
+          </q-item-section>
+          <q-item-section>My Reports</q-item-section>
+        </q-item>
+        <q-item clickable v-ripple to="/data">
+          <q-item-section avatar>
+            <q-icon name="analytics" />
+          </q-item-section>
+          <q-item-section>View Data</q-item-section>
+        </q-item>
+        <q-item clickable v-ripple to="/map-editor">
+          <q-item-section avatar>
+            <q-icon name="map" />
+          </q-item-section>
+          <q-item-section>Map Editor</q-item-section>
+        </q-item>
+      </q-list>
+    </q-drawer>
 
-    <!-- Let QLayout manage the header offset; do not add extra padding -->
     <q-page-container>
       <router-view />
     </q-page-container>
@@ -70,65 +74,29 @@
 </template>
 
 <script setup>
-import { ref, watch } from "vue";
-import { useAuthStore } from "@/stores/auth";
-import { useRouter, useRoute } from "vue-router";
+import { ref } from 'vue';
+import { useAuthStore } from '@/stores/auth';
+import { useRouter } from 'vue-router';
+import { useQuasar } from 'quasar';
 
 const authStore = useAuthStore();
 const router = useRouter();
-const route = useRoute();
+const $q = useQuasar();
 
-const navbarVisible = ref(true);
+const leftDrawerOpen = ref(false);
 
-const toggleNavbar = () => {
-  navbarVisible.value = !navbarVisible.value;
+const toggleLeftDrawer = () => {
+  leftDrawerOpen.value = !leftDrawerOpen.value;
 };
 
 const handleLogout = () => {
   authStore.logout();
-  router.push("/login");
+  router.push('/login');
 };
-
-watch(
-  () => route.meta,
-  (meta) => {
-    navbarVisible.value = !meta.navbarHidden;
-  },
-  { immediate: true }
-);
 </script>
 
 <style scoped>
-.q-header {
-  transition: transform 0.25s ease-in-out;
-}
-.q-header.hidden {
-  transform: translateY(-100%);
-}
-
-/* Collapse button below expanded navbar */
-.navbar-toggle-wrapper {
-  position: absolute;
-  left: 50%;
-  bottom: -14px;
-  transform: translateX(-50%);
-  z-index: 950;
-  pointer-events: none; /* don't block content */
-}
-.navbar-toggle-wrapper :deep(.q-btn) {
-  pointer-events: auto; /* only the button is clickable */
-}
-
-/* Expand button at the very top when navbar is hidden */
-.navbar-reveal-wrapper {
-  position: fixed;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 950; /* below FloatingSidebar (which is 1000) */
-  pointer-events: none;
-}
-.navbar-reveal-wrapper :deep(.q-btn) {
-  pointer-events: auto;
+.desktop-tabs {
+  margin-right: 20px;
 }
 </style>

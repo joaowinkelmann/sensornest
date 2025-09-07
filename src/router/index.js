@@ -36,12 +36,16 @@ const routes = [
         path: 'map-editor',
         name: 'map-editor',
         component: MapEditorView,
-        meta: { navbarHidden: true },
       },
       {
         path: 'profile',
         name: 'profile',
         component: ProfileView,
+      },
+      {
+        path: 'meshes',
+        name: 'meshes',
+        component: () => import('@/views/meshes/MeshesView.vue'),
       },
     ],
   },

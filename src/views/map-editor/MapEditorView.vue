@@ -1,19 +1,21 @@
 <template>
-  <q-page>
-    <div class="map-fullscreen">
-      <LeafletMap ref="mapRef" :zones="convertedZones" :active-zone-id="zonesStore.activeZoneId"
+  <q-page class="flex column no-wrap">
+    <div class="col relative-position">
+      <LeafletMap ref="mapRef" class="map-container" :zones="convertedZones" :active-zone-id="zonesStore.activeZoneId"
         :active-zone="zonesStore.activeZone" :center-lat="baseCoords.lat" :center-lng="baseCoords.lng"
+        :map-url="meshesStore.selectedMesh?.mapUrl"
         :devices="devicesStore.devices" :conversion-fn="convertDeviceToLatLng" :edit-mode="editMode"
         @vertex-added="handleVertexAdded" @vertex-removed="handleVertexRemoved" @vertex-moved="handleVertexMoved"
         @zone-updated="saveZone" @device-moved="handleDeviceMoved" />
-    </div>
 
-    <FloatingSidebar ref="sidebarRef" :meshes="meshesStore.meshes" :zones="zonesStore.zones"
-      :selected-mesh-id="meshesStore.selectedMeshId" :can-create-zone="!!meshesStore.selectedMeshId"
-      :show-save-button="zonesStore.isZoneDirty" :show-undo-button="!!backupVertices" v-model:edit-mode="editMode"
-      @mesh-select-clicked="showMeshDialog = true" @mesh-create-clicked="promptCreateMesh"
-      @zone-manage-clicked="showZonesDialog = true" @zone-create-clicked="promptCreateZone"
-      @save-zone-clicked="saveZone" @undo-zone-clicked="restoreZoneChanges" />
+      <FloatingSidebar ref="sidebarRef" class="floating-sidebar-position" :meshes="meshesStore.meshes"
+        :zones="zonesStore.zones" :selected-mesh-id="meshesStore.selectedMeshId"
+        :can-create-zone="!!meshesStore.selectedMeshId" :show-save-button="zonesStore.isZoneDirty"
+        :show-undo-button="!!backupVertices" v-model:edit-mode="editMode"
+        @mesh-select-clicked="showMeshDialog = true" @mesh-create-clicked="promptCreateMesh"
+        @zone-manage-clicked="showZonesDialog = true" @zone-create-clicked="promptCreateZone"
+        @save-zone-clicked="saveZone" @undo-zone-clicked="restoreZoneChanges" />
+    </div>
 
     <MeshDialog :show="showMeshDialog" :meshes="meshesStore.meshes" :current-mesh-id="meshesStore.selectedMeshId"
       @close="showMeshDialog = false" @mesh-selected="onMeshSelected" />
@@ -29,6 +31,7 @@ import { useQuasar } from 'quasar';
 import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
 import { useDevicesStore } from '@/stores/devices';
+import { useRouter } from 'vue-router';
 
 import LeafletMap from '@/components/LeafletMap.vue';
 import FloatingSidebar from '@/components/FloatingSidebar.vue';
@@ -36,6 +39,7 @@ import MeshDialog from '@/components/MeshDialog.vue';
 import ZonesDialog from '@/components/ZonesDialog.vue';
 
 const $q = useQuasar();
+const router = useRouter();
 const meshesStore = useMeshesStore();
 const zonesStore = useZonesStore();
 const devicesStore = useDevicesStore();
@@ -46,14 +50,16 @@ const showZonesDialog = ref(false);
 const backupVertices = ref(null);
 const editMode = ref('zones');
 
-const SCALE = 0.0001;
+const SCALE = 0.0001; // For OpenStreetMap coordinate conversion
+
+const isCustomMap = computed(() => !!meshesStore.selectedMesh?.mapUrl);
 
 const baseCoords = computed(() => {
   const selectedMesh = meshesStore.selectedMesh;
-  if (selectedMesh && selectedMesh.lat && selectedMesh.lon) {
+  if (selectedMesh && !isCustomMap.value) {
     return { lat: selectedMesh.lat, lng: selectedMesh.lon };
   }
-  return { lat: -23.5505, lng: -46.6333 };
+  return { lat: -23.5505, lng: -46.6333 }; // Default for OSM
 });
 
 onMounted(() => {
@@ -80,6 +86,12 @@ const convertedZones = computed(() =>
     if (!zone.vertices || zone.vertices.length === 0) {
       return { ...zone, vertices: [] };
     }
+    if (isCustomMap.value) {
+      return {
+        ...zone,
+        vertices: zone.vertices.map(v => ({ lat: v.y, lng: v.x })),
+      };
+    }
     return {
       ...zone,
       vertices: zone.vertices.map(v => ({
@@ -91,6 +103,9 @@ const convertedZones = computed(() =>
 );
 
 const convertToApiVertex = (latlng) => {
+  if (isCustomMap.value) {
+    return { x: Math.round(latlng.lng), y: Math.round(latlng.lat) };
+  }
   return {
     x: Math.round((latlng.lng - baseCoords.value.lng) / SCALE),
     y: Math.round((latlng.lat - baseCoords.value.lat) / SCALE),
@@ -98,6 +113,9 @@ const convertToApiVertex = (latlng) => {
 };
 
 const convertDeviceToLatLng = (device) => {
+  if (isCustomMap.value) {
+    return { lat: device.y, lng: device.x };
+  }
   return {
     lat: baseCoords.value.lat + device.y * SCALE,
     lng: baseCoords.value.lng + device.x * SCALE,
@@ -144,7 +162,7 @@ const findInsertionIndex = (vertices, newPoint) => {
 const handleVertexAdded = (latlng) => {
   const activeZone = zonesStore.activeZone;
   if (!activeZone) {
-    $q.notify({ type: 'warning', message: 'Please select or create a zone first.'});
+    $q.notify({ type: 'warning', message: 'Please select or create a zone first.' });
     return;
   }
   if (backupVertices.value === null) {
@@ -193,7 +211,6 @@ const handleDeviceMoved = async ({ id, latlng }) => {
       type: 'negative',
       message: 'Failed to update device position.',
     });
-    // Optional: revert device position on failure
     devicesStore.fetchDevices(meshesStore.selectedMeshId);
   }
 };
@@ -201,7 +218,7 @@ const handleDeviceMoved = async ({ id, latlng }) => {
 const saveZone = async () => {
   const zone = zonesStore.activeZone;
   if (!zone) {
-    $q.notify({ type: 'warning', message: 'No active zone to save.'});
+    $q.notify({ type: 'warning', message: 'No active zone to save.' });
     return;
   }
   try {
@@ -209,49 +226,32 @@ const saveZone = async () => {
     mapRef.value?.setMode(null);
     backupVertices.value = null;
     zonesStore.isZoneDirty = false;
-    $q.notify({ type: 'positive', message: 'Zone saved successfully!'});
+    $q.notify({ type: 'positive', message: 'Zone saved successfully!' });
   } catch (error) {
     console.error('Failed to save zone:', error);
-    $q.notify({ type: 'negative', message: 'Failed to save zone. Please try again.'});
+    $q.notify({ type: 'negative', message: 'Failed to save zone. Please try again.' });
   }
 };
 
 const onMeshSelected = (meshId) => {
   meshesStore.selectMesh(meshId);
   showMeshDialog.value = false;
-  $q.notify({ type: 'positive', message: 'Mesh selected successfully!'});
+  $q.notify({ type: 'positive', message: 'Mesh selected successfully!' });
 };
 
 const onZoneSelected = (zoneId) => {
   zonesStore.setActiveZone(zoneId);
   showZonesDialog.value = false;
-  $q.notify({ type: 'info', message: 'Zone selected. You can now edit it on the map.'});
+  $q.notify({ type: 'info', message: 'Zone selected. You can now edit it on the map.' });
 };
 
 const promptCreateMesh = () => {
-  $q.dialog({
-    title: 'Create New Mesh',
-    message: 'Enter a name for the new mesh:',
-    prompt: { model: '', type: 'text', isValid: val => val && val.length > 0 },
-    persistent: true,
-    ok: { label: 'Create', color: 'primary' },
-    cancel: { label: 'Cancel', color: 'grey-7', flat: true }
-  }).onOk(async (name) => {
-    if (name.trim()) {
-      try {
-        await meshesStore.createMesh(name.trim());
-        $q.notify({ type: 'positive', message: `Mesh "${name}" created successfully!`});
-      } catch (error) {
-        console.error('Failed to create mesh:', error);
-        $q.notify({ type: 'negative', message: 'Failed to create mesh. Please try again.'});
-      }
-    }
-  });
+  router.push('/meshes');
 };
 
 const promptCreateZone = () => {
   if (!meshesStore.selectedMeshId) {
-    $q.notify({ type: 'warning', message: 'Please select a mesh first.'});
+    $q.notify({ type: 'warning', message: 'Please select a mesh first.' });
     return;
   }
   $q.dialog({
@@ -271,7 +271,7 @@ const promptCreateZone = () => {
         }
       } catch (error) {
         console.error('Failed to create zone:', error);
-        $q.notify({ type: 'negative', message: 'Failed to create zone. Please try again.'});
+        $q.notify({ type: 'negative', message: 'Failed to create zone. Please try again.' });
       }
     }
   });
@@ -288,16 +288,23 @@ const restoreZoneChanges = () => {
   } catch (err) {
     console.warn('Failed to focus on zone after undo:', err);
   }
-  $q.notify({ type: 'info', message: 'Undid unsaved changes.'});
+  $q.notify({ type: 'info', message: 'Undid unsaved changes.' });
 };
 </script>
 
 <style scoped>
-.map-fullscreen {
+.map-container {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+}
+
+.floating-sidebar-position {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
 }
 </style>

@@ -37,6 +37,10 @@ const props = defineProps({
     type: Number,
     default: -46.6333
   },
+  mapUrl: {
+    type: String,
+    default: null
+  },
   devices: {
     type: Array,
     default: () => []
@@ -114,7 +118,11 @@ const refreshDevicePositions = () => {
 
 // Lifecycle hooks
 onMounted(async () => {
-  await initializeMap(props.centerLat, props.centerLng);
+  await initializeMap({
+    lat: props.centerLat,
+    lon: props.centerLng,
+    mapUrl: props.mapUrl
+  });
   if (map.value) {
     map.value.on('click', handleMapClick);
     drawZones(props.zones, props.activeZoneId, mode.value);
@@ -163,11 +171,16 @@ watch(() => props.editMode, () => {
   drawDevices(props.devices, props.conversionFn);
 });
 
-watch(() => [props.centerLat, props.centerLng], (newCenter) => {
-  if (map.value && newCenter[0] && newCenter[1]) {
-    map.value.setView([newCenter[0], newCenter[1]], 15);
-  }
-});
+watch(() => [props.centerLat, props.centerLng, props.mapUrl], async () => {
+  await initializeMap({
+    lat: props.centerLat,
+    lon: props.centerLng,
+    mapUrl: props.mapUrl,
+  });
+  // After re-initializing, we need to redraw everything
+  drawZones(props.zones, props.activeZoneId, mode.value);
+  drawDevices(props.devices, props.conversionFn);
+}, { deep: true });
 
 // Expose methods for parent component
 defineExpose({

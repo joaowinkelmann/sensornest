@@ -106,10 +106,6 @@ defineExpose({
 
 <style scoped>
 .sidebar-container {
-  position: fixed;
-  top: 60px;
-  right: 20px;
-  z-index: 1000;
   display: flex;
   align-items: flex-start;
   gap: 12px;
