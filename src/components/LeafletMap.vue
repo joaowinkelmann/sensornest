@@ -163,6 +163,22 @@ const refreshDevicePositions = () => {
   }
 };
 
+// Helper to refresh device positions (re-draw markers)
+const refreshDevicePositions = () => {
+  // Only show devices when not in an edit mode
+  if (mode.value === null) {
+    drawDevices(props.devices, props.conversionFn, mode.value);
+  }
+};
+
+const setupMapEvents = () => {
+  if (map.value) {
+    map.value.on('click', handleMapClick);
+    map.value.on('zoomend', refreshDevicePositions);
+    map.value.on('moveend', refreshDevicePositions);
+  }
+};
+
 // Lifecycle hooks
 onMounted(async () => {
   await initializeMap({
@@ -170,15 +186,9 @@ onMounted(async () => {
     lon: props.centerLng,
     mesh: props.mesh
   });
-  if (map.value) {
-    map.value.on('click', handleMapClick);
-    drawZones(props.zones, props.activeZoneId, mode.value);
-    drawDevices(props.devices, props.conversionFn, mode.value);
-
-    // Recalculate device marker positions after zoom or pan ends
-    map.value.on('zoomend', refreshDevicePositions);
-    map.value.on('moveend', refreshDevicePositions);
-  }
+  setupMapEvents();
+  drawZones(props.zones, props.activeZoneId, mode.value);
+  drawDevices(props.devices, props.conversionFn, mode.value);
 });
 
 onUnmounted(() => {
@@ -234,7 +244,8 @@ watch(() => props.mesh, async (newMesh) => {
     lon: props.centerLng,
     mesh: newMesh,
   });
-  // After re-initializing, we need to redraw everything
+  // After re-initializing, we need to redraw everything and re-attach events
+  setupMapEvents();
   drawZones(props.zones, props.activeZoneId, mode.value);
   drawDevices(props.devices, props.conversionFn, mode.value);
 }, { deep: true });
