@@ -3,7 +3,7 @@
     <div class="col relative-position">
       <LeafletMap ref="mapRef" class="map-container" :zones="convertedZones" :active-zone-id="zonesStore.activeZoneId"
         :active-zone="zonesStore.activeZone" :center-lat="baseCoords.lat" :center-lng="baseCoords.lng"
-        :map-url="meshesStore.selectedMesh?.mapUrl"
+        :mesh="meshesStore.selectedMesh"
         :devices="devicesStore.devices" :conversion-fn="convertDeviceToLatLng" :edit-mode="editMode"
         @vertex-added="handleVertexAdded" @vertex-removed="handleVertexRemoved" @vertex-moved="handleVertexMoved"
         @zone-updated="saveZone" @device-moved="handleDeviceMoved" />
