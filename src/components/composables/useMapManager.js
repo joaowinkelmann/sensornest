@@ -51,23 +51,29 @@ export function useMapManager(mapContainer) {
         let baseUrl = mesh.mapUrl.split('/n/')[0];
 
         // url final é a baseUrl + /p/ + ociToken + o resto da url após o /n/
-        // Exemplo: baseUrl + /p/ + ociToken + /n/ + restoDaUrl
-        // const finalMapUrl = `${baseUrl}/p/${ociToken}/n/${finalMapUrl.split('/n/')[1]}`;
         const finalMapUrl = ociToken ? `${baseUrl}/p/${ociToken}/n/${mesh.mapUrl.split('/n/')[1]}` : mesh.mapUrl;
 
+        // Use dynamic min/max zoom from backend
+        const minZoom = mesh.minZoom ?? 0;
+        const maxZoom = mesh.maxZoom ?? 3;
+
+        // Also constrain the map itself so user cannot zoom past tile availability
+        mapOptions.minZoom = minZoom;
+        mapOptions.maxZoom = maxZoom;
+
         const tileLayerOptions = {
-          minZoom: mesh.minZoom ?? 0,
-          maxZoom: mesh.maxZoom ?? 3,
+          minZoom,
+          maxZoom,
           attribution: 'Custom Map',
           noWrap: true,
         };
 
         map.value = L.map(mapContainer.value, mapOptions);
-        tileLayer = L.tileLayer.custom(finalMapUrl, tileLayerOptions);
+        const tileLayer = L.tileLayer.custom(finalMapUrl, tileLayerOptions);
 
         if (mesh.mapHeight && mesh.mapWidth) {
-          const southWest = map.value.unproject([0, mesh.mapHeight], tileLayerOptions.maxZoom);
-          const northEast = map.value.unproject([mesh.mapWidth, 0], tileLayerOptions.maxZoom);
+          const southWest = map.value.unproject([0, mesh.mapHeight], maxZoom);
+          const northEast = map.value.unproject([mesh.mapWidth, 0], maxZoom);
           const bounds = new L.LatLngBounds(southWest, northEast);
 
           map.value.setMaxBounds(bounds);
@@ -75,16 +81,17 @@ export function useMapManager(mapContainer) {
           tileLayer.options.bounds = bounds;
         }
 
+        tileLayer.addTo(map.value);
+
       } else {
         mapOptions.center = [lat, lon];
         map.value = L.map(mapContainer.value, mapOptions);
-        tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
-          attribution: '© OpenStreetMap contributors'
+          attribution: '© OpenStreetMap contributors',
         });
+        tileLayer.addTo(map.value);
       }
-
-      tileLayer.addTo(map.value);
 
       resolve(map.value);
     });
