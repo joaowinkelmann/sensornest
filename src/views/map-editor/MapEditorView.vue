@@ -6,23 +6,22 @@
         :mesh="meshesStore.selectedMesh"
         :devices="devicesStore.devices" :conversion-fn="convertDeviceToLatLng" :edit-mode="editMode"
         @vertex-added="handleVertexAdded" @vertex-removed="handleVertexRemoved" @vertex-moved="handleVertexMoved"
-        @zone-updated="saveZone" @device-moved="handleDeviceMoved" @zone-clicked="handleZoneClicked"
-        @draw-zone-clicked="handleDrawZoneClicked" />
+        @zone-updated="saveZone" @device-moved="handleDeviceMoved"
+        @draw-zone-clicked="handleDrawZoneClicked"
+        @save-new-zone="handleSaveNewZone"
+        @cancel-new-zone="handleCancelNewZone" />
 
       <FloatingSidebar ref="sidebarRef" class="floating-sidebar-position" :meshes="meshesStore.meshes"
         :zones="zonesStore.zones" :selected-mesh-id="meshesStore.selectedMeshId"
+        :active-zone-id="zonesStore.activeZoneId"
         :can-create-zone="!!meshesStore.selectedMeshId" :show-save-button="zonesStore.isZoneDirty"
         :show-undo-button="!!backupVertices" v-model:edit-mode="editMode"
-        @mesh-select-clicked="showMeshDialog = true"
-        @zone-manage-clicked="showZonesDialog = true" @zone-create-clicked="handleDrawZoneClicked"
+        @mesh-select-clicked="showMeshDialog = true" @zone-create-clicked="handleDrawZoneClicked"
         @save-zone-clicked="saveZone" @undo-zone-clicked="restoreZoneChanges" />
     </div>
 
     <MeshDialog :show="showMeshDialog" :meshes="meshesStore.meshes" :current-mesh-id="meshesStore.selectedMeshId"
       @close="showMeshDialog = false" @mesh-selected="onMeshSelected" />
-
-    <ZonesDialog :show="showZonesDialog" :zones="zonesStore.zones" :active-zone-id="zonesStore.activeZoneId"
-      @close="showZonesDialog = false" @zone-selected="onZoneSelected" />
   </q-page>
 </template>
 
@@ -37,7 +36,6 @@ import { useRouter } from 'vue-router';
 import LeafletMap from '@/components/LeafletMap.vue';
 import FloatingSidebar from '@/components/FloatingSidebar.vue';
 import MeshDialog from '@/components/MeshDialog.vue';
-import ZonesDialog from '@/components/ZonesDialog.vue';
 
 const $q = useQuasar();
 const router = useRouter();
@@ -47,7 +45,6 @@ const devicesStore = useDevicesStore();
 
 const mapRef = ref(null);
 const showMeshDialog = ref(false);
-const showZonesDialog = ref(false);
 const backupVertices = ref(null);
 const editMode = ref('zones');
 
@@ -240,42 +237,19 @@ const onMeshSelected = (meshId) => {
   $q.notify({ type: 'positive', message: 'Mesh selected successfully!' });
 };
 
-const onZoneSelected = (zoneId) => {
-  handleZoneClicked(zoneId, true);
-  showZonesDialog.value = false;
-};
-
-const handleZoneClicked = (zoneId, force = false) => {
-  if (zonesStore.activeZoneId === zoneId) return;
-
-  const switchZone = () => {
-    restoreZoneChanges(); // Discard any unsaved changes silently
-    zonesStore.setActiveZone(zoneId);
-    if (!force) {
-      $q.notify({ type: 'info', message: `Zone activated. You can now view its details.` });
-    }
-  };
-
-  if (zonesStore.isZoneDirty && !force) {
-    $q.dialog({
-      title: 'Confirm',
-      message: 'You have unsaved changes in the current zone. Are you sure you want to discard them and switch to another zone?',
-      cancel: true,
-      persistent: true,
-      ok: { label: 'Discard & Switch', color: 'negative' }
-    }).onOk(() => {
-      switchZone();
-    });
-  } else {
-    switchZone();
-  }
-};
-
 const handleDrawZoneClicked = () => {
   if (!meshesStore.selectedMeshId) {
     $q.notify({ type: 'warning', message: 'Please select a mesh first.' });
     return;
   }
+  mapRef.value?.setMode('draw-zone');
+};
+
+const handleCancelNewZone = () => {
+  mapRef.value?.setMode(null);
+};
+
+const handleSaveNewZone = (vertices) => {
   $q.dialog({
     title: 'Create New Zone',
     message: 'Enter a name for the new zone:',
@@ -288,14 +262,14 @@ const handleDrawZoneClicked = () => {
       try {
         const newZoneData = {
           name: name.trim(),
-          vertices: [],
+          vertices: vertices.map(convertToApiVertex),
           meshId: meshesStore.selectedMeshId
         };
         const newZone = await zonesStore.createZone(newZoneData);
-        $q.notify({ type: 'positive', message: `Zone "${name}" created! Click on the map to start adding vertices.` });
+        $q.notify({ type: 'positive', message: `Zone "${name}" created!` });
         if (newZone && newZone.id) {
           zonesStore.setActiveZone(newZone.id);
-          mapRef.value?.setMode('add'); // Switch to add mode
+          mapRef.value?.setMode(null);
         }
       } catch (error) {
         console.error('Failed to create zone:', error);

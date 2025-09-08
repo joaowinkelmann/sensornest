@@ -59,11 +59,7 @@ const props = defineProps({
 const emit = defineEmits(['mode-changed', 'draw-zone-clicked']);
 
 const handleOtherClick = (control) => {
-  if (control.action) {
-    emit(control.action);
-  } else {
-    emit('mode-changed', control.mode);
-  }
+  emit('mode-changed', control.mode);
 };
 
 // Control definitions
@@ -75,7 +71,7 @@ const vertexControls = [
 
 const otherControls = [
   { mode: 'move-devices', label: 'Move Devices', icon: 'swipe', color: 'teal' },
-  { mode: 'draw-zone', label: 'New Zone', icon: 'edit', color: 'accent', action: 'draw-zone-clicked' },
+  { mode: 'draw-zone', label: 'New Zone', icon: 'edit', color: 'accent' },
   { mode: null, label: 'Pan Map', icon: 'pan_tool', color: 'positive' }
 ];
 

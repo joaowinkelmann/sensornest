@@ -24,6 +24,9 @@
           <div class="sidebar-actions">
             <ActionGroup v-for="(group, index) in actionGroups" :key="index" :actions="group"
               @action-click="handleActionClick" :show-divider="index < actionGroups.length - 1" />
+            <div v-if="editMode === 'zones' && zones.length > 0" class="zone-selector-wrapper">
+              <ZoneSelector :zones="zones" :active-zone-id="activeZoneId" />
+            </div>
           </div>
         </div>
       </transition>
@@ -35,10 +38,12 @@
 import { ref, computed } from 'vue';
 import ActionItem from './ActionItem.vue';
 import ActionGroup from './ActionGroup.vue';
+import ZoneSelector from './ZoneSelector.vue';
 
 const props = defineProps({
   meshes: { type: Array, default: () => [] },
   zones: { type: Array, default: () => [] },
+  activeZoneId: { type: String, default: null },
   selectedMeshId: { type: [String, Number], default: null },
   canCreateZone: { type: Boolean, default: false },
   canSaveZone: { type: Boolean, default: false },
@@ -49,7 +54,6 @@ const props = defineProps({
 
 const emit = defineEmits([
   'mesh-select-clicked',
-  'zone-manage-clicked',
   'zone-create-clicked',
   'save-zone-clicked',
   'undo-zone-clicked',
@@ -67,7 +71,6 @@ const actionGroups = computed(() => [
     { id: 'edit-zones', icon: 'layers', tooltip: 'Edit Zones', action: () => emit('update:editMode', 'zones'), active: props.editMode === 'zones' },
   ],
   [
-    { id: 'manage-zones', icon: 'place', tooltip: 'Manage Zones', action: 'zone-manage-clicked' },
     { id: 'create-zone', icon: 'add_location', tooltip: 'Create New Zone', action: 'zone-create-clicked', disabled: !props.canCreateZone }
   ]
 ]);
