@@ -22,15 +22,24 @@ export function useDeviceRenderer(map, props, emit) {
 
     const marker = L.marker(latlng, {
       icon,
-      draggable: props.editMode === 'devices'
-    })
-
-    marker.on('dragend', (event) => {
-      emit('device-moved', {
-        id: device.id,
-        latlng: event.target.getLatLng()
-      });
+      draggable: props.mode === 'move-devices'
     });
+
+    if (props.mode === 'move-devices') {
+      marker.on('dragstart', () => {
+        marker.getElement().style.transform = 'scale(1.3)';
+        marker.getElement().style.zIndex = '2000';
+      });
+
+      marker.on('dragend', (event) => {
+        marker.getElement().style.transform = 'scale(1)';
+        marker.getElement().style.zIndex = 'auto';
+        emit('device-moved', {
+          id: device.id,
+          latlng: event.target.getLatLng()
+        });
+      });
+    }
 
     marker.bindPopup(`
       <div class="device-popup">

@@ -3,7 +3,12 @@
     <div ref="mapContainer" class="leaflet-map-container"></div>
 
     <!-- Map Controls -->
-    <MapControls :mode="mode" :active-zone="activeZone" @mode-changed="handleModeChange" />
+    <MapControls
+      :mode="mode"
+      :active-zone="activeZone"
+      @mode-changed="handleModeChange"
+      @draw-zone-clicked="$emit('draw-zone-clicked')"
+    />
   </div>
 </template>
 
@@ -61,6 +66,8 @@ const emit = defineEmits([
   'vertex-removed',
   'vertex-moved',
   'device-moved',
+  'zone-clicked',
+  'draw-zone-clicked'
 ]);
 
 // Reactive references
@@ -93,8 +100,8 @@ const handleModeChange = (newMode) => {
   // Redraw zones to show/hide vertex markers based on mode
   drawZones(props.zones, props.activeZoneId, mode.value);
 
-  // Clear devices when entering an edit mode
-  if (newMode) {
+  // Show/hide devices based on mode
+  if (newMode && newMode !== 'move-devices') {
     clearDeviceMarkers();
   } else {
     drawDevices(props.devices, props.conversionFn);
@@ -148,11 +155,12 @@ onUnmounted(() => {
 
 // Watchers
 watch(() => mode.value, (newMode) => {
-  setMapDragging(newMode !== 'move');
+  setMapDragging(newMode !== 'move' && newMode !== 'move-devices');
   drawZones(props.zones, props.activeZoneId, newMode);
-  if (newMode) {
+  if (newMode && newMode !== 'move-devices') {
     clearDeviceMarkers();
   } else {
+    // This will draw devices for 'move-devices' mode and when mode is null
     drawDevices(props.devices, props.conversionFn);
   }
 });
@@ -162,7 +170,8 @@ watch(() => [props.zones, props.activeZoneId], () => {
 }, { deep: true });
 
 watch(() => props.devices, (newDevices) => {
-  if (mode.value === null) { // Only draw if not in edit mode
+  // Only redraw devices if we are not in a vertex editing mode
+  if (mode.value === null || mode.value === 'move-devices') {
     drawDevices(newDevices, props.conversionFn);
   }
 }, { deep: true });

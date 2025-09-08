@@ -6,14 +6,15 @@
         :mesh="meshesStore.selectedMesh"
         :devices="devicesStore.devices" :conversion-fn="convertDeviceToLatLng" :edit-mode="editMode"
         @vertex-added="handleVertexAdded" @vertex-removed="handleVertexRemoved" @vertex-moved="handleVertexMoved"
-        @zone-updated="saveZone" @device-moved="handleDeviceMoved" />
+        @zone-updated="saveZone" @device-moved="handleDeviceMoved" @zone-clicked="handleZoneClicked"
+        @draw-zone-clicked="handleDrawZoneClicked" />
 
       <FloatingSidebar ref="sidebarRef" class="floating-sidebar-position" :meshes="meshesStore.meshes"
         :zones="zonesStore.zones" :selected-mesh-id="meshesStore.selectedMeshId"
         :can-create-zone="!!meshesStore.selectedMeshId" :show-save-button="zonesStore.isZoneDirty"
         :show-undo-button="!!backupVertices" v-model:edit-mode="editMode"
-        @mesh-select-clicked="showMeshDialog = true" @mesh-create-clicked="promptCreateMesh"
-        @zone-manage-clicked="showZonesDialog = true" @zone-create-clicked="promptCreateZone"
+        @mesh-select-clicked="showMeshDialog = true"
+        @zone-manage-clicked="showZonesDialog = true" @zone-create-clicked="handleDrawZoneClicked"
         @save-zone-clicked="saveZone" @undo-zone-clicked="restoreZoneChanges" />
     </div>
 
@@ -240,16 +241,37 @@ const onMeshSelected = (meshId) => {
 };
 
 const onZoneSelected = (zoneId) => {
-  zonesStore.setActiveZone(zoneId);
+  handleZoneClicked(zoneId, true);
   showZonesDialog.value = false;
-  $q.notify({ type: 'info', message: 'Zone selected. You can now edit it on the map.' });
 };
 
-const promptCreateMesh = () => {
-  router.push('/meshes');
+const handleZoneClicked = (zoneId, force = false) => {
+  if (zonesStore.activeZoneId === zoneId) return;
+
+  const switchZone = () => {
+    restoreZoneChanges(); // Discard any unsaved changes silently
+    zonesStore.setActiveZone(zoneId);
+    if (!force) {
+      $q.notify({ type: 'info', message: `Zone activated. You can now view its details.` });
+    }
+  };
+
+  if (zonesStore.isZoneDirty && !force) {
+    $q.dialog({
+      title: 'Confirm',
+      message: 'You have unsaved changes in the current zone. Are you sure you want to discard them and switch to another zone?',
+      cancel: true,
+      persistent: true,
+      ok: { label: 'Discard & Switch', color: 'negative' }
+    }).onOk(() => {
+      switchZone();
+    });
+  } else {
+    switchZone();
+  }
 };
 
-const promptCreateZone = () => {
+const handleDrawZoneClicked = () => {
   if (!meshesStore.selectedMeshId) {
     $q.notify({ type: 'warning', message: 'Please select a mesh first.' });
     return;
@@ -264,10 +286,16 @@ const promptCreateZone = () => {
   }).onOk(async (name) => {
     if (name.trim()) {
       try {
-        const newZone = await zonesStore.createZone(meshesStore.selectedMeshId, { name: name.trim(), vertices: [] });
-        $q.notify({ type: 'positive', message: `Zone "${name}" created! You can now add points on the map.` });
+        const newZoneData = {
+          name: name.trim(),
+          vertices: [],
+          meshId: meshesStore.selectedMeshId
+        };
+        const newZone = await zonesStore.createZone(newZoneData);
+        $q.notify({ type: 'positive', message: `Zone "${name}" created! Click on the map to start adding vertices.` });
         if (newZone && newZone.id) {
           zonesStore.setActiveZone(newZone.id);
+          mapRef.value?.setMode('add'); // Switch to add mode
         }
       } catch (error) {
         console.error('Failed to create zone:', error);

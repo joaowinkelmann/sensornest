@@ -49,12 +49,10 @@ const props = defineProps({
 
 const emit = defineEmits([
   'mesh-select-clicked',
-  'mesh-create-clicked',
   'zone-manage-clicked',
   'zone-create-clicked',
   'save-zone-clicked',
   'undo-zone-clicked',
-  'logout-clicked',
   'update:editMode'
 ]);
 
@@ -64,18 +62,13 @@ const showActions = ref(false);
 const actionGroups = computed(() => [
   [
     { id: 'select-mesh', icon: 'grid_on', tooltip: 'Select Mesh', action: 'mesh-select-clicked' },
-    { id: 'create-mesh', icon: 'add_box', tooltip: 'Create New Mesh', action: 'mesh-create-clicked' }
   ],
   [
     { id: 'edit-zones', icon: 'layers', tooltip: 'Edit Zones', action: () => emit('update:editMode', 'zones'), active: props.editMode === 'zones' },
-    { id: 'edit-devices', icon: 'developer_board', tooltip: 'Edit Devices', action: () => emit('update:editMode', 'devices'), active: props.editMode === 'devices' }
   ],
   [
     { id: 'manage-zones', icon: 'place', tooltip: 'Manage Zones', action: 'zone-manage-clicked' },
     { id: 'create-zone', icon: 'add_location', tooltip: 'Create New Zone', action: 'zone-create-clicked', disabled: !props.canCreateZone }
-  ],
-  [
-    { id: 'logout', icon: 'logout', tooltip: 'Logout', action: 'logout-clicked', variant: 'danger' }
   ]
 ]);
 
