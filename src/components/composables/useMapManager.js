@@ -8,7 +8,6 @@ const CustomTileLayer = L.TileLayer.extend({
 
     // Assuming a simple check for non-negative tile coordinates
     if (x < 0 || y < 0) {
-      // Return a transparent 1x1px image for invalid tile coordinates
       return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
     }
 
@@ -47,11 +46,18 @@ export function useMapManager(mapContainer) {
         mapOptions.zoom = 1;
 
         const ociToken = import.meta.env.VITE_OCI_MAP_TOKEN;
-        const finalMapUrl = ociToken ? `${mesh.mapUrl}?${ociToken}` : mesh.mapUrl;
+
+        // pega a url até o /n/
+        let baseUrl = mesh.mapUrl.split('/n/')[0];
+
+        // url final é a baseUrl + /p/ + ociToken + o resto da url após o /n/
+        // Exemplo: baseUrl + /p/ + ociToken + /n/ + restoDaUrl
+        // const finalMapUrl = `${baseUrl}/p/${ociToken}/n/${finalMapUrl.split('/n/')[1]}`;
+        const finalMapUrl = ociToken ? `${baseUrl}/p/${ociToken}/n/${mesh.mapUrl.split('/n/')[1]}` : mesh.mapUrl;
 
         const tileLayerOptions = {
           minZoom: mesh.minZoom ?? 0,
-          maxZoom: mesh.maxZoom ?? 5,
+          maxZoom: mesh.maxZoom ?? 7,
           attribution: 'Custom Map',
           noWrap: true,
         };
