@@ -2,7 +2,7 @@
   <div class="map-controls-container">
     <!-- Instruction Display -->
     <transition name="fade">
-      <div v-if="currentInstruction" class="mode-instruction">
+      <div v-if="showInstruction && currentInstruction" :key="mode" class="mode-instruction">
         <q-icon :name="currentInstruction.icon" class="instruction-icon" />
         <span>{{ currentInstruction.text }}</span>
       </div>
@@ -42,7 +42,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import ControlButton from './ControlButton.vue';
 
 const props = defineProps({
@@ -89,6 +89,17 @@ const currentInstruction = computed(() => {
     return { icon: 'warning', text: 'Please select a zone before editing vertices.' };
   }
   return modeInstructions[props.mode];
+});
+
+const showInstruction = ref(false);
+let timeoutId = null;
+
+watch(() => props.mode, () => {
+  showInstruction.value = true;
+  if (timeoutId) clearTimeout(timeoutId);
+  timeoutId = setTimeout(() => {
+    showInstruction.value = false;
+  }, 3000); // Auto-hide after 3 seconds
 });
 </script>
 

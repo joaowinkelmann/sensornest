@@ -163,14 +163,6 @@ const refreshDevicePositions = () => {
   }
 };
 
-// Helper to refresh device positions (re-draw markers)
-const refreshDevicePositions = () => {
-  // Only show devices when not in an edit mode
-  if (mode.value === null) {
-    drawDevices(props.devices, props.conversionFn, mode.value);
-  }
-};
-
 const setupMapEvents = () => {
   if (map.value) {
     map.value.on('click', handleMapClick);
