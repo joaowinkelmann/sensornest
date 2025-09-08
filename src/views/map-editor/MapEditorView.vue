@@ -14,10 +14,11 @@
       <FloatingSidebar ref="sidebarRef" class="floating-sidebar-position" :meshes="meshesStore.meshes"
         :zones="zonesStore.zones" :selected-mesh-id="meshesStore.selectedMeshId"
         :active-zone-id="zonesStore.activeZoneId"
+        :is-zone-dirty="zonesStore.isZoneDirty"
         :can-create-zone="!!meshesStore.selectedMeshId" :show-save-button="zonesStore.isZoneDirty"
-        :show-undo-button="!!backupVertices" v-model:edit-mode="editMode"
+        :show-undo-button="zonesStore.backupVertices !== null" v-model:edit-mode="editMode"
         @mesh-select-clicked="showMeshDialog = true" @zone-create-clicked="handleDrawZoneClicked"
-        @save-zone-clicked="saveZone" @undo-zone-clicked="restoreZoneChanges" />
+        @save-zone-clicked="saveZone" @undo-zone-clicked="zonesStore.restoreActiveZone()" />
     </div>
 
     <MeshDialog :show="showMeshDialog" :meshes="meshesStore.meshes" :current-mesh-id="meshesStore.selectedMeshId"
@@ -45,7 +46,6 @@ const devicesStore = useDevicesStore();
 
 const mapRef = ref(null);
 const showMeshDialog = ref(false);
-const backupVertices = ref(null);
 const editMode = ref('zones');
 
 const SCALE = 0.0001; // For OpenStreetMap coordinate conversion
@@ -71,7 +71,7 @@ onMounted(() => {
 });
 
 watch(() => zonesStore.activeZoneId, (newZoneId) => {
-  backupVertices.value = null;
+  zonesStore.backupVertices = null;
   if (newZoneId) {
     devicesStore.fetchDevices(meshesStore.selectedMeshId);
   } else {
@@ -163,8 +163,8 @@ const handleVertexAdded = (latlng) => {
     $q.notify({ type: 'warning', message: 'Please select or create a zone first.' });
     return;
   }
-  if (backupVertices.value === null) {
-    backupVertices.value = JSON.parse(JSON.stringify(activeZone.vertices || []));
+  if (zonesStore.backupVertices === null) {
+    zonesStore.backupActiveZone();
   }
   const newApiVertex = convertToApiVertex(latlng);
   const current = activeZone.vertices || [];
@@ -176,8 +176,8 @@ const handleVertexAdded = (latlng) => {
 const handleVertexRemoved = (vertexIndex) => {
   const activeZone = zonesStore.activeZone;
   if (!activeZone) return;
-  if (backupVertices.value === null) {
-    backupVertices.value = JSON.parse(JSON.stringify(activeZone.vertices || []));
+  if (zonesStore.backupVertices === null) {
+    zonesStore.backupActiveZone();
   }
   const updatedVertices = activeZone.vertices.filter((_, idx) => idx !== vertexIndex);
   zonesStore.updateLocalZone(activeZone.id, { vertices: updatedVertices });
@@ -186,8 +186,8 @@ const handleVertexRemoved = (vertexIndex) => {
 const handleVertexMoved = ({ index, latlng }) => {
   const activeZone = zonesStore.activeZone;
   if (!activeZone) return;
-  if (backupVertices.value === null) {
-    backupVertices.value = JSON.parse(JSON.stringify(activeZone.vertices || []));
+  if (zonesStore.backupVertices === null) {
+    zonesStore.backupActiveZone();
   }
   const newApiVertex = convertToApiVertex(latlng);
   const updatedVertices = activeZone.vertices.map((v, idx) => (idx === index ? newApiVertex : v));
@@ -222,7 +222,7 @@ const saveZone = async () => {
   try {
     await zonesStore.updateZone(zone.id, { name: zone.name, vertices: zone.vertices, meshId: zone.meshId });
     mapRef.value?.setMode(null);
-    backupVertices.value = null;
+    zonesStore.backupVertices = null;
     zonesStore.isZoneDirty = false;
     $q.notify({ type: 'positive', message: 'Zone saved successfully!' });
   } catch (error) {
@@ -277,20 +277,6 @@ const handleSaveNewZone = (vertices) => {
       }
     }
   });
-};
-
-const restoreZoneChanges = () => {
-  const zone = zonesStore.activeZone;
-  if (!zone || !backupVertices.value) return;
-  zonesStore.updateLocalZone(zone.id, { vertices: backupVertices.value });
-  zonesStore.isZoneDirty = false;
-  backupVertices.value = null;
-  try {
-    mapRef.value?.focusOnZone(zone.id);
-  } catch (err) {
-    console.warn('Failed to focus on zone after undo:', err);
-  }
-  $q.notify({ type: 'info', message: 'Undid unsaved changes.' });
 };
 </script>
 

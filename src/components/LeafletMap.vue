@@ -118,7 +118,7 @@ const {
 // Mode management
 const handleModeChange = (newMode) => {
   mode.value = newMode;
-  setMapDragging(newMode !== 'move');
+  setMapDragging(newMode === null);
   // Redraw zones to show/hide vertex markers based on mode
   drawZones(props.zones, props.activeZoneId, mode.value);
 
@@ -195,13 +195,13 @@ onUnmounted(() => {
 
 // Watchers
 watch(() => mode.value, (newMode, oldMode) => {
-  setMapDragging(newMode !== 'move' && newMode !== 'move-devices');
+  setMapDragging(newMode === null);
   drawZones(props.zones, props.activeZoneId, newMode);
   if (newMode && newMode !== 'move-devices') {
     clearDeviceMarkers();
   } else {
     // This will draw devices for 'move-devices' mode and when mode is null
-    drawDevices(props.devices, props.conversionFn);
+    drawDevices(props.devices, props.conversionFn, newMode);
   }
 
   if (oldMode === 'draw-zone' && newMode !== 'draw-zone') {

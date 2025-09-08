@@ -25,7 +25,7 @@
             <ActionGroup v-for="(group, index) in actionGroups" :key="index" :actions="group"
               @action-click="handleActionClick" :show-divider="index < actionGroups.length - 1" />
             <div v-if="editMode === 'zones' && zones.length > 0" class="zone-selector-wrapper">
-              <ZoneSelector :zones="zones" :active-zone-id="activeZoneId" />
+              <ZoneSelector :zones="zones" :active-zone-id="activeZoneId" @zone-selected="handleZoneSelected" />
             </div>
           </div>
         </div>
@@ -36,6 +36,8 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { useQuasar } from 'quasar';
+import { useZonesStore } from '@/stores/zones';
 import ActionItem from './ActionItem.vue';
 import ActionGroup from './ActionGroup.vue';
 import ZoneSelector from './ZoneSelector.vue';
@@ -44,6 +46,7 @@ const props = defineProps({
   meshes: { type: Array, default: () => [] },
   zones: { type: Array, default: () => [] },
   activeZoneId: { type: String, default: null },
+  isZoneDirty: { type: Boolean, default: false },
   selectedMeshId: { type: [String, Number], default: null },
   canCreateZone: { type: Boolean, default: false },
   canSaveZone: { type: Boolean, default: false },
@@ -59,6 +62,9 @@ const emit = defineEmits([
   'undo-zone-clicked',
   'update:editMode'
 ]);
+
+const $q = useQuasar();
+const zonesStore = useZonesStore();
 
 const expanded = ref(false);
 const showActions = ref(false);
@@ -92,6 +98,29 @@ const onTransitionEnd = () => {
 const handleActionClick = (actionId) => {
   const action = actionGroups.value.flat().find(item => item.id === actionId);
   if (action && !action.disabled) emit(action.action);
+};
+
+const handleZoneSelected = (zoneId) => {
+  if (props.activeZoneId === zoneId) return;
+
+  const switchZone = () => {
+    emit('undo-zone-clicked'); // to restore changes
+    zonesStore.setActiveZone(zoneId);
+  };
+
+  if (props.isZoneDirty) {
+    $q.dialog({
+      title: 'Confirm',
+      message: 'You have unsaved changes in the current zone. Are you sure you want to discard them and switch to another zone?',
+      cancel: true,
+      persistent: true,
+      ok: { label: 'Discard & Switch', color: 'negative' }
+    }).onOk(() => {
+      switchZone();
+    });
+  } else {
+    switchZone();
+  }
 };
 
 defineExpose({

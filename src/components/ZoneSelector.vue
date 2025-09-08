@@ -27,9 +27,6 @@
 
 <script setup>
 import { computed } from 'vue';
-import { useZonesStore } from '@/stores/zones';
-
-const zonesStore = useZonesStore();
 
 const props = defineProps({
   zones: {
@@ -49,9 +46,11 @@ const zoneOptions = computed(() => {
   }));
 });
 
+const emit = defineEmits(['zone-selected']);
+
 const handleSelect = (option) => {
   if (option) {
-    zonesStore.setActiveZone(option.value);
+    emit('zone-selected', option.value);
   }
 };
 </script>

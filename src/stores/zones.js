@@ -10,6 +10,7 @@ export const useZonesStore = defineStore('zones', {
     loading: false,
     error: null,
     isZoneDirty: false, // Track if the active zone has unsaved changes
+    backupVertices: null,
   }),
   getters: {
     // Getter to easily find the active zone object
@@ -101,6 +102,18 @@ export const useZonesStore = defineStore('zones', {
         throw e;
       } finally {
         this.loading = false;
+      }
+    },
+    backupActiveZone() {
+      if (this.activeZone) {
+        this.backupVertices = JSON.parse(JSON.stringify(this.activeZone.vertices || []));
+      }
+    },
+    restoreActiveZone() {
+      if (this.activeZone && this.backupVertices) {
+        this.updateLocalZone(this.activeZone.id, { vertices: this.backupVertices });
+        this.isZoneDirty = false;
+        this.backupVertices = null;
       }
     },
   },
