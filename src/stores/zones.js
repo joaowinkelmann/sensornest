@@ -10,6 +10,7 @@ export const useZonesStore = defineStore('zones', {
     loading: false,
     error: null,
     isZoneDirty: false, // Track if the active zone has unsaved changes
+    backupVertices: null,
   }),
   getters: {
     // Getter to easily find the active zone object
@@ -86,21 +87,33 @@ export const useZonesStore = defineStore('zones', {
         this.loading = false;
       }
     },
-    async createZone(meshId, zoneData) {
+    async createZone(zoneData) {
       this.loading = true;
       this.error = null;
       try {
-        // This corresponds to POST /meshes/:meshId/zones
-        const response = await apiClient.post(`/meshes/${meshId}/zones`, zoneData);
+        const response = await apiClient.post('/zones', zoneData);
         this.zones.push(response.data);
-        // Set the newly created zone as active
         this.setActiveZone(response.data.id);
-        this.isZoneDirty = true; // A new zone is considered dirty until its points are saved
+        this.isZoneDirty = true;
+        return response.data;
       } catch (e) {
         this.error = 'Failed to create zone.';
         console.error(e);
+        throw e;
       } finally {
         this.loading = false;
+      }
+    },
+    backupActiveZone() {
+      if (this.activeZone) {
+        this.backupVertices = JSON.parse(JSON.stringify(this.activeZone.vertices || []));
+      }
+    },
+    restoreActiveZone() {
+      if (this.activeZone && this.backupVertices) {
+        this.updateLocalZone(this.activeZone.id, { vertices: this.backupVertices });
+        this.isZoneDirty = false;
+        this.backupVertices = null;
       }
     },
   },

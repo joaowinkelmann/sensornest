@@ -1,10 +1,18 @@
 <template>
   <div class="map-controls-container">
+    <!-- Instruction Display -->
+    <transition name="fade">
+      <div v-if="showInstruction && currentInstruction" :key="mode" class="mode-instruction">
+        <q-icon :name="currentInstruction.icon" class="instruction-icon" />
+        <span>{{ currentInstruction.text }}</span>
+      </div>
+    </transition>
+
     <div class="controls-group">
-      <!-- Mode Controls -->
+      <!-- Vertex Editing Controls -->
       <q-btn-group push class="mode-controls">
         <ControlButton
-          v-for="control in modeControls"
+          v-for="control in vertexControls"
           :key="control.mode"
           :label="control.label"
           :icon="control.icon"
@@ -13,12 +21,28 @@
           @click="$emit('mode-changed', control.mode)"
         />
       </q-btn-group>
+
+      <!-- Divider -->
+      <div class="divider"></div>
+
+      <!-- Other Controls -->
+      <q-btn-group push class="mode-controls">
+        <ControlButton
+          v-for="control in otherControls"
+          :key="control.mode"
+          :label="control.label"
+          :icon="control.icon"
+          :active="mode === control.mode"
+          :color="control.color"
+          @click="handleOtherClick(control)"
+        />
+      </q-btn-group>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import ControlButton from './ControlButton.vue';
 
 const props = defineProps({
@@ -32,64 +56,50 @@ const props = defineProps({
   }
 });
 
-defineEmits(['mode-changed']);
+const emit = defineEmits(['mode-changed', 'draw-zone-clicked']);
+
+const handleOtherClick = (control) => {
+  emit('mode-changed', control.mode);
+};
 
 // Control definitions
-const modeControls = [
-  {
-    mode: 'add',
-    label: 'Add',
-    icon: 'add_circle',
-    color: 'primary'
-  },
-  {
-    mode: 'remove',
-    label: 'Remove',
-    icon: 'remove_circle',
-    color: 'negative'
-  },
-  {
-    mode: 'move',
-    label: 'Move',
-    icon: 'open_with',
-    color: 'info'
-  },
-  {
-    mode: null,
-    label: 'Pan',
-    icon: 'pan_tool',
-    color: 'positive'
-  }
+const vertexControls = [
+  { mode: 'add', label: 'Add Vertex', icon: 'add_circle', color: 'primary' },
+  { mode: 'remove', label: 'Remove Vertex', icon: 'remove_circle', color: 'negative' },
+  { mode: 'move', label: 'Move Vertex', icon: 'open_with', color: 'info' }
+];
+
+const otherControls = [
+  { mode: 'move-devices', label: 'Move Devices', icon: 'swipe', color: 'teal' },
+  { mode: 'draw-zone', label: 'New Zone', icon: 'edit', color: 'accent' },
+  { mode: null, label: 'Pan Map', icon: 'pan_tool', color: 'positive' }
 ];
 
 // Instructions for each mode
 const modeInstructions = {
-  add: {
-    icon: 'touch_app',
-    text: 'Click on the map to add points to the zone'
-  },
-  remove: {
-    icon: 'delete',
-    text: 'Click on red markers to remove points'
-  },
-  move: {
-    icon: 'drag_indicator',
-    text: 'Drag blue markers to move points'
-  },
-  null: {
-    icon: 'pan_tool',
-    text: 'Pan and zoom the map freely'
-  }
+  add: { icon: 'touch_app', text: 'Click on the map to add a vertex to the selected zone.' },
+  remove: { icon: 'delete', text: 'Click on a vertex marker to remove it.' },
+  move: { icon: 'drag_indicator', text: 'Drag a vertex marker to move it.' },
+  'move-devices': { icon: 'swipe', text: 'Drag a device to a new position.' },
+  null: { icon: 'pan_tool', text: 'Pan and zoom the map freely.' }
 };
 
 const currentInstruction = computed(() => {
-  if (!props.activeZone && props.mode !== null) {
-    return {
-      icon: 'info',
-      text: 'Select a zone first to use editing tools'
-    };
+  if (!props.activeZone && ['add', 'remove', 'move'].includes(props.mode)) {
+    return { icon: 'warning', text: 'Please select a zone before editing vertices.' };
   }
   return modeInstructions[props.mode];
+});
+
+const showInstruction = ref(false);
+let timeoutId = null;
+
+watch(() => props.mode, () => {
+  showInstruction.value = true;
+  if (timeoutId) clearTimeout(timeoutId);
+  timeoutId = setTimeout(() => {
+    showInstruction.value = false;
+  }, 3000); // Auto-hide after 3 seconds
 });
 </script>
 
@@ -118,6 +128,12 @@ const currentInstruction = computed(() => {
   border: 1px solid rgba(255, 255, 255, 0.2);
   /* glassmorphism effect */
   backdrop-filter: blur(4px);
+}
+
+.divider {
+  height: 32px;
+  width: 1px;
+  background-color: rgba(0, 0, 0, 0.15);
 }
 
 .mode-controls {

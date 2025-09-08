@@ -7,22 +7,22 @@ export function useZoneRenderer(map, props, emit) {
   // Zone styling configuration
   const zoneStyles = {
     active: {
-      color: '#d97706',
+      color: '#d97706', // A vibrant orange for the border
       weight: 3,
       opacity: 1,
-      fillOpacity: 0.3,
-      fillColor: '#fbbf24'
+      fillOpacity: 0.4,
+      fillColor: '#fbbf24' // A matching amber/yellow for the fill
     },
     inactive: {
-      color: '#3388ff',
+      color: '#6b7280', // A neutral gray for the border
       weight: 2,
-      opacity: 0.8,
-      fillOpacity: 0.2,
-      fillColor: '#3388ff'
+      opacity: 0.7,
+      fillOpacity: 0.1,
+      fillColor: '#9ca3af' // A lighter gray for the fill
     },
     hover: {
-      weight: 4,
-      fillOpacity: 0.4
+      fillOpacity: 0.3,
+      color: '#f59e0b' // A brighter orange on hover
     }
   };
 
@@ -123,23 +123,18 @@ export function useZoneRenderer(map, props, emit) {
     `);
 
     // Add hover effects
-    polygon.on('mouseover', function (e) {
-      if (!isActive) {
-        this.setStyle(zoneStyles.hover);
-      }
+    polygon.on('mouseover', function () {
+      this.setStyle(zoneStyles.hover);
     });
 
-    polygon.on('mouseout', function (e) {
-      if (!isActive) {
-        this.setStyle(zoneStyles.inactive);
-      }
+    polygon.on('mouseout', function () {
+      const currentStyle = isActive ? zoneStyles.active : zoneStyles.inactive;
+      this.setStyle(currentStyle);
     });
 
     // Add click handler for zone selection
-    polygon.on('click', function (e) {
-      if (!isActive) {
-        emit('zone-selected', zone.id);
-      }
+    polygon.on('click', function () {
+      emit('zone-clicked', zone.id);
     });
 
     return polygon;

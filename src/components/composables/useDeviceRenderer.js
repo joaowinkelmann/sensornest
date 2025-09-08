@@ -4,7 +4,7 @@ import L from 'leaflet'
 export function useDeviceRenderer(map, props, emit) {
   const deviceLayers = ref({})
 
-  const createDeviceMarker = (device, latlng) => {
+  const createDeviceMarker = (device, latlng, mode) => {
     const deviceColor = device.deviceColor || '#31CCEC' // Cor padrão por enquanto
     const markerHtml = `
       <div class="device-marker-wrapper">
@@ -22,15 +22,24 @@ export function useDeviceRenderer(map, props, emit) {
 
     const marker = L.marker(latlng, {
       icon,
-      draggable: props.editMode === 'devices'
-    })
-
-    marker.on('dragend', (event) => {
-      emit('device-moved', {
-        id: device.id,
-        latlng: event.target.getLatLng()
-      });
+      draggable: mode === 'move-devices'
     });
+
+    if (mode === 'move-devices') {
+      marker.on('dragstart', () => {
+        marker.getElement().style.transform = 'scale(1.3)';
+        marker.getElement().style.zIndex = '2000';
+      });
+
+      marker.on('dragend', (event) => {
+        marker.getElement().style.transform = 'scale(1)';
+        marker.getElement().style.zIndex = 'auto';
+        emit('device-moved', {
+          id: device.id,
+          latlng: event.target.getLatLng()
+        });
+      });
+    }
 
     marker.bindPopup(`
       <div class="device-popup">
@@ -44,7 +53,7 @@ export function useDeviceRenderer(map, props, emit) {
     return marker
   }
 
-  const drawDevices = (devices, conversionFn) => {
+  const drawDevices = (devices, conversionFn, mode) => {
     if (!map.value || !devices) return
     clearDeviceMarkers()
 
@@ -52,7 +61,7 @@ export function useDeviceRenderer(map, props, emit) {
     devices.forEach((device) => {
       const latlng = conversionFn(device)
       if (latlng) {
-        const marker = createDeviceMarker(device, latlng)
+        const marker = createDeviceMarker(device, latlng, mode)
         marker.addTo(map.value)
         newLayers[device.id] = marker
       }
