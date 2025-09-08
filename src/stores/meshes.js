@@ -72,9 +72,14 @@ export const useMeshesStore = defineStore('meshes', {
       }
     },
 
-    async uploadMapImage(file) {
+    async uploadMapImage(file, meshId = this.selectedMeshId) {
+      if (!meshId) {
+        throw new Error('meshId is required to upload a map image');
+      }
+
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('meshId', meshId);
 
       try {
         const response = await apiClient.post('/meshes/upload-map', formData, {

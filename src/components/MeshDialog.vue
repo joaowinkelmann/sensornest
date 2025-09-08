@@ -160,6 +160,7 @@ const getUserLocation = () => {
         meshData.value.lon = position.coords.longitude;
       },
       (error) => {
+        console.log(error, "Error getting location");
         $q.notify({ type: 'negative', message: 'Could not get your location.' });
       }
     );
@@ -174,35 +175,44 @@ const handleSubmit = async () => {
     return;
   }
 
-  let payload = { ...meshData.value };
+  try {
+    const createPayload = {
+      name: meshData.value.name,
+      lat: tab.value === 'custom' ? null : meshData.value.lat,
+      lon: tab.value === 'custom' ? null : meshData.value.lon,
+      mapUrl: tab.value === 'custom' ? null : meshData.value.mapUrl
+    };
 
-  if (tab.value === 'custom') {
-    payload.lat = null;
-    payload.lon = null;
-    if (customMapFile.value) {
-      try {
-        const response = await meshesStore.uploadMapImage(customMapFile.value);
-        payload.mapUrl = response.mapUrl;
-      } catch (error) {
-        $q.notify({ type: 'negative', message: 'Failed to upload map image.' });
-        return;
+    if (isEditing.value) {
+      const meshId = meshData.value.id;
+
+      if (tab.value === 'custom' && customMapFile.value) {
+        // Upload only — backend will update the mesh, then we emit to close/refresh
+        await meshesStore.uploadMapImage(customMapFile.value, meshId);
+        meshesStore.selectMesh(meshId);
+        emit('mesh-updated', { ...meshData.value });
+      } else {
+        // Regular metadata update (no file upload)
+        const { id, ...updatePayload } = { ...meshData.value, name: meshData.value.name };
+        const updatedMesh = await meshesStore.updateMesh(meshId, updatePayload);
+        emit('mesh-updated', updatedMesh);
+      }
+    } else {
+      // Create first to get meshId
+      const newMesh = await meshesStore.createMesh(createPayload);
+
+      if (tab.value === 'custom' && customMapFile.value) {
+        await meshesStore.uploadMapImage(customMapFile.value, newMesh.id);
+        meshesStore.selectMesh(newMesh.id);
+        emit('mesh-created', newMesh);
+      } else {
+        meshesStore.selectMesh(newMesh.id);
+        emit('mesh-created', newMesh);
       }
     }
-  } else {
-    payload.mapUrl = null;
-  }
-
-  try {
-    if (isEditing.value) {
-      const { id, ...updatePayload } = payload;
-      const updatedMesh = await meshesStore.updateMesh(id, updatePayload);
-      emit('mesh-updated', updatedMesh);
-    } else {
-      const newMesh = await meshesStore.createMesh(payload);
-      emit('mesh-created', newMesh);
-    }
   } catch (error) {
-    $q.notify({ type: 'negative', message: 'An error occurred.' });
+    console.error('Mesh save/upload failed:', error);
+    $q.notify({ type: 'negative', message: 'An error occurred while saving the mesh.' });
   }
 };
 
