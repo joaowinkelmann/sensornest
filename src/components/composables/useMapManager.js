@@ -57,7 +57,7 @@ export function useMapManager(mapContainer) {
 
         const tileLayerOptions = {
           minZoom: mesh.minZoom ?? 0,
-          maxZoom: mesh.maxZoom ?? 7,
+          maxZoom: mesh.maxZoom ?? 3,
           attribution: 'Custom Map',
           noWrap: true,
         };
