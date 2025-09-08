@@ -176,39 +176,38 @@ const handleSubmit = async () => {
   }
 
   try {
-    const createPayload = {
-      name: meshData.value.name,
-      lat: tab.value === 'custom' ? null : meshData.value.lat,
-      lon: tab.value === 'custom' ? null : meshData.value.lon,
-      mapUrl: tab.value === 'custom' ? null : meshData.value.mapUrl
-    };
-
     if (isEditing.value) {
       const meshId = meshData.value.id;
-
+      // If a new map file is provided, upload it. The store will be updated automatically.
       if (tab.value === 'custom' && customMapFile.value) {
-        // Upload only — backend will update the mesh, then we emit to close/refresh
         await meshesStore.uploadMapImage(customMapFile.value, meshId);
-        meshesStore.selectMesh(meshId);
-        emit('mesh-updated', { ...meshData.value });
-      } else {
-        // Regular metadata update (no file upload)
-        const { id, ...updatePayload } = { ...meshData.value, name: meshData.value.name };
-        const updatedMesh = await meshesStore.updateMesh(meshId, updatePayload);
-        emit('mesh-updated', updatedMesh);
+        // The store is now updated, so we can just close.
+        emit('close');
+        return;
       }
+      // Otherwise, just update the metadata.
+      const { id, ...updatePayload } = { ...meshData.value };
+      await meshesStore.updateMesh(meshId, updatePayload);
+      emit('close');
+
     } else {
-      // Create first to get meshId
+      // Create a new mesh
+      const createPayload = {
+        name: meshData.value.name,
+        lat: tab.value === 'osm' ? meshData.value.lat : null,
+        lon: tab.value === 'osm' ? meshData.value.lon : null,
+        mapUrl: null // Will be set by upload if applicable
+      };
       const newMesh = await meshesStore.createMesh(createPayload);
 
+      // If a custom map is provided, upload it for the new mesh
       if (tab.value === 'custom' && customMapFile.value) {
         await meshesStore.uploadMapImage(customMapFile.value, newMesh.id);
-        meshesStore.selectMesh(newMesh.id);
-        emit('mesh-created', newMesh);
-      } else {
-        meshesStore.selectMesh(newMesh.id);
-        emit('mesh-created', newMesh);
       }
+
+      // Select the new mesh and close the dialog
+      meshesStore.selectMesh(newMesh.id);
+      emit('close');
     }
   } catch (error) {
     console.error('Mesh save/upload failed:', error);

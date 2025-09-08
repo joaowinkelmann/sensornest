@@ -87,6 +87,14 @@ export const useMeshesStore = defineStore('meshes', {
             'Content-Type': 'multipart/form-data',
           },
         });
+
+        // After a successful upload, update the mesh data in the store
+        const index = this.meshes.findIndex(m => m.id === meshId);
+        if (index !== -1) {
+          // Merge the new map data into the existing mesh object
+          this.meshes[index] = { ...this.meshes[index], ...response.data };
+        }
+
         return response.data;
       } catch (e) {
         console.error('Failed to upload map image:', e);

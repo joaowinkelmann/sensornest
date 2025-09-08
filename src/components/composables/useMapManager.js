@@ -1,11 +1,33 @@
 import { ref } from 'vue';
 import L from 'leaflet';
 
+// Custom TileLayer to handle out-of-bounds tiles gracefully
+const CustomTileLayer = L.TileLayer.extend({
+  getTileUrl: function (coords) {
+    const { x, y } = coords;
+
+    // Assuming a simple check for non-negative tile coordinates
+    if (x < 0 || y < 0) {
+      // Return a transparent 1x1px image for invalid tile coordinates
+      return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    }
+
+    // For valid coordinates, use the default implementation
+    return L.TileLayer.prototype.getTileUrl.call(this, coords);
+  }
+});
+
+// Factory function for the custom layer
+L.tileLayer.custom = function (url, options) {
+  return new CustomTileLayer(url, options);
+};
+
+
 export function useMapManager(mapContainer) {
   const map = ref(null);
 
   const initializeMap = (options) => {
-    const { lat, lon, mapUrl } = options;
+    const { lat, lon, mesh } = options;
     return new Promise((resolve) => {
       if (map.value) {
         destroyMap();
@@ -17,32 +39,46 @@ export function useMapManager(mapContainer) {
         attributionControl: false,
       };
 
-      let tileLayerUrl;
-      let tileLayerOptions = {};
+      let tileLayer;
 
-      if (mapUrl) {
+      if (mesh && mesh.mapUrl) {
         mapOptions.crs = L.CRS.Simple;
-        mapOptions.center = [0, 0];
+        mapOptions.center = [0, 0]; // Center for CRS.Simple is y, x
         mapOptions.zoom = 1;
-        tileLayerUrl = mapUrl;
-        tileLayerOptions = {
-          minZoom: 0,
-          maxZoom: 5,
+
+        const ociToken = import.meta.env.VITE_OCI_MAP_TOKEN;
+        const finalMapUrl = ociToken ? `${mesh.mapUrl}?${ociToken}` : mesh.mapUrl;
+
+        const tileLayerOptions = {
+          minZoom: mesh.minZoom ?? 0,
+          maxZoom: mesh.maxZoom ?? 5,
           attribution: 'Custom Map',
           noWrap: true,
         };
+
+        map.value = L.map(mapContainer.value, mapOptions);
+        tileLayer = L.tileLayer.custom(finalMapUrl, tileLayerOptions);
+
+        if (mesh.mapHeight && mesh.mapWidth) {
+          const southWest = map.value.unproject([0, mesh.mapHeight], tileLayerOptions.maxZoom);
+          const northEast = map.value.unproject([mesh.mapWidth, 0], tileLayerOptions.maxZoom);
+          const bounds = new L.LatLngBounds(southWest, northEast);
+
+          map.value.setMaxBounds(bounds);
+          map.value.fitBounds(bounds);
+          tileLayer.options.bounds = bounds;
+        }
+
       } else {
         mapOptions.center = [lat, lon];
-        tileLayerUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-        tileLayerOptions = {
+        map.value = L.map(mapContainer.value, mapOptions);
+        tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
           attribution: '© OpenStreetMap contributors'
-        };
+        });
       }
 
-      map.value = L.map(mapContainer.value, mapOptions);
-
-      L.tileLayer(tileLayerUrl, tileLayerOptions).addTo(map.value);
+      tileLayer.addTo(map.value);
 
       resolve(map.value);
     });

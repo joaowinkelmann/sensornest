@@ -17,6 +17,10 @@ import { useDeviceRenderer } from './composables/useDeviceRenderer';
 
 // Define props
 const props = defineProps({
+  mesh: {
+    type: Object,
+    default: null
+  },
   zones: {
     type: Array,
     required: true
@@ -36,10 +40,6 @@ const props = defineProps({
   centerLng: {
     type: Number,
     default: -46.6333
-  },
-  mapUrl: {
-    type: String,
-    default: null
   },
   devices: {
     type: Array,
@@ -121,7 +121,7 @@ onMounted(async () => {
   await initializeMap({
     lat: props.centerLat,
     lon: props.centerLng,
-    mapUrl: props.mapUrl
+    mesh: props.mesh
   });
   if (map.value) {
     map.value.on('click', handleMapClick);
@@ -171,11 +171,11 @@ watch(() => props.editMode, () => {
   drawDevices(props.devices, props.conversionFn);
 });
 
-watch(() => [props.centerLat, props.centerLng, props.mapUrl], async () => {
+watch(() => props.mesh, async (newMesh) => {
   await initializeMap({
     lat: props.centerLat,
     lon: props.centerLng,
-    mapUrl: props.mapUrl,
+    mesh: newMesh,
   });
   // After re-initializing, we need to redraw everything
   drawZones(props.zones, props.activeZoneId, mode.value);
