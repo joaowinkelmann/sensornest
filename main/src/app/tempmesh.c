@@ -33,6 +33,7 @@
 #include "roles/controller_role.h"
 #include "net/wifi_manager.h"
 #include "net/espnow_manager.h"
+#include "indicator/led_indicator.h"
 
 static bool g_debug_mode_enabled = false;
 
@@ -416,6 +417,7 @@ static bool wifi_boot_flow(void) {
 
     if (strcmp(stage, "complete") == 0) {
         ESP_LOGI(TAG, "Setup complete (stage='%s'). Proceeding to main task.", stage);
+        led_indicator_provisioning_stop();
         return true;
     }
 
@@ -423,6 +425,7 @@ static bool wifi_boot_flow(void) {
     run_pre_provision_controller_scan(10000);
 
     ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");
+    led_indicator_provisioning_start();
     start_softap_and_rest_server();
     return false;
 }

@@ -116,7 +116,7 @@ static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data,
     const char *name = (const char*)data + strlen(CTRL_PREFIX);
     size_t name_len = len - strlen(CTRL_PREFIX);
     if (name_len > 32) name_len = 32;
-    ESP_LOGI(TAG_EN, "Controller beacon: name='%.*s' MAC=%02X:%02X:%02X:%02X:%02X:%02X",
+    ESP_LOGI(TAG_EN, "Discovered controller beacon: name='%.*s' MAC=%02X:%02X:%02X:%02X:%02X:%02X",
              (int)name_len, name, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 
     int64_t now_ms = esp_timer_get_time()/1000;

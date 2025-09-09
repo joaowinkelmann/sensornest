@@ -8,6 +8,7 @@
 
 #if CONFIG_IDF_TARGET_ESP32C3
 #include "driver/gpio.h"
+#include "driver/ledc.h" // Use LEDC peripheral
 #endif
 
 // Target-dependent indicator GPIO. Adjust if your board uses a different pin.
@@ -31,55 +32,82 @@ static TaskHandle_t s_pulse_task = NULL;
 
 #if CONFIG_IDF_TARGET_ESP32C3
 /* --------------------------------------------------------------------------
- * ESP32C3 REFACTORED SIMPLE GPIO INDICATOR (GPIO 8 active LOW)
+ * ESP32C3 REFACTORED LEDC INDICATOR
  * -------------------------------------------------------------------------- */
 #ifndef INDICATOR_GPIO
 #define INDICATOR_GPIO 8
 #endif
-#define INDICATOR_ACTIVE_LOW 1
+
+// --- LEDC configuration ---
+#define LEDC_TIMER              LEDC_TIMER_0
+#define LEDC_MODE               LEDC_LOW_SPEED_MODE
+#define LEDC_CHANNEL            LEDC_CHANNEL_0
+#define LEDC_DUTY_RES           LEDC_TIMER_13_BIT // 13-bit resolution (0-8191)
+#define LEDC_FREQUENCY          (5000) // 5 kHz PWM frequency
+#define LEDC_MAX_DUTY           ((1 << LEDC_DUTY_RES) - 1)
+
 #define CTRL_BLINK_ON_MS   800
 #define CTRL_BLINK_OFF_MS  800
 #define WORKER_FLASH_MS    120
+#define PROV_BLINK_ON1_MS  60
+#define PROV_BLINK_OFF1_MS 100
+#define PROV_BLINK_ON2_MS  60
+#define PROV_BLINK_OFF2_MS 1500
+
 
 static inline void ind_drive(bool on) {
-#if INDICATOR_ACTIVE_LOW
-    gpio_set_level(INDICATOR_GPIO, on ? 0 : 1);
-#else
-    gpio_set_level(INDICATOR_GPIO, on ? 1 : 0);
-#endif
+    // Set duty to max for ON, 0 for OFF.
+    uint32_t duty = on ? LEDC_MAX_DUTY : 0;
+    ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty);
+    ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
 }
 
-static void ensure_inited_gpio(void) {
+static void ensure_inited_ledc(void) {
     if (s_inited) return;
-    gpio_config_t io = {
-        .pin_bit_mask = 1ULL << INDICATOR_GPIO,
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = 0,
-        .pull_down_en = 0,
-        .intr_type = GPIO_INTR_DISABLE
+
+    // Configure LEDC timer
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode       = LEDC_MODE,
+        .timer_num        = LEDC_TIMER,
+        .duty_resolution  = LEDC_DUTY_RES,
+        .freq_hz          = LEDC_FREQUENCY,
+        .clk_cfg          = LEDC_AUTO_CLK
     };
-    gpio_config(&io);
-    ind_drive(false); // OFF
+    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+
+    // Configure LEDC channel
+    ledc_channel_config_t ledc_channel = {
+        .speed_mode     = LEDC_MODE,
+        .channel        = LEDC_CHANNEL,
+        .timer_sel      = LEDC_TIMER,
+        .intr_type      = LEDC_INTR_DISABLE,
+        .gpio_num       = INDICATOR_GPIO,
+        .duty           = 0, // Initial duty OFF
+        .hpoint         = 0,
+        .flags.output_invert = 1 // Invert the output signal for active-low LEDs
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+
     s_inited = true;
-    ESP_LOGI(TAG_IND, "Init (C3 simple mode) GPIO=%d active_low=%d", INDICATOR_GPIO, INDICATOR_ACTIVE_LOW);
+    ESP_LOGI(TAG_IND, "Init (C3 LEDC mode) GPIO=%d", INDICATOR_GPIO);
 }
 
 /* Worker flash: brief ON then OFF (non-blocking) */
 static void worker_flash_task(void *arg) {
     uint32_t dur = (uint32_t)(uintptr_t)arg;
-    ESP_LOGD(TAG_IND, "worker_flash_task start dur=%u", (unsigned)dur);
-    ensure_inited_gpio();
+    ESP_LOGI(TAG_IND, "worker_flash_task start dur=%u", (unsigned)dur);
+    ensure_inited_ledc();
     ind_drive(true);
     vTaskDelay(pdMS_TO_TICKS(dur));
     ind_drive(false);
-    ESP_LOGD(TAG_IND, "worker_flash_task done");
+    ESP_LOGI(TAG_IND, "worker_flash_task done");
     vTaskDelete(NULL);
 }
 
 /* Controller blink task: slow periodic flash while running role */
 static void controller_blink_task(void *arg) {
     ESP_LOGI(TAG_IND, "controller_blink_task start (slow flash)");
-    ensure_inited_gpio();
+    ensure_inited_ledc();
     bool on = false;
     while (true) {
         on = !on;
@@ -88,27 +116,43 @@ static void controller_blink_task(void *arg) {
     }
 }
 
+/* --- NEW: Provisioning blink task (double flash) --- */
+static void provisioning_blink_task(void *arg) {
+    ESP_LOGI(TAG_IND, "provisioning_blink_task start (double flash)");
+    ensure_inited_ledc();
+    while (true) {
+        ind_drive(true);
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON1_MS));
+        ind_drive(false);
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_OFF1_MS));
+        ind_drive(true);
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON2_MS));
+        ind_drive(false);
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_OFF2_MS));
+    }
+}
+
 esp_err_t led_indicator_init(void) {
-    ensure_inited_gpio();
+    ensure_inited_ledc();
     return ESP_OK;
 }
 
 void led_indicator_set(uint8_t r, uint8_t g, uint8_t b) {
     /* Any non-zero => ON */
-    ensure_inited_gpio();
+    ensure_inited_ledc();
     bool on = (r | g | b) != 0;
     ind_drive(on);
     ESP_LOGI(TAG_IND, "set r=%u g=%u b=%u -> %s", r,g,b,on?"ON":"OFF");
 }
 
 void led_indicator_off(void) {
-    ensure_inited_gpio();
+    ensure_inited_ledc();
     ind_drive(false);
     ESP_LOGI(TAG_IND, "off");
 }
 
 void led_indicator_flash_worker_debug(void) {
-    ensure_inited_gpio();
+    ensure_inited_ledc();
     // Increased stack to avoid stack-protection/vfprintf panics on C3
     if (xTaskCreate(worker_flash_task, "led_wflash", 2048, (void*)(uintptr_t)WORKER_FLASH_MS, 2, NULL) != pdPASS) {
         ESP_LOGW(TAG_IND, "flash task create failed, doing inline flash");
@@ -121,7 +165,7 @@ void led_indicator_flash_worker_debug(void) {
 }
 
 void led_indicator_controller_pulse_start(void) {
-    ensure_inited_gpio();
+    ensure_inited_ledc();
     if (s_pulse_task) {
         ESP_LOGI(TAG_IND, "controller blink already running");
         return;
@@ -143,6 +187,25 @@ void led_indicator_controller_pulse_stop(void) {
     ind_drive(false);
     ESP_LOGI(TAG_IND, "controller blink stopped");
 }
+
+void led_indicator_provisioning_start(void) {
+    ensure_inited_ledc();
+    if (s_pulse_task) {
+        ESP_LOGI(TAG_IND, "provisioning blink: another task is running, stopping it first.");
+        led_indicator_controller_pulse_stop(); // Generic stop function
+    }
+    if (xTaskCreate(provisioning_blink_task, "led_prov_blink", 2048, NULL, 1, &s_pulse_task) != pdPASS) {
+        ESP_LOGE(TAG_IND, "provisioning blink task create failed");
+        s_pulse_task = NULL;
+    } else {
+        ESP_LOGI(TAG_IND, "provisioning blink started");
+    }
+}
+
+void led_indicator_provisioning_stop(void) {
+    led_indicator_controller_pulse_stop(); // Same logic, can be reused
+}
+
 
 #else  /* ------------------ OTHER TARGETS (retain existing implementation) ------------------ */
 

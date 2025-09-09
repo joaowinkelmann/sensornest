@@ -101,7 +101,6 @@ esp_err_t worker_role_start(void) {
     /* Debug identification flash */
     if (s_debug) {
         led_indicator_init();
-        led_indicator_flash_worker_debug();
     }
 
     /* If debug mode is enabled, keep running in a loop (no deep sleep).
@@ -110,11 +109,8 @@ esp_err_t worker_role_start(void) {
      */
     if (s_debug) {
         for (;;) {
+            led_indicator_flash_worker_debug();
             perform_sensor_reading();
-            if (s_debug) {
-                vTaskDelay(pdMS_TO_TICKS(150));
-                led_indicator_off();
-            }
 
             if (batch_store_count() >= device_readingsPerBatch) {
                 ESP_LOGI(TAG_WR, "Batch full (%d/%d). Sending via ESPNOW (unicast preferred).",
