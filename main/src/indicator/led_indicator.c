@@ -89,24 +89,24 @@ static void ensure_inited_ledc(void) {
     ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
 
     s_inited = true;
-    ESP_LOGI(TAG_IND, "Init (C3 LEDC mode) GPIO=%d", INDICATOR_GPIO);
+    ESP_LOGD(TAG_IND, "Init (C3 LEDC mode) GPIO=%d", INDICATOR_GPIO);
 }
 
 /* Worker flash: brief ON then OFF (non-blocking) */
 static void worker_flash_task(void *arg) {
     uint32_t dur = (uint32_t)(uintptr_t)arg;
-    ESP_LOGI(TAG_IND, "worker_flash_task start dur=%u", (unsigned)dur);
+    ESP_LOGD(TAG_IND, "worker_flash_task start dur=%u", (unsigned)dur);
     ensure_inited_ledc();
     ind_drive(true);
     vTaskDelay(pdMS_TO_TICKS(dur));
     ind_drive(false);
-    ESP_LOGI(TAG_IND, "worker_flash_task done");
+    ESP_LOGD(TAG_IND, "worker_flash_task done");
     vTaskDelete(NULL);
 }
 
 /* Controller blink task: slow periodic flash while running role */
 static void controller_blink_task(void *arg) {
-    ESP_LOGI(TAG_IND, "controller_blink_task start (slow flash)");
+    ESP_LOGD(TAG_IND, "controller_blink_task start (slow flash)");
     ensure_inited_ledc();
     bool on = false;
     while (true) {
@@ -118,7 +118,7 @@ static void controller_blink_task(void *arg) {
 
 /* --- NEW: Provisioning blink task (double flash) --- */
 static void provisioning_blink_task(void *arg) {
-    ESP_LOGI(TAG_IND, "provisioning_blink_task start (double flash)");
+    ESP_LOGD(TAG_IND, "provisioning_blink_task start (double flash)");
     ensure_inited_ledc();
     while (true) {
         ind_drive(true);
@@ -160,14 +160,14 @@ void led_indicator_flash_worker_debug(void) {
         vTaskDelay(pdMS_TO_TICKS(WORKER_FLASH_MS));
         ind_drive(false);
     } else {
-        ESP_LOGI(TAG_IND, "flash task spawned");
+        ESP_LOGD(TAG_IND, "flash task spawned");
     }
 }
 
 void led_indicator_controller_pulse_start(void) {
     ensure_inited_ledc();
     if (s_pulse_task) {
-        ESP_LOGI(TAG_IND, "controller blink already running");
+        ESP_LOGD(TAG_IND, "controller blink already running");
         return;
     }
     // Increase stack to 2K for safe logging / runtime on C3
@@ -175,7 +175,7 @@ void led_indicator_controller_pulse_start(void) {
         ESP_LOGE(TAG_IND, "controller blink task create failed");
         s_pulse_task = NULL;
     } else {
-        ESP_LOGI(TAG_IND, "controller blink started");
+        ESP_LOGD(TAG_IND, "controller blink started");
     }
 }
 

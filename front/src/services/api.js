@@ -176,10 +176,10 @@ export const api = {
     doFetch(`${base}/api/v1/setup/complete`, { method: "POST" }),
 
   getControllers: () => doFetch(`${base}/api/v1/controllers/scan`),
-  bindWorker: (name, controllerMac) =>
+  bindWorker: (name, controllerMac, channel) =>
     doFetch(`${base}/api/v1/worker/bind`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, controllerMac }),
+      body: JSON.stringify({ name, controllerMac, channel }),
     }),
 };

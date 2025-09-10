@@ -3,9 +3,9 @@
 #include "esp_random.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
-#include <time.h>                 // <--- ADDED
-#include "freertos/FreeRTOS.h"    // <--- ADDED
-#include "freertos/task.h"        // <--- ADDED
+#include <time.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <string.h>
 
 #define SENSOR_TAG        "SENSOR"
@@ -41,7 +41,7 @@ esp_err_t sensor_read_once(bool simulate, sensor_reading_t *out) {
 
     if (simulate) {
         fill_simulated(out);
-        ESP_LOGI(SENSOR_TAG, "Simulated reading: T=%.1fC H=%.1f%%", out->temperature, out->humidity);
+        ESP_LOGD(SENSOR_TAG, "Simulated reading: T=%.1fC H=%.1f%%", out->temperature, out->humidity);
         return ESP_OK;
     }
 

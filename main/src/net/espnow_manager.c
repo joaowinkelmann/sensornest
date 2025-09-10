@@ -2,19 +2,31 @@
 #include "net/wifi_manager.h"
 #include "esp_wifi.h"
 #include "esp_log.h"
+#include "esp_now.h"
 #include <string.h>
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "esp_timer.h"
 #include "esp_mac.h"
 #include "security/pmk.h"
 
-static const char *TAG_EN = "ESPNOW_MGR"; // ensure single tag
+#define ESPNOW_QUEUE_SIZE   16
+#define ESPNOW_MAX_DELAY    pdMS_TO_TICKS(500)
+#define ESPNOW_TASK_STACK   4096
+#define ESPNOW_TASK_PRIO    4
+
+static const char *TAG_EN = "ESPNOW_MGR";
+
+static QueueHandle_t s_espnow_queue = NULL;
+static TaskHandle_t s_espnow_task_handle = NULL;
+
+static espnow_mgr_send_cb_t s_send_cb = NULL;
+static espnow_mgr_rx_cb_t s_recv_cb = NULL;
 
 static bool s_inited = false;
 static bool s_is_controller = false;
-static espnow_mgr_rx_cb_t s_rx = NULL;
 
 /* NEW: fixed channel (0 = none) */
 static uint8_t s_fixed_channel = 0;
@@ -26,6 +38,7 @@ static uint8_t s_fixed_channel = 0;
 typedef struct {
     uint8_t mac[6];
     char name[33];
+    uint8_t channel; // NEW: store channel
     int64_t last_seen_ms;
 } discovered_ctrl_t;
 
@@ -38,14 +51,19 @@ static TaskHandle_t s_beacon_task = NULL;
 static char s_beacon_name[33] = "Controller";
 static int s_beacon_interval_ms = 2000;
 
-// NEW: prebuilt beacon payload to avoid per-loop snprintf stack usage
-static uint8_t s_beacon_payload[64];
-static size_t  s_beacon_payload_len = 0;
-#define CTRL_BEACON_STACK   3072  // words (≈12 KB). Adjust if still low.
-
 // Forward
 static void update_beacon_payload_locked(void);
 static void dump_hex(const uint8_t *d, int len, int max);
+// Correct the signature of the internal send callback forward declaration
+static void internal_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status);
+static void internal_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len);
+static void espnow_manager_task(void *pvParameter);
+static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data, int len);
+
+// NEW: prebuilt beacon payload to avoid per-loop snprintf stack usage
+static uint8_t s_beacon_payload[64];
+static size_t  s_beacon_payload_len = 0;
+#define CTRL_BEACON_STACK   3072  // words (~12 KB). Adjust if still low.
 
 static void dump_hex(const uint8_t *d, int len, int max)
 {
@@ -64,8 +82,24 @@ static void dump_hex(const uint8_t *d, int len, int max)
 /* Single beacon send */
 static void send_controller_beacon_once(bool log_always) {
     if (!s_inited || s_beacon_payload_len == 0) return;
-    esp_err_t e = esp_now_send((uint8_t[6]){0xFF,0xFF,0xFF,0xFF,0xFF,0xFF},
-                               s_beacon_payload, s_beacon_payload_len);
+
+    // Explicitly use the AP interface for beacons to control the channel.
+    // The STA interface channel will be dictated by the connected router.
+    esp_now_peer_info_t peer = {
+        .ifidx = WIFI_IF_AP,
+        .channel = 0, // Use the current channel of the specified interface (AP)
+        .encrypt = false
+    };
+    memcpy(peer.peer_addr, (uint8_t[6]){0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}, 6);
+
+    // Add/modify peer to ensure it's on the correct interface and channel
+    if (!esp_now_is_peer_exist(peer.peer_addr)) {
+        esp_now_add_peer(&peer);
+    } else {
+        esp_now_mod_peer(&peer);
+    }
+
+    esp_err_t e = esp_now_send(peer.peer_addr, s_beacon_payload, s_beacon_payload_len);
     if (log_always || e != ESP_OK) {
         ESP_LOGI(TAG_EN, "Beacon send result=%s len=%d payload='%.*s'",
                  esp_err_to_name(e), (int)s_beacon_payload_len,
@@ -75,8 +109,13 @@ static void send_controller_beacon_once(bool log_always) {
 
 // New helper: rebuild payload whenever name changes
 static void update_beacon_payload_locked(void) {
+    uint8_t ch = 0;
+    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+    esp_wifi_get_channel(&ch, &second);
+    if (ch == 0) ch = s_fixed_channel ? s_fixed_channel : 1; // Fallback
+
     int n = snprintf((char*)s_beacon_payload, sizeof(s_beacon_payload),
-                     CTRL_PREFIX "%s", s_beacon_name);
+                     CTRL_PREFIX "%u|%s", ch, s_beacon_name);
     if (n < 0) n = 0;
     if (n > (int)sizeof(s_beacon_payload)) n = sizeof(s_beacon_payload);
     s_beacon_payload_len = (size_t)n;
@@ -101,11 +140,46 @@ static void beacon_task(void *arg) {
     }
 }
 
+static void internal_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status) {
+    if (s_espnow_queue == NULL || info == NULL) return;
+    espnow_mgr_event_t evt;
+    evt.id = ESPNOW_MGR_SEND_CB;
+    memcpy(evt.info.send_cb.mac_addr, info->des_addr, ESP_NOW_ETH_ALEN);
+    evt.info.send_cb.status = status;
+    if (xQueueSend(s_espnow_queue, &evt, ESPNOW_MAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG_EN, "Send CB queue full");
+    }
+}
+
+static void internal_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+    if (s_espnow_queue == NULL || info == NULL || data == NULL || len <= 0) {
+        return;
+    }
+
+    espnow_mgr_event_t evt;
+    evt.id = ESPNOW_MGR_RECV_CB;
+    espnow_mgr_event_recv_cb_t *recv_cb_info = &evt.info.recv_cb;
+    memcpy(recv_cb_info->mac_addr, info->src_addr, ESP_NOW_ETH_ALEN);
+    // recv_cb_info->ifidx = info->rx_ctrl->ifidx; // comentado por enquanto, ver mais tarde
+    recv_cb_info->data = malloc(len);
+    if (recv_cb_info->data == NULL) {
+        ESP_LOGE(TAG_EN, "Failed to malloc for recv_cb");
+        return;
+    }
+    memcpy(recv_cb_info->data, data, len);
+    recv_cb_info->data_len = len;
+
+    if (xQueueSend(s_espnow_queue, &evt, ESPNOW_MAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG_EN, "Recv CB queue full");
+        free(recv_cb_info->data);
+    }
+}
+
 /* Parse controller beacons */
 static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data, int len) {
     ESP_LOGD(TAG_EN, "Beacon candidate len=%d from %02X:%02X:%02X:%02X:%02X:%02X",
              len, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-    if (len < (int)strlen(CTRL_PREFIX) + 1) {
+    if (len < (int)strlen(CTRL_PREFIX) + 3) { // e.g. CTRL|1|A
         ESP_LOGV(TAG_EN, "Beacon reject: too short");
         return;
     }
@@ -113,17 +187,34 @@ static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data,
         ESP_LOGV(TAG_EN, "Beacon reject: prefix mismatch");
         return;
     }
-    const char *name = (const char*)data + strlen(CTRL_PREFIX);
-    size_t name_len = len - strlen(CTRL_PREFIX);
+
+    // New format: CTRL|<channel>|<name>
+    const char *payload = (const char*)data + strlen(CTRL_PREFIX);
+    char *pipe = strchr(payload, '|');
+    if (!pipe) {
+        ESP_LOGW(TAG_EN, "Invalid beacon format (no pipe separator)");
+        return;
+    }
+
+    int channel = atoi(payload);
+    const char *name = pipe + 1;
+    size_t name_len = len - (name - (const char*)data);
+
+    if (channel <= 0 || channel > 13) {
+        ESP_LOGW(TAG_EN, "Invalid channel '%d' in beacon", channel);
+        return;
+    }
+
     if (name_len > 32) name_len = 32;
-    ESP_LOGI(TAG_EN, "Discovered controller beacon: name='%.*s' MAC=%02X:%02X:%02X:%02X:%02X:%02X",
-             (int)name_len, name, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+    ESP_LOGI(TAG_EN, "Discovered controller beacon: name='%.*s' MAC=%02X:%02X:%02X:%02X:%02X:%02X ch=%d",
+             (int)name_len, name, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5], channel);
 
     int64_t now_ms = esp_timer_get_time()/1000;
     for (int i=0;i<s_ctrl_count;i++) {
         if (memcmp(s_ctrls[i].mac, mac, 6)==0) {
             memcpy(s_ctrls[i].name, name, name_len);
             s_ctrls[i].name[name_len]=0;
+            s_ctrls[i].channel = channel;
             s_ctrls[i].last_seen_ms = now_ms;
             return;
         }
@@ -132,6 +223,7 @@ static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data,
         memcpy(s_ctrls[s_ctrl_count].mac, mac, 6);
         memcpy(s_ctrls[s_ctrl_count].name, name, name_len);
         s_ctrls[s_ctrl_count].name[name_len]=0;
+        s_ctrls[s_ctrl_count].channel = channel;
         s_ctrls[s_ctrl_count].last_seen_ms = now_ms;
         s_ctrl_count++;
         ESP_LOGV(TAG_EN, "Discovered controller #%d '%s'", s_ctrl_count, s_ctrls[s_ctrl_count-1].name);
@@ -140,46 +232,64 @@ static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data,
     }
 }
 
-static void espnow_recv_cb_wrapper(const uint8_t *mac, const uint8_t *data, int len) {
-    if (!data || len <= 0) return;
+// static void espnow_recv_cb_wrapper(const uint8_t *mac, const uint8_t *data, int len, wifi_interface_t ifidx) {
+//     if (!mac || !data || len <= 0) return;
 
-    // Active probe handling: if worker asks, controller replies immediately
-    if (s_is_controller && len == (int)strlen(DISCOVERY_PROBE) &&
-        memcmp(data, DISCOVERY_PROBE, strlen(DISCOVERY_PROBE)) == 0) {
-        ESP_LOGI(TAG_EN, "Received discovery probe from %02X:%02X:%02X:%02X:%02X:%02X -> sending immediate beacon",
-                 mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-        send_controller_beacon_once(true);
+//     if (s_recv_cb) {
+//         s_recv_cb(mac, data, len, ifidx);
+//     }
+
+//     if (s_collect_mode) {
+//         handle_possible_ctrl_beacon(mac, data, len);
+//     }
+// }
+
+// static void espnow_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+//     const uint8_t *mac = info ? info->src_addr : NULL;
+//     if (!mac) return;
+
+//     // Correct way to get the interface: look up the peer info.
+//     esp_now_peer_info_t peer_info;
+//     wifi_interface_t ifidx = WIFI_IF_STA; // Default to STA
+//     if (esp_now_get_peer(mac, &peer_info) == ESP_OK) {
+//         ifidx = peer_info.ifidx;
+//     }
+
+//     espnow_recv_cb_wrapper(mac, data, len, ifidx);
+// }
+
+/* Add unicast send that prefers controller MAC, falls back to broadcast.
+ * Existing helpers set/get controller MAC (already declared in header).
+ */
+esp_err_t espnow_manager_send_to_controller(const void *data, size_t len) {
+    if (!s_inited || !data || len == 0) return ESP_ERR_INVALID_STATE;
+    if (len > 1000) {
+        ESP_LOGW(TAG_EN, "Truncating payload %u -> 1000 bytes", (unsigned)len);
+        len = 1000;
     }
-
-    if (s_collect_mode) handle_possible_ctrl_beacon(mac, data, len);
-    if (s_rx) s_rx(mac, data, len); // user callback
-}
-
-static void espnow_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
-    const uint8_t *mac = info ? info->src_addr : NULL;
-#else
-    const uint8_t *mac = info ? info->peer_addr : NULL;
-#endif
-    if (!mac || !data || len<=0) return;
-    ESP_LOGD(TAG_EN, "RX %d bytes", len);
-    dump_hex(data, len, 32);
-    espnow_recv_cb_wrapper(mac, data, len);
-}
-
-static esp_err_t ensure_wifi_for_espnow(void) {
-    wifi_mode_t mode;
-    esp_err_t r = esp_wifi_get_mode(&mode);
-    if (r == ESP_OK) {
-        // Driver already started (AP or APSTA). Ensure STA present.
-        if (mode == WIFI_MODE_AP) {
-            ESP_LOGI(TAG_EN, "Adjusting Wi-Fi mode AP -> APSTA for ESP-NOW.");
-            ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    uint8_t mac[6];
+    if (espnow_manager_get_controller_mac(mac)) {
+        // Check if peer exists, add if not, to prevent warnings
+        if (!esp_now_is_peer_exist(mac)) {
+            esp_now_peer_info_t peer = {0};
+            memcpy(peer.peer_addr, mac, 6);
+            peer.ifidx = WIFI_IF_STA;
+            peer.channel = s_fixed_channel; // Use the stored channel
+            peer.encrypt = false;
+            esp_err_t add_err = esp_now_add_peer(&peer);
+            if (add_err != ESP_OK) {
+                ESP_LOGE(TAG_EN, "Failed to add unicast peer: %s", esp_err_to_name(add_err));
+            }
         }
-        return ESP_OK;
+        esp_err_t e = esp_now_send(mac, (const uint8_t*)data, len);
+        if (e == ESP_OK) {
+            ESP_LOGD(TAG_EN, "Unicast ESPNOW %uB to controller %02X:%02X:%02X:%02X:%02X:%02X",
+                     (unsigned)len, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+            return ESP_OK;
+        }
+        ESP_LOGW(TAG_EN, "Unicast send failed (%s); falling back to broadcast", esp_err_to_name(e));
     }
-    ESP_LOGI(TAG_EN, "Wi-Fi not started yet; initializing via wifi_manager.");
-    return wifi_manager_init();
+    return espnow_manager_send_broadcast(data, len);
 }
 
 esp_err_t espnow_manager_start_controller_beacon(const char *name, int interval_ms) {
@@ -203,6 +313,37 @@ esp_err_t espnow_manager_start_controller_beacon(const char *name, int interval_
     return ESP_OK;
 }
 
+esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
+    if (!s_inited || !out_json) return ESP_ERR_INVALID_ARG;
+
+    s_ctrl_count = 0;
+    memset(s_ctrls, 0, sizeof(s_ctrls));
+    s_collect_mode = true;
+
+    ESP_LOGI(TAG_EN, "Starting controller discovery for %d ms...", duration_ms);
+    vTaskDelay(pdMS_TO_TICKS(duration_ms));
+    s_collect_mode = false;
+    ESP_LOGI(TAG_EN, "Controller discovery finished. Found %d controllers.", s_ctrl_count);
+
+    cJSON *root = cJSON_CreateArray();
+    if (!root) return ESP_ERR_NO_MEM;
+
+    for (int i = 0; i < s_ctrl_count; i++) {
+        cJSON *ctrl = cJSON_CreateObject();
+        char mac_str[18];
+        snprintf(mac_str, sizeof(mac_str), MACSTR, MAC2STR(s_ctrls[i].mac));
+        cJSON_AddStringToObject(ctrl, "mac", mac_str);
+        cJSON_AddStringToObject(ctrl, "name", s_ctrls[i].name);
+        cJSON_AddNumberToObject(ctrl, "channel", s_ctrls[i].channel);
+        cJSON_AddItemToArray(root, ctrl);
+    }
+
+    *out_json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    return *out_json ? ESP_OK : ESP_ERR_NO_MEM;
+}
+
 bool espnow_manager_is_initialized(void) {
     return s_inited;
 }
@@ -217,196 +358,158 @@ uint8_t espnow_manager_get_fixed_channel(void) {
     return s_fixed_channel;
 }
 
-esp_err_t espnow_manager_init(bool controller, espnow_mgr_rx_cb_t rx_cb) {
-    ESP_LOGI(TAG_EN, "espnow_manager_init called (controller=%d) current_state: inited=%d",
-             controller, s_inited);
-    if (s_inited) {
-        if (controller && !s_is_controller) { s_is_controller = true; s_rx = rx_cb; }
-        else if (rx_cb) s_rx = rx_cb;
-        return ESP_OK;
+esp_err_t espnow_manager_init(void) {
+    if (s_inited) return ESP_OK;
+
+    s_espnow_queue = xQueueCreate(ESPNOW_QUEUE_SIZE, sizeof(espnow_mgr_event_t));
+    if (s_espnow_queue == NULL) {
+        ESP_LOGE(TAG_EN, "Failed to create ESP-NOW event queue");
+        return ESP_ERR_NO_MEM;
     }
 
-    esp_err_t err = ensure_wifi_for_espnow();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG_EN, "ensure_wifi_for_espnow failed: %s", esp_err_to_name(err));
-        return err;
-    }
+    ESP_ERROR_CHECK(wifi_manager_init());
 
-    wifi_mode_t mode;
-    esp_wifi_get_mode(&mode);
+    ESP_ERROR_CHECK(esp_now_init());
+    ESP_ERROR_CHECK(esp_now_register_send_cb(internal_send_cb));
+    ESP_ERROR_CHECK(esp_now_register_recv_cb(internal_recv_cb));
+    ESP_ERROR_CHECK(esp_now_set_pmk(espnow_pmk));
 
-    /* Force APSTA for controller so AP interface exists for broadcast */
-    if (controller && mode == WIFI_MODE_STA) {
-        wifi_config_t apcfg = {0};
-        uint8_t mac[6];
-        esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);   // now valid
-        snprintf((char*)apcfg.ap.ssid, sizeof(apcfg.ap.ssid), "TMCTRL-%02X%02X%02X", mac[3],mac[4],mac[5]);
-        apcfg.ap.ssid_len       = strlen((char*)apcfg.ap.ssid);
-        /* Use fixed channel if configured, otherwise default to 1 */
-        apcfg.ap.channel        = s_fixed_channel ? s_fixed_channel : 1;
-        apcfg.ap.max_connection = 4;
-        apcfg.ap.authmode       = WIFI_AUTH_OPEN;
-        ESP_LOGI(TAG_EN, "Enabling APSTA (AP SSID=%s ch=%d) (fixed_channel=%u)",
-                 apcfg.ap.ssid, apcfg.ap.channel, s_fixed_channel);
-        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &apcfg));
-        mode = WIFI_MODE_APSTA;
-    }
-
-    uint8_t primary_ch = 0;
-    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
-    esp_wifi_get_channel(&primary_ch, &second);
-    ESP_LOGI(TAG_EN, "Wi-Fi mode=%d primary_channel=%u second_chan=%d before esp_now_init",
-             mode, primary_ch, second);
-
-    err = esp_now_init();
-    if (err == ESP_ERR_ESPNOW_EXIST) err = ESP_OK;
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG_EN, "esp_now_init failed: %s", esp_err_to_name(err));
-        return err;
-    }
-
-    esp_now_set_pmk(espnow_pmk);
-
-    // Always add STA broadcast peer
-    esp_now_peer_info_t peer_sta = {0};
-    memset(peer_sta.peer_addr, 0xFF, 6);
-    peer_sta.ifidx = WIFI_IF_STA;
-    peer_sta.channel = 0;
-    peer_sta.encrypt = false;
-    if (esp_now_add_peer(&peer_sta) == ESP_OK)
-        ESP_LOGI(TAG_EN, "Added broadcast peer (STA)");
-
-    // Add AP broadcast peer if APSTA
-    if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
-        esp_now_peer_info_t peer_ap = {0};
-        memset(peer_ap.peer_addr, 0xFF, 6);
-        peer_ap.ifidx = WIFI_IF_AP;
-        peer_ap.channel = 0;
-        peer_ap.encrypt = false;
-        if (esp_now_add_peer(&peer_ap) == ESP_OK)
-            ESP_LOGI(TAG_EN, "Added broadcast peer (AP)");
-    }
-
-    esp_now_register_recv_cb(espnow_recv_cb);
-
-    if (controller) {
-        s_is_controller = true;
-        s_rx = rx_cb;
-        ESP_LOGI(TAG_EN, "Controller ESPNOW ready (mode=%d ch=%u fixed=%u)", mode, primary_ch, s_fixed_channel);
-    } else {
-        ESP_LOGI(TAG_EN, "Worker ESPNOW ready (mode=%d ch=%u fixed=%u)", mode, primary_ch, s_fixed_channel);
+    if (xTaskCreate(espnow_manager_task, "espnow_mgr_task", ESPNOW_TASK_STACK, NULL, ESPNOW_TASK_PRIO, &s_espnow_task_handle) != pdPASS) {
+        ESP_LOGE(TAG_EN, "Failed to create ESP-NOW task");
+        vQueueDelete(s_espnow_queue);
+        s_espnow_queue = NULL;
+        esp_now_deinit();
+        return ESP_ERR_NO_MEM;
     }
 
     s_inited = true;
+    ESP_LOGI(TAG_EN, "ESP-NOW Manager initialized successfully.");
     return ESP_OK;
 }
 
-esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
-    ESP_LOGI(TAG_EN, "collect_controllers start duration=%dms inited=%d collect_mode=%d",
-             duration_ms, s_inited, s_collect_mode);
-    if (!out_json) return ESP_ERR_INVALID_ARG;
-    *out_json = NULL;
-    if (!s_inited) {
-        ESP_LOGE(TAG_EN, "collect_controllers abort: ESPNOW not initialized");
-        return ESP_ERR_INVALID_STATE;
+void espnow_manager_deinit(void) {
+    if (!s_inited) return;
+    if (s_espnow_task_handle) {
+        vTaskDelete(s_espnow_task_handle);
+        s_espnow_task_handle = NULL;
     }
-    if (s_collect_mode) {
-        ESP_LOGW(TAG_EN, "collect_controllers already in progress");
-        return ESP_ERR_INVALID_STATE;
+    if (s_espnow_queue) {
+        vQueueDelete(s_espnow_queue);
+        s_espnow_queue = NULL;
     }
-    if (duration_ms < 1000) duration_ms = 1000;
-    if (duration_ms > 15000) duration_ms = 15000;
+    esp_now_deinit();
+    s_inited = false;
+    ESP_LOGI(TAG_EN, "ESP-NOW Manager de-initialized.");
+}
 
-    s_ctrl_count = 0;
-    memset(s_ctrls, 0, sizeof(s_ctrls));
-    s_collect_mode = true;
-    ESP_LOGI(TAG_EN, "Starting controller discovery window: %d ms", duration_ms);
+void espnow_manager_register_callbacks(espnow_mgr_send_cb_t send_cb, espnow_mgr_rx_cb_t recv_cb) {
+    s_send_cb = send_cb;
+    s_recv_cb = recv_cb;
+}
 
-    // ACTIVE DISCOVERY PROBE
-    const char probe[] = DISCOVERY_PROBE;
-    esp_err_t pe = espnow_manager_send_broadcast(probe, sizeof(probe)-1);
-    ESP_LOGI(TAG_EN, "Sent discovery probe result=%s", esp_err_to_name(pe));
+esp_err_t espnow_manager_config_role(bool is_controller) {
+    s_is_controller = is_controller;
+    wifi_mode_t mode;
+    ESP_ERROR_CHECK(esp_wifi_get_mode(&mode));
 
-    int elapsed = 0;
-    const int step = 100;
-    int midProbeSent = 0;
-
-    // If fixed channel set, prefer it and disable hopping
-    const int hop_interval_ms = 400;
-    int next_hop_ms = hop_interval_ms;
-    int hop_index = 0;
-    const uint8_t hop_channels[] = {1,6,11,3,9,2,4,5,7,8,10}; // fallback
-    int busy_sets = 0;
-    bool hopping_allowed = (s_fixed_channel == 0);
-
-    if (s_fixed_channel) {
-        esp_err_t e = esp_wifi_set_channel(s_fixed_channel, WIFI_SECOND_CHAN_NONE);
-        if (e == ESP_OK) {
-            ESP_LOGI(TAG_EN, "Discovery: set fixed channel %u for scan", s_fixed_channel);
-        } else {
-            ESP_LOGW(TAG_EN, "Discovery: failed to set fixed channel %u: %s", s_fixed_channel, esp_err_to_name(e));
-            // allow hopping as fallback
-            hopping_allowed = true;
-        }
+    if (is_controller && mode == WIFI_MODE_STA) {
+        // ... existing logic to set APSTA mode ...
+        wifi_config_t apcfg = {0};
+        uint8_t mac[6];
+        esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+        snprintf((char*)apcfg.ap.ssid, sizeof(apcfg.ap.ssid), "TMCTRL-%02X%02X%02X", mac[3],mac[4],mac[5]);
+        apcfg.ap.ssid_len       = strlen((char*)apcfg.ap.ssid);
+        apcfg.ap.channel        = s_fixed_channel ? s_fixed_channel : 1;
+        apcfg.ap.max_connection = 4;
+        apcfg.ap.authmode       = WIFI_AUTH_OPEN;
+        ESP_LOGI(TAG_EN, "Enabling APSTA (AP SSID=%s ch=%d)", apcfg.ap.ssid, apcfg.ap.channel);
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &apcfg));
     }
 
-    while (elapsed < duration_ms) {
-        vTaskDelay(pdMS_TO_TICKS(step));
-        elapsed += step;
+    // Add broadcast peer(s)
+    esp_now_peer_info_t peer_sta = { .ifidx = WIFI_IF_STA, .channel = 0, .encrypt = false };
+    memcpy(peer_sta.peer_addr, (uint8_t[6]){0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}, 6);
+    if (!esp_now_is_peer_exist(peer_sta.peer_addr)) esp_now_add_peer(&peer_sta);
 
-        if (hopping_allowed && elapsed >= next_hop_ms && elapsed < duration_ms) {
-            uint8_t ch = hop_channels[hop_index % (int)(sizeof(hop_channels))];
-            esp_err_t ce = esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
-            if (ce == ESP_OK) {
-                ESP_LOGD(TAG_EN, "Discovery hop -> channel %u (elapsed=%d)", ch, elapsed);
-                busy_sets = 0;
-            } else {
-                if (++busy_sets == 1) {
-                    ESP_LOGW(TAG_EN, "Channel hop blocked (AP client or scan active) – staying on current channel.");
-                } else if (busy_sets == 3) {
-                    ESP_LOGW(TAG_EN, "Repeated channel set failures (3). Disabling hopping this scan.");
-                    hopping_allowed = false;
-                }
-            }
-            hop_index++;
-            next_hop_ms += hop_interval_ms;
-        }
-
-        if (!midProbeSent && duration_ms >= 3000 && elapsed >= duration_ms/2) {
-            espnow_manager_send_broadcast(probe, sizeof(probe)-1);
-            ESP_LOGI(TAG_EN, "Mid-scan discovery probe sent at %d ms", elapsed);
-            midProbeSent = 1;
-        }
+    if (mode == WIFI_MODE_APSTA || mode == WIFI_MODE_AP) {
+        esp_now_peer_info_t peer_ap = { .ifidx = WIFI_IF_AP, .channel = 0, .encrypt = false };
+        memcpy(peer_ap.peer_addr, (uint8_t[6]){0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}, 6);
+        if (!esp_now_is_peer_exist(peer_ap.peer_addr)) esp_now_add_peer(&peer_ap);
     }
-    s_collect_mode = false;
-    uint8_t ch=0; wifi_second_chan_t sc=WIFI_SECOND_CHAN_NONE;
-    esp_wifi_get_channel(&ch,&sc);
-    ESP_LOGI(TAG_EN, "Discovery finished on channel=%u found=%d", ch, s_ctrl_count);
-
-    cJSON *arr = cJSON_CreateArray();
-    if (!arr) return ESP_ERR_NO_MEM;
-    for (int i=0;i<s_ctrl_count;i++) {
-        cJSON *o = cJSON_CreateObject();
-        char mac_str[18];
-        snprintf(mac_str,sizeof(mac_str),"%02X:%02X:%02X:%02X:%02X:%02X",
-                 s_ctrls[i].mac[0],s_ctrls[i].mac[1],s_ctrls[i].mac[2],
-                 s_ctrls[i].mac[3],s_ctrls[i].mac[4],s_ctrls[i].mac[5]);
-        cJSON_AddStringToObject(o,"mac",mac_str);
-        cJSON_AddStringToObject(o,"name",s_ctrls[i].name[0]?s_ctrls[i].name:"Controller");
-        cJSON_AddItemToArray(arr,o);
-    }
-    char *json = cJSON_PrintUnformatted(arr);
-    cJSON_Delete(arr);
-    if (!json) return ESP_ERR_NO_MEM;
-    *out_json = json;
-
-    if (s_ctrl_count == 0) {
-        ESP_LOGW(TAG_EN, "WARNING: No controllers discovered!");
-    }
-
-    ESP_LOGI(TAG_EN, "collect_controllers done found=%d", s_ctrl_count);
     return ESP_OK;
+}
+
+esp_err_t espnow_manager_enable_power_saving(void) {
+    #if CONFIG_ESPNOW_ENABLE_POWER_SAVE
+    ESP_LOGI(TAG_EN, "Enabling ESP-NOW Power-Saving mode.");
+    ESP_ERROR_CHECK(esp_now_set_wake_window(CONFIG_ESPNOW_WAKE_WINDOW));
+    ESP_ERROR_CHECK(esp_wifi_connectionless_module_set_wake_interval(CONFIG_ESPNOW_WAKE_INTERVAL));
+    return ESP_OK;
+    #else
+    ESP_LOGW(TAG_EN, "Power saving not enabled in menuconfig. Skipping.");
+    return ESP_ERR_NOT_SUPPORTED;
+    #endif
+}
+
+// --- Main Processing Task ---
+
+static void espnow_manager_task(void *pvParameter) {
+    espnow_mgr_event_t evt;
+    ESP_LOGI(TAG_EN, "ESP-NOW manager task started.");
+
+    for (;;) {
+        if (xQueueReceive(s_espnow_queue, &evt, portMAX_DELAY) == pdTRUE) {
+            switch (evt.id) {
+                case ESPNOW_MGR_SEND_CB: {
+                    if (s_send_cb) {
+                        s_send_cb(evt.info.send_cb.mac_addr, evt.info.send_cb.status);
+                    }
+                    break;
+                }
+                case ESPNOW_MGR_RECV_CB: {
+                    if (s_collect_mode) {
+                        handle_possible_ctrl_beacon(evt.info.recv_cb.mac_addr, evt.info.recv_cb.data, evt.info.recv_cb.data_len);
+                    }
+                    if (s_recv_cb) {
+                        s_recv_cb(&evt.info.recv_cb);
+                    }
+                    // IMPORTANT: Free the data buffer allocated in the recv callback
+                    free(evt.info.recv_cb.data);
+                    break;
+                }
+                default:
+                    ESP_LOGW(TAG_EN, "Unknown event type: %d", evt.id);
+                    break;
+            }
+        }
+    }
+}
+
+/* Send data to a specific MAC address. */
+esp_err_t espnow_manager_send_to_mac(const uint8_t *mac, const void *data, size_t len) {
+    if (!s_inited || !mac || !data || len == 0) return ESP_ERR_INVALID_STATE;
+    if (len > ESP_NOW_MAX_DATA_LEN) {
+        ESP_LOGW(TAG_EN, "Truncating payload %u -> %d bytes", (unsigned)len, ESP_NOW_MAX_DATA_LEN);
+        len = ESP_NOW_MAX_DATA_LEN;
+    }
+
+    // Ensure peer exists before sending
+    if (!esp_now_is_peer_exist(mac)) {
+        esp_now_peer_info_t peer = {0};
+        memcpy(peer.peer_addr, mac, 6);
+        peer.ifidx = WIFI_IF_STA; // Default to STA, can be refined
+        peer.channel = 0; // Use current channel
+        peer.encrypt = false; // Using PMK, so this is false
+        esp_err_t add_err = esp_now_add_peer(&peer);
+        if (add_err != ESP_OK && add_err != ESP_ERR_ESPNOW_EXIST) {
+            ESP_LOGE(TAG_EN, "Failed to add peer %02X:%02X:%02X:%02X:%02X:%02X, error: %s",
+                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], esp_err_to_name(add_err));
+            return add_err;
+        }
+    }
+
+    return esp_now_send(mac, (const uint8_t *)data, len);
 }
 
 /* Replace old esp_now_register_recv_cb call site */
@@ -424,6 +527,7 @@ esp_err_t espnow_manager_send_broadcast(const void *data, size_t len) {
     }
     return err;
 }
+
 
 // OPTIONAL helper to force channel (call from REST endpoint for debugging)
 /* Force Wi-Fi channel for ESP-NOW (STA must be disconnected): */
@@ -472,34 +576,4 @@ bool espnow_manager_get_controller_mac(uint8_t mac[6])
     if (!s_have_controller_mac) return false;
     if (mac) memcpy(mac, s_controller_mac, sizeof(s_controller_mac));
     return true;
-}
-
-/* Existing helpers set/get controller MAC (already declared in header).
- * Add unicast send that prefers controller MAC, falls back to broadcast.
- */
-esp_err_t espnow_manager_send_to_controller(const void *data, size_t len) {
-    if (!s_inited || !data || len == 0) return ESP_ERR_INVALID_STATE;
-    if (len > 1000) {
-        ESP_LOGW(TAG_EN, "Truncating payload %u -> 1000 bytes", (unsigned)len);
-        len = 1000;
-    }
-    uint8_t mac[6];
-    if (espnow_manager_get_controller_mac(mac)) {
-        esp_now_peer_info_t peer = {0};
-        memcpy(peer.peer_addr, mac, 6);
-        peer.ifidx = WIFI_IF_STA;   // prefer STA
-        peer.channel = 0;
-        peer.encrypt = false;
-        bool add_needed = true;
-        // Cheap check: try to add (ignore EXIST)
-        if (esp_now_add_peer(&peer) == ESP_ERR_ESPNOW_EXIST) add_needed = false;
-        esp_err_t e = esp_now_send(mac, (const uint8_t*)data, len);
-        if (e == ESP_OK) {
-            ESP_LOGD(TAG_EN, "Unicast ESPNOW %uB to controller %02X:%02X:%02X:%02X:%02X:%02X",
-                     (unsigned)len, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-            return ESP_OK;
-        }
-        ESP_LOGW(TAG_EN, "Unicast send failed (%s); falling back to broadcast", esp_err_to_name(e));
-    }
-    return espnow_manager_send_broadcast(data, len);
 }

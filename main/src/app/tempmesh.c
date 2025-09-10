@@ -85,32 +85,22 @@ typedef struct {
 static void set_setup_stage(const char *stage);
 extern void captive_dns_task(void *pv);
 
-// --- NEW: prototypes for boot flow and REST server ---
 esp_err_t start_rest_server(const char *base_path);
 static bool wifi_boot_flow(void);
 static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len);
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 const char* get_esp_model(void);
-static void run_pre_provision_controller_scan(int duration_ms);  // <--- NEW
+static void run_pre_provision_controller_scan(int duration_ms);
 
-// REMOVE old MAX_READINGS_IN_BATCH + RTC arrays:
-// #define MAX_READINGS_IN_BATCH 50
-// RTC_DATA_ATTR static int readings_count = 0;
-// RTC_DATA_ATTR static sensor_reading_t sensor_readings_batch[MAX_READINGS_IN_BATCH]; // Array para armazenar o lote
 RTC_DATA_ATTR bool time_is_set = false;
 RTC_DATA_ATTR bool device_config_initialized = false;
 RTC_DATA_ATTR int device_readingsPerBatch = 2;
 RTC_DATA_ATTR int device_wakeUpInterval   = 10;
 
-
-// Forward declare old functions we keep temporarily
 bool send_batched_data(void);
 void perform_sensor_reading(void);
 void simulate_or_sleep(uint64_t seconds);
-
-// Remove outdated prototype:
-// void collect_and_send_task(void);
 
 static void go_to_sleep(uint64_t sleep_time_seconds) {
     // if debug mode is on, don't go to sleep
@@ -378,10 +368,11 @@ static void run_pre_provision_controller_scan(int duration_ms) {
     if (duration_ms < 1000) duration_ms = 1000;
     if (duration_ms > 15000) duration_ms = 15000;
     ESP_LOGI(TAG, "Pre-provision: scanning for controllers (%d ms).", duration_ms);
-    if (espnow_manager_init(false, NULL) != ESP_OK) {
+    if (espnow_manager_init() != ESP_OK) {
         ESP_LOGW(TAG, "ESPNOW init failed; skipping controller scan.");
         return;
     }
+    espnow_manager_config_role(false); // Configure as worker for scanning
     char *json = NULL;
     if (espnow_manager_collect_controllers(duration_ms, &json) == ESP_OK && json) {
         ESP_LOGI(TAG, "Controller discovery result: %s", json);

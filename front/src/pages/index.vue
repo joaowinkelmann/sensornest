@@ -87,7 +87,7 @@
           </div>
 
           <!-- Worker controller selection (moved earlier for clarity) -->
-          <div v-if="role==='WORKER'" class="q-mt-md">
+          <div v-if="role==='WORKER' && !setupDone" class="q-mt-md">
             <div class="text-h6">{{$t('selectController')}}</div>
             <q-input v-model="workerName" filled :label="$t('workerName')" class="q-mt-sm"/>
             <q-select
@@ -285,7 +285,7 @@
           </div>
 
           <!-- Final Status -->
-          <div v-if="role!=='WORKER' && setupDone">
+          <div v-if="setupDone">
              <q-icon name="cloud_done" color="positive" size="xl" class="q-mt-lg"/>
              <div class="text-h6">{{ $t('setupComplete') }}</div>
              <div class="text-subtitle2">{{ $t('deviceWillRestart') }}</div>
@@ -512,16 +512,19 @@ async function scanControllers() {
 }
 
 async function bindWorker() {
-  console.log("[bindWorker] starting", { workerName: workerName.value, selectedControllerMac: selectedControllerMac.value });
   if (!workerName.value || !selectedControllerMac.value) {
-    console.warn("[bindWorker] missing required fields");
     return;
   }
+  const controller = controllers.value.find(c => c.mac === selectedControllerMac.value);
+  if (!controller) {
+    showError(t("controllerNotFount"), "failedToBindWorker");
+    return;
+  }
+
   bindingWorker.value = true;
   connecting.value = true;
   try {
-    console.log("[bindWorker] POST /api/v1/worker/bind");
-    await api.bindWorker(workerName.value, selectedControllerMac.value);
+    await api.bindWorker(workerName.value, selectedControllerMac.value, controller.channel);
     $q.notify({
       type: "positive",
       message: t("workerBound"),
