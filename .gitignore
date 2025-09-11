@@ -8,3 +8,7 @@ build/
 
 # Components
 managed_components/
+
+# Generated config files
+sdkconfig
+sdkconfig.old
