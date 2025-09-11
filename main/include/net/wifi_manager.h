@@ -19,3 +19,6 @@ bool wifi_manager_is_connected(void);
 
 /* Get current STA SSID (returns true if connected). */
 bool wifi_manager_get_ssid(char *out, size_t len);
+
+esp_err_t wifi_manager_prefetch_scan(int max_age_ms);
+esp_err_t wifi_manager_get_cached_scan(char **out_json);

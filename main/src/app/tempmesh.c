@@ -32,6 +32,8 @@
 #include "roles/worker_role.h"
 #include "roles/controller_role.h"
 #include "net/wifi_manager.h"
+#include "net/espnow_manager.h"
+#include "indicator/led_indicator.h"
 
 static bool g_debug_mode_enabled = false;
 
@@ -39,26 +41,6 @@ static bool g_debug_mode_enabled = false;
 static bool s_sta_netif_created = false;
 static bool s_wifi_inited = false;
 static bool s_wifi_started = false;
-
-static int custom_log_vprintf(const char *format, va_list arg) {
-    // Default color
-    const char* color = LOG_RESET_COLOR;
-
-    // Check for specific tags and assign colors
-    if (strstr(format, "(REST_SERVER)")) {
-        color = LOG_COLOR(LOG_COLOR_CYAN);
-    } else if (strstr(format, "(REST_client)")) {
-        color = LOG_COLOR(LOG_COLOR_YELLOW);
-    } else if (strstr(format, "(MAIN_APP)")) {
-        color = LOG_COLOR(LOG_COLOR_BLUE);
-    }
-
-    // Print with color, then the original formatted log message
-    printf("%s", color);
-    int ret = vprintf(format, arg);
-    printf(LOG_RESET_COLOR); // Reset to default color
-    return ret;
-}
 
 // Constants
 #define us_PER_SECOND 1000000ULL  /* Conversion factor for micro seconds to seconds */
@@ -74,13 +56,23 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_FAIL_BIT      BIT1
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
-#define BOOT_BTN_GPIO           GPIO_NUM_0     // BOOT button (IO0)
+// BOOT button: per-target defaults.
+#ifndef BOOT_BTN_GPIO
+#if CONFIG_IDF_TARGET_ESP32S3
+#define BOOT_BTN_GPIO           GPIO_NUM_0     // typical S3 devkit BOOT
+#elif CONFIG_IDF_TARGET_ESP32C3
+#define BOOT_BTN_GPIO           GPIO_NUM_9     // common C3 devkit BOOT (change if yours differs)
+#else
+#define BOOT_BTN_GPIO           GPIO_NUM_0     // fallback
+#endif
+#endif
+
 #define BOOT_BTN_HOLD_RESET_MS  300           // segurar BOOT por 0.3 segundo para reset de fábrica
 static void factory_reset_button_task(void *pvParameters);
 static void do_factory_reset(void);
 
 static const char *TAG = "MAIN_APP";
-extern const char *winkels_root_ca_pem;
+extern const char *cloud_ca_pem;
 
 // --- NEW: Struct to hold response data for the event handler ---
 typedef struct {
@@ -93,31 +85,22 @@ typedef struct {
 static void set_setup_stage(const char *stage);
 extern void captive_dns_task(void *pv);
 
-// --- NEW: prototypes for boot flow and REST server ---
 esp_err_t start_rest_server(const char *base_path);
 static bool wifi_boot_flow(void);
 static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len);
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 const char* get_esp_model(void);
+static void run_pre_provision_controller_scan(int duration_ms);
 
-// REMOVE old MAX_READINGS_IN_BATCH + RTC arrays:
-// #define MAX_READINGS_IN_BATCH 50
-// RTC_DATA_ATTR static int readings_count = 0;
-// RTC_DATA_ATTR static sensor_reading_t sensor_readings_batch[MAX_READINGS_IN_BATCH]; // Array para armazenar o lote
 RTC_DATA_ATTR bool time_is_set = false;
 RTC_DATA_ATTR bool device_config_initialized = false;
 RTC_DATA_ATTR int device_readingsPerBatch = 2;
 RTC_DATA_ATTR int device_wakeUpInterval   = 10;
 
-
-// Forward declare old functions we keep temporarily
 bool send_batched_data(void);
 void perform_sensor_reading(void);
 void simulate_or_sleep(uint64_t seconds);
-
-// Remove outdated prototype:
-// void collect_and_send_task(void);
 
 static void go_to_sleep(uint64_t sleep_time_seconds) {
     // if debug mode is on, don't go to sleep
@@ -270,10 +253,11 @@ bool send_batched_data() {
 
 void app_main(void)
 {
-    esp_log_set_vprintf(custom_log_vprintf);
+    // esp_log_set_vprintf(custom_log_vprintf);
 
     // Log Levels
     esp_log_level_set("wifi", ESP_LOG_WARN);
+    esp_log_level_set("LED_IND", ESP_LOG_DEBUG);
 
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
@@ -282,7 +266,6 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-
 
     // Init Batch Store
     ESP_ERROR_CHECK(batch_store_init(false));
@@ -323,7 +306,7 @@ void app_main(void)
         }
         return;
     } else {
-        ESP_LOGW(TAG, "Modo de provisionamento iniciado. Conecte-se ao AP e acesse http://192.168.4.1/");
+        ESP_LOGW(TAG, "Modo de provisionamento iniciado.");
         // O dispositivo permanecerá acordado no modo de provisionamento.
         // --- FIX: Keep main task alive in provisioning mode ---
         while(1) {
@@ -380,6 +363,32 @@ static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pas
     return true;
 }
 
+/* NEW: pre‑provision controller discovery helper (always runs in provisioning mode) */
+static void run_pre_provision_controller_scan(int duration_ms) {
+    if (duration_ms < 1000) duration_ms = 1000;
+    if (duration_ms > 15000) duration_ms = 15000;
+    ESP_LOGI(TAG, "Pre-provision: scanning for controllers (%d ms).", duration_ms);
+    if (espnow_manager_init() != ESP_OK) {
+        ESP_LOGW(TAG, "ESPNOW init failed; skipping controller scan.");
+        return;
+    }
+    espnow_manager_config_role(false); // Configure as worker for scanning
+    char *json = NULL;
+    if (espnow_manager_collect_controllers(duration_ms, &json) == ESP_OK && json) {
+        ESP_LOGI(TAG, "Controller discovery result: %s", json);
+        nvs_handle_t nvs;
+        if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
+            nvs_set_str(nvs, "pre_ctrls", json);
+            nvs_commit(nvs);
+            nvs_close(nvs);
+        }
+        free(json);
+    } else {
+        ESP_LOGI(TAG, "No controllers discovered in pre-provision scan.");
+        free(json);
+    }
+}
+
 // --- REFACTORED: Boot flow orchestrator ---
 static bool wifi_boot_flow(void) {
     char stage[32] = {0};
@@ -390,29 +399,42 @@ static bool wifi_boot_flow(void) {
         nvs_close(nvs);
     }
 
-    // If setup is fully complete, just return true to proceed to main task.
-    // We will NOT connect to Wi-Fi here anymore.
+    char role[16] = {0};
+    if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
+        size_t rl = sizeof(role);
+        nvs_get_str(nvs, "role", role, &rl);
+        nvs_close(nvs);
+    }
+
     if (strcmp(stage, "complete") == 0) {
         ESP_LOGI(TAG, "Setup complete (stage='%s'). Proceeding to main task.", stage);
+        led_indicator_provisioning_stop();
         return true;
     }
 
-    // If setup is not complete, start provisioning server
+    /* ALWAYS attempt a short controller discovery while in provisioning/factory_reset/new state */
+    run_pre_provision_controller_scan(10000);
+
     ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");
+    led_indicator_provisioning_start();
     start_softap_and_rest_server();
-    return false; // Stay in provisioning mode
+    return false;
 }
 
 // --- NEW: Start SoftAP with "ESP-{shortID}" and launch REST server ---
 static void start_softap_and_rest_server(void) {
-    ESP_LOGW(TAG, "Starting SoftAP for provisioning...");
-
     // Create both AP and STA default interfaces so we can scan/connect while AP is up
     // It's safe to call these multiple times.
     esp_netif_create_default_wifi_ap();
     if (!s_sta_netif_created) {
-        esp_netif_create_default_wifi_sta();
-        s_sta_netif_created = true;
+        // Avoid creating STA netif if another module (e.g. wifi_manager) already did.
+        if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) {
+            ESP_LOGI(TAG, "STA netif already exists (detected). Reusing.");
+            s_sta_netif_created = true;
+        } else {
+            esp_netif_create_default_wifi_sta();
+            s_sta_netif_created = true;
+        }
     }
     if (!s_wifi_inited) {
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -429,8 +451,8 @@ static void start_softap_and_rest_server(void) {
     wifi_config_t wifi_config = {
         .ap = {
             .ssid_len = strlen(ssid),
-            .channel = 1,
-            .password = "", // Open network
+            .channel = 0, // auto
+            .password = "",
             .max_connection = 4,
             .authmode = WIFI_AUTH_OPEN,
         },
@@ -441,7 +463,7 @@ static void start_softap_and_rest_server(void) {
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGW(TAG, "SoftAP SSID: %s, open auth. DHCP at 192.168.4.1", ssid);
+    ESP_LOGI(TAG, "SoftAP SSID: %s @ ch. %d", ssid, wifi_config.ap.channel);
 
     // Start the REST server
     ESP_ERROR_CHECK(mount_www_fs());
@@ -467,7 +489,7 @@ static esp_err_t mount_www_fs(void) {
     size_t total = 0, used = 0;
     ret = esp_littlefs_info(conf.partition_label, &total, &used);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "LittleFS mounted: total=%u, used=%u", (unsigned)total, (unsigned)used);
+        ESP_LOGI(TAG, "LittleFS mounted: total=%u KB, used=%u KB", (unsigned)(total/1024), (unsigned)(used/1024));
     }
     return ESP_OK;
 }
@@ -482,11 +504,8 @@ static void set_setup_stage(const char *stage) {
     }
 }
 
-// +++ ADD: factory reset implementation
 static void do_factory_reset(void) {
     ESP_LOGW(TAG, "Factory reset requested: erasing NVS and restarting...");
-    // Option A: erase all NVS (clears Wi-Fi, device setup, etc.)
-    // Note: PHY will recalibrate on next boot.
     ESP_ERROR_CHECK(nvs_flash_erase());
     ESP_ERROR_CHECK(nvs_flash_init());
     set_setup_stage("factory_reset");

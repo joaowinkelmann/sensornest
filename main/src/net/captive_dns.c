@@ -62,8 +62,7 @@ static uint32_t get_ap_ip_address(void) {
         ESP_LOGE(TAG, "Failed to get AP IP info: %s", esp_err_to_name(err));
         return inet_addr("192.168.4.1"); // fallback
     }
-    
-    ESP_LOGI(TAG, "AP IP address: " IPSTR, IP2STR(&ip_info.ip));
+
     return ip_info.ip.addr;
 }
 
@@ -200,9 +199,7 @@ static void dns_server_task(void *pvParameters) {
     uint8_t packet_buffer[DNS_MAX_PACKET_SIZE];
     uint8_t response_buffer[DNS_MAX_PACKET_SIZE];
     char domain_name[256];
-    
-    ESP_LOGI(TAG, "Starting captive DNS server on port %d", DNS_PORT);
-    
+
     // Get the AP IP address to redirect to
     uint32_t ap_ip = get_ap_ip_address();
     
@@ -330,7 +327,6 @@ void captive_dns_task(void *pv) {
     // Keep original behavior (blocking) but mark handle:
     dns_task_handle = xTaskGetCurrentTaskHandle();
     vTaskDelay(pdMS_TO_TICKS(2000));
-    ESP_LOGI(TAG, "Initializing captive DNS server...");
     dns_server_task(pv);
 }
 

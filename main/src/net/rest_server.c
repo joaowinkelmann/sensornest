@@ -21,6 +21,8 @@
 #include "net/rest_client.h"
 #include "app/app_state.h"
 #include "esp_http_client.h"
+#include "net/espnow_manager.h"
+#include "net/wifi_manager.h"
 
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
@@ -66,11 +68,15 @@ static void rs_register_captive_handlers(httpd_handle_t server, rest_server_cont
 static void wifi_test_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req);
 static bool rs_has_station_ip(void);
+static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req);
+static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req);
 
 #define CHECK_FILE_EXTENSION(filename, ext) (strcasecmp(&filename[strlen(filename) - strlen(ext)], ext) == 0)
 
 static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap) {
     int total = req->content_len;
+    ESP_LOGI(TAG, "rs_read_body called: uri=%s content_len=%d cap=%zu",
+             req->uri ? req->uri : "(null)", total, cap);
     if (total <= 0 || total >= (int)cap) {
         ESP_LOGE(TAG, "Invalid body length: %d (max %zu)", total, cap - 1);
         return false;
@@ -85,6 +91,13 @@ static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap) {
         off += r;
     }
     buf[total] = 0;
+
+    // Log a short safe snippet to help debug client payloads (avoid huge logs)
+    int snip = total < 128 ? total : 128;
+    char snippet[129]; memcpy(snippet, buf, snip); snippet[snip] = 0;
+    ESP_LOGI(TAG, "rs_read_body: read %d bytes, snippet='%s'%s",
+             total, snippet, (total > snip ? "..." : ""));
+
     return true;
 }
 
@@ -320,7 +333,12 @@ static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
 
     ESP_LOGI(TAG, "Device role set to: %s", role_buf);
 
-    nvs_set_setup_stage("role_selected");
+    if (strcmp(role, "WORKER")==0) {
+        nvs_set_setup_stage("worker_role_set");  // use helper (was invalid handle)
+        ESP_LOGI(TAG, "Worker role selected; skipping Wi-Fi/cloud provisioning path.");
+    } else {
+        nvs_set_setup_stage("role_set");
+    }
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"ok\",\"role_saved\":true}");
@@ -388,6 +406,19 @@ static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
             cJSON_AddStringToObject(resp_root, "status", "ok");
             cJSON *device_obj = cJSON_Parse(device_json);
             if (device_obj) {
+                // Persist device name from cloud to NVS so controller beacon can use it
+                cJSON *j_name = cJSON_GetObjectItem(device_obj, "name");
+                if (j_name && cJSON_IsString(j_name) && j_name->valuestring[0]) {
+                    nvs_handle_t nvs;
+                    if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
+                        nvs_set_str(nvs, "name", j_name->valuestring);
+                        nvs_commit(nvs);
+                        nvs_close(nvs);
+                        // If ESPNOW beacon already running, update payload immediately
+                        espnow_manager_set_controller_name(j_name->valuestring);
+                        ESP_LOGI(TAG, "Persisted device name from cloud into NVS: %s", j_name->valuestring);
+                    }
+                }
                 cJSON_AddItemToObject(resp_root, "device", device_obj);
             }
             char *resp_str = cJSON_PrintUnformatted(resp_root);
@@ -622,6 +653,18 @@ static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req)
 
 /* --- NEW: Wi-Fi scan (GET /api/v1/wifi/scan) --- */
 static esp_err_t rs_wifi_scan_get_handler(httpd_req_t *req) {
+    // First try cached prefetch result
+    char *cached = NULL;
+    if (wifi_manager_get_cached_scan(&cached) == ESP_OK && cached) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, cached);
+        free(cached);
+        ESP_LOGI(TAG, "Served cached Wi-Fi scan results");
+        return ESP_OK;
+    }
+    if (cached) free(cached);
+
+    // Fallback to performing immediate scan (existing behavior)
     // Ensure we're in APSTA so scan can run without dropping AP
     wifi_mode_t mode;
     esp_wifi_get_mode(&mode);
@@ -946,6 +989,12 @@ static esp_err_t rs_cloud_device_update_post_handler(httpd_req_t *req) {
             nvs_handle_t nvs;
             if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
                 nvs_set_str(nvs, "role", role);
+                // Persist name if provided
+                if (name && name[0]) {
+                    nvs_set_str(nvs, "name", name);
+                    // update beacon name immediately
+                    espnow_manager_set_controller_name(name);
+                }
                 nvs_commit(nvs);
                 nvs_close(nvs);
             }
@@ -1008,6 +1057,8 @@ esp_err_t start_rest_server(const char *base_path)
 
     ESP_LOGI(TAG, "Starting HTTP Server");
     ESP_GOTO_ON_ERROR(httpd_start(&server, &config), err, TAG, "Failed to start http server");
+
+    wifi_manager_prefetch_scan(20000);
 
     /* --- REFACTORED: Register a single, global CORS OPTIONS handler --- */
     /* This should be registered first to catch all OPTIONS requests */
@@ -1141,8 +1192,25 @@ esp_err_t start_rest_server(const char *base_path)
     /* Register captive portal probe handlers (specific paths) */
     rs_register_captive_handlers(server, rest_context);
 
+    // --- NEW: Additional handlers for worker/controller provisioning ---
+    httpd_uri_t controllers_scan_get = {
+        .uri      = "/api/v1/controllers/scan",
+        .method   = HTTP_GET,
+        .handler  = rs_controllers_scan_get_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &controllers_scan_get);
+
+    httpd_uri_t worker_bind_post = {
+        .uri      = "/api/v1/worker/bind",
+        .method   = HTTP_POST,
+        .handler  = rs_worker_bind_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &worker_bind_post);
+
 #if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
-    /* Register file server for static assets LAST, so it acts as a fallback for non-API/probe routes */
+    /* Register file server LAST as a fallback */
     httpd_uri_t common_get_uri = {
         .uri = "/*",
         .method = HTTP_GET,
@@ -1151,7 +1219,6 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &common_get_uri);
 #else
-    /* If no web files, register a catch-all captive redirect as the last resort */
     httpd_uri_t wildcard = {
         .uri = "/*",
         .method = HTTP_GET,
@@ -1236,6 +1303,152 @@ static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req) {
     httpd_resp_sendstr(req, "{\"status\":\"ok\",\"restarting\":true}");
     // Allow response flush
     vTaskDelay(pdMS_TO_TICKS(150));
+    esp_restart();
+    return ESP_OK;
+}
+
+/* GET /api/v1/controllers/scan */
+static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
+    ESP_LOGI(TAG, "Controller scan request received.");
+
+    // Read query string (optional params: fast, ms, force)
+    char query[128] = {0};
+    bool fast = false;
+    bool force = false;
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char fast_str[8];
+        if (httpd_query_key_value(query, "fast", fast_str, sizeof(fast_str)) == ESP_OK) {
+            fast = atoi(fast_str) == 1;
+        }
+        char force_str[8];
+        if (httpd_query_key_value(query, "force", force_str, sizeof(force_str)) == ESP_OK) {
+            force = atoi(force_str) == 1;
+        }
+    }
+
+    // If a fresh scan wasn't explicitly requested, prefer the cached pre-provision results
+    // saved by [`wifi_boot_flow`](main/src/app/tempmesh.c) under NVS key "pre_ctrls".
+    if (!force && !fast) {
+        nvs_handle_t nvs;
+        if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
+            size_t needed = 0;
+            esp_err_t e = nvs_get_str(nvs, "pre_ctrls", NULL, &needed);
+            if (e == ESP_OK && needed > 1 && needed < 4096) {
+                char *buf = malloc(needed);
+                if (buf && nvs_get_str(nvs, "pre_ctrls", buf, &needed) == ESP_OK) {
+                    httpd_resp_set_type(req, "application/json");
+                    httpd_resp_sendstr(req, buf);
+                    free(buf);
+                    nvs_close(nvs);
+                    ESP_LOGI(TAG, "Served cached pre-provision controller list (len=%u).", (unsigned)needed);
+                    return ESP_OK;
+                }
+                free(buf);
+            }
+            nvs_close(nvs);
+        }
+        ESP_LOGI(TAG, "No cached controller list or client requested fresh scan; proceeding with active scan.");
+    }
+
+    // Optional query param ?ms=5000 (reuse existing query buffer)
+    int duration_ms = 5000;
+    if (query[0] == 0) httpd_req_get_url_query_str(req, query, sizeof(query));
+    if (query[0]) {
+        char ms_str[16];
+        if (httpd_query_key_value(query, "ms", ms_str, sizeof(ms_str)) == ESP_OK) {
+            int v = atoi(ms_str);
+            if (v >= 1000 && v <= 15000) duration_ms = v;
+        }
+    }
+
+    if (!espnow_manager_is_initialized()) {
+        ESP_LOGW(TAG, "ESPNOW not initialized yet on worker provisioning; initializing now.");
+        esp_err_t ie = espnow_manager_init();
+        if (ie != ESP_OK) {
+            ESP_LOGE(TAG, "ESPNOW init failed in scan handler: %s", esp_err_to_name(ie));
+        } else {
+            ESP_LOGI(TAG, "ESPNOW init success in scan handler.");
+        }
+    } else {
+        ESP_LOGD(TAG, "ESPNOW already initialized, proceeding with scan.");
+    }
+
+    char *json = NULL;
+    esp_err_t err = espnow_manager_collect_controllers(duration_ms, &json);
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK && json) {
+        ESP_LOGI(TAG, "Controller scan success (duration=%d) payload_len=%d", duration_ms, (int)strlen(json));
+        httpd_resp_sendstr(req, json);
+        free(json);
+        return ESP_OK;
+    }
+    ESP_LOGW(TAG, "Controller scan failed (%s) (inited=%d) duration=%d",
+             esp_err_to_name(err), espnow_manager_is_initialized(), duration_ms);
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_sendstr(req, "{\"error\":\"scan_failed\"}");
+    return ESP_OK;
+}
+
+/* POST /api/v1/worker/bind  body: { "name":"Worker1","controllerMac":"AA:BB:.."} */
+static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req) {
+    ESP_LOGI(TAG, "rs_worker_bind_post_handler invoked: uri=%s method=%d content_len=%d",
+             req->uri ? req->uri : "(null)", (int)req->method, req->content_len);
+
+    char host_hdr[128] = {0}, ct_hdr[64] = {0}, ua_hdr[128] = {0};
+    httpd_req_get_hdr_value_str(req, "Host", host_hdr, sizeof(host_hdr));
+    httpd_req_get_hdr_value_str(req, "Content-Type", ct_hdr, sizeof(ct_hdr));
+    httpd_req_get_hdr_value_str(req, "User-Agent", ua_hdr, sizeof(ua_hdr));
+    ESP_LOGI(TAG, "Incoming headers: Host=%s Content-Type=%s UA=%s",
+             host_hdr[0] ? host_hdr : "(none)", ct_hdr[0] ? ct_hdr : "(none)", ua_hdr[0] ? ua_hdr : "(none)");
+
+    char *buf = ((rest_server_context_t*)req->user_ctx)->scratch;
+    if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
+        ESP_LOGW(TAG, "rs_worker_bind_post_handler: failed to read body");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body"); return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "rs_worker_bind_post_handler: body read successfully (%d bytes)", (int)strlen(buf));
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        ESP_LOGW(TAG, "rs_worker_bind_post_handler: bad json body='%s'", buf);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad json"); return ESP_FAIL;
+    }
+    cJSON *j_name = cJSON_GetObjectItem(root,"name");
+    cJSON *j_mac  = cJSON_GetObjectItem(root,"controllerMac");
+    cJSON *j_ch = cJSON_GetObjectItem(root, "channel");
+
+    if (!cJSON_IsString(j_name) || !j_name->valuestring[0] ||
+        !cJSON_IsString(j_mac) || !j_mac->valuestring[0] || !cJSON_IsNumber(j_ch)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "mac and channel required");
+        return ESP_FAIL;
+    }
+
+    uint8_t ch = j_ch->valueint;
+    if (ch == 0 || ch > 13) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid channel");
+        return ESP_FAIL;
+    }
+
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open("device", NVS_READWRITE, &nvs);
+    if (err == ESP_OK) {
+        err = nvs_set_str(nvs, "controller_mac", j_mac->valuestring);
+        if (err == ESP_OK) err = nvs_set_u8(nvs, "controller_ch", ch);
+        if (err == ESP_OK) err = nvs_set_str(nvs, "name", j_name->valuestring);
+        if (err == ESP_OK) err = nvs_set_str(nvs, "setup", "complete"); // Mark setup as complete
+        if (err == ESP_OK) err = nvs_commit(nvs);
+        nvs_close(nvs);
+    } else {
+        ESP_LOGW(TAG, "Failed to open NVS for writing: %s", esp_err_to_name(err));
+    }
+
+    cJSON_Delete(root);
+    httpd_resp_set_type(req,"application/json");
+    httpd_resp_sendstr(req,"{\"status\":\"ok\",\"restarting\":true}");
+    vTaskDelay(pdMS_TO_TICKS(150));
+    ESP_LOGI(TAG, "rs_worker_bind_post_handler: restarting now");
     esp_restart();
     return ESP_OK;
 }

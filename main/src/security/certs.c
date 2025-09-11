@@ -2,7 +2,7 @@
 
 /* Root CA certificate (PEM) */
 
-const char *winkels_root_ca_pem = \
+const char *cloud_ca_pem = \
 "-----BEGIN CERTIFICATE-----\n" \
 "MIIFBTCCAu2gAwIBAgIQS6hSk/eaL6JzBkuoBI110DANBgkqhkiG9w0BAQsFADBP\n" \
 "MQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJuZXQgU2VjdXJpdHkgUmVzZWFy\n" \

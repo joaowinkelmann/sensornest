@@ -7,6 +7,9 @@
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "freertos/semphr.h"
+#include "cJSON.h"
+#include "esp_timer.h"
 
 static const char *TAG = "WIFI_MGR";
 
@@ -27,7 +30,6 @@ static void sta_event_handler(void *arg, esp_event_base_t base, int32_t id, void
 esp_err_t wifi_manager_init(void) {
     if (s_initialized) return ESP_OK;
 
-    // These may already have been done in app_main; treat "already" as success.
     esp_err_t err;
 
     err = esp_netif_init();
@@ -42,15 +44,20 @@ esp_err_t wifi_manager_init(void) {
         return err;
     }
 
+    /* NEW: detect pre-created STA netif (e.g. provisioning already did it) */
     if (!s_sta_created) {
-        esp_netif_create_default_wifi_sta();
-        s_sta_created = true;
+        if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) {
+            ESP_LOGI(TAG, "STA netif already exists (provisioning path); reusing.");
+            s_sta_created = true;
+        } else {
+            esp_netif_create_default_wifi_sta();
+            s_sta_created = true;
+        }
     }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     err = esp_wifi_init(&cfg);
     if (err == ESP_ERR_WIFI_INIT_STATE) {
-        // Already inited
         err = ESP_OK;
     }
     if (err != ESP_OK) {
@@ -58,7 +65,6 @@ esp_err_t wifi_manager_init(void) {
         return err;
     }
 
-    // Set mode (ignore if already set)
     esp_wifi_set_mode(WIFI_MODE_STA);
 
     err = esp_wifi_start();
@@ -155,4 +161,127 @@ void wifi_manager_disconnect(void) {
     if (!s_initialized) return;
     esp_wifi_disconnect();
     ESP_LOGI(TAG, "Disconnected.");
+}
+
+// --- NEW: cached scan storage ---
+static char *s_cached_scan_json = NULL;
+static uint32_t s_cache_ts_ms = 0;
+static SemaphoreHandle_t s_scan_mux = NULL;
+
+static void wifi_build_and_store_scan(void)
+{
+    // perform blocking scan (caller is the background task)
+    wifi_scan_config_t scan_cfg = {
+        .ssid = NULL,
+        .bssid = NULL,
+        .channel = 0,
+        .show_hidden = false,
+        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+        .scan_time = { .active = { .min = 100, .max = 300 } },
+    };
+    if (esp_wifi_scan_start(&scan_cfg, true) != ESP_OK) {
+        ESP_LOGW(TAG, "prefetch scan: esp_wifi_scan_start failed");
+        return;
+    }
+
+    uint16_t ap_num = 0;
+    esp_wifi_scan_get_ap_num(&ap_num);
+    if (ap_num == 0) {
+        ESP_LOGI(TAG, "prefetch scan: no APs found");
+    }
+
+    wifi_ap_record_t *ap_records = calloc(ap_num, sizeof(wifi_ap_record_t));
+    if (!ap_records) return;
+    esp_wifi_scan_get_ap_records(&ap_num, ap_records);
+
+    cJSON *arr = cJSON_CreateArray();
+    if (arr) {
+        for (int i = 0; i < ap_num; ++i) {
+            cJSON *ap = cJSON_CreateObject();
+            if (!ap) continue;
+            cJSON_AddStringToObject(ap, "ssid", (const char *)ap_records[i].ssid);
+            cJSON_AddNumberToObject(ap, "rssi", ap_records[i].rssi);
+            cJSON_AddNumberToObject(ap, "channel", ap_records[i].primary);
+            cJSON_AddNumberToObject(ap, "auth", ap_records[i].authmode);
+            cJSON_AddItemToArray(arr, ap);
+        }
+    }
+
+    char *json = arr ? cJSON_PrintUnformatted(arr) : NULL;
+    if (arr) cJSON_Delete(arr);
+    free(ap_records);
+
+    // store under mutex
+    if (!s_scan_mux) s_scan_mux = xSemaphoreCreateMutex();
+    if (s_scan_mux) {
+        if (xSemaphoreTake(s_scan_mux, pdMS_TO_TICKS(2000)) == pdTRUE) {
+            if (s_cached_scan_json) free(s_cached_scan_json);
+            s_cached_scan_json = json; // may be NULL
+            s_cache_ts_ms = esp_timer_get_time() / 1000; // ms
+            xSemaphoreGive(s_scan_mux);
+        } else {
+            if (json) free(json);
+            ESP_LOGW(TAG, "prefetch scan: failed to take scan mutex");
+        }
+    } else {
+        // no mutex -> leak not ideal, but keep safe fallback
+        if (s_cached_scan_json) free(s_cached_scan_json);
+        s_cached_scan_json = json;
+        s_cache_ts_ms = esp_timer_get_time() / 1000;
+    }
+
+    ESP_LOGI(TAG, "prefetch scan done, APs=%d", ap_num);
+}
+
+static void wifi_prefetch_task(void *pv)
+{
+    (void)pv;
+    wifi_build_and_store_scan();
+    vTaskDelete(NULL);
+}
+
+/* Start an asynchronous scan that will update the cached JSON.
+ * If max_age_ms > 0 and the cache is fresh, this is a no-op.
+ */
+esp_err_t wifi_manager_prefetch_scan(int max_age_ms)
+{
+    uint32_t now = esp_timer_get_time() / 1000;
+    if (!s_scan_mux) s_scan_mux = xSemaphoreCreateMutex();
+    if (s_scan_mux && xSemaphoreTake(s_scan_mux, pdMS_TO_TICKS(2000)) == pdTRUE) {
+        uint32_t age = (s_cache_ts_ms == 0) ? UINT32_MAX : (now - s_cache_ts_ms);
+        xSemaphoreGive(s_scan_mux);
+        if (max_age_ms > 0 && age < (uint32_t)max_age_ms) {
+            // cache fresh enough
+            ESP_LOGD(TAG, "prefetch: cache fresh (age=%u ms) skip", age);
+            return ESP_OK;
+        }
+    }
+
+    // spawn background task to do the blocking scan and build JSON
+    if (xTaskCreate(wifi_prefetch_task, "wifi_prefetch", 4096, NULL, 3, NULL) != pdPASS) {
+        ESP_LOGW(TAG, "prefetch: failed to create task");
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
+}
+
+/* Return a malloc'd JSON string with cached scan results. Caller must free().
+ * Returns ESP_OK on success, ESP_ERR_NOT_FOUND if no cache present.
+ */
+esp_err_t wifi_manager_get_cached_scan(char **out_json)
+{
+    if (!out_json) return ESP_ERR_INVALID_ARG;
+    *out_json = NULL;
+    if (!s_scan_mux) s_scan_mux = xSemaphoreCreateMutex();
+    if (s_scan_mux && xSemaphoreTake(s_scan_mux, pdMS_TO_TICKS(2000)) == pdTRUE) {
+        if (s_cached_scan_json) {
+            *out_json = strdup(s_cached_scan_json);
+            xSemaphoreGive(s_scan_mux);
+            return (*out_json) ? ESP_OK : ESP_ERR_NO_MEM;
+        }
+        xSemaphoreGive(s_scan_mux);
+    } else {
+        // fallthrough
+    }
+    return ESP_ERR_NOT_FOUND;
 }

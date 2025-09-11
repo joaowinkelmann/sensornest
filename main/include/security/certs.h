@@ -1,3 +1,3 @@
 #pragma once
 /* Global Root CA used by HTTPS clients */
-extern const char *winkels_root_ca_pem;
+extern const char *cloud_ca_pem;
