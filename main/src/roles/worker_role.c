@@ -146,6 +146,7 @@ esp_err_t worker_role_start(void) {
     ESP_LOGI(TAG_WR, "Worker role starting (debug=%d).", s_debug);
 
     espnow_manager_init();
+    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR); // Enable long-range mode for connecting with the Controller's SoftAP
     espnow_manager_register_callbacks(worker_send_cb, worker_recv_cb);
     espnow_manager_config_role(false);
     espnow_manager_enable_power_saving(); // Enable power saving for worker

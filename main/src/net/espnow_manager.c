@@ -425,6 +425,7 @@ esp_err_t espnow_manager_config_role(bool is_controller) {
         ESP_LOGI(TAG_EN, "Enabling APSTA (AP SSID=%s ch=%d)", apcfg.ap.ssid, apcfg.ap.channel);
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &apcfg));
+        ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_LR)); // Controller's SoftAP uses long-range mode
     }
 
     // Add broadcast peer(s)

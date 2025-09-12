@@ -26,10 +26,10 @@ bool rc_has_token(void);
 static const char *RC_TAG = "REST_client";
 extern const char *cloud_ca_pem;
 
-#define CLOUD_BASE_URL          "https://winkels.com.br/tempmesh/api"
-#define CLOUD_LOGIN_URL           CLOUD_BASE_URL "/auth/login/"
+#define CLOUD_BASE_URL            "https://winkels.com.br/tempmesh/api"
+#define CLOUD_LOGIN_URL           CLOUD_BASE_URL "/auth/login"
 #define CLOUD_DEVICE_MAC_URL      CLOUD_BASE_URL "/devices/mac/"   /* append AA:BB:CC:DD:EE:FF */
-#define CLOUD_READINGS_URL        CLOUD_BASE_URL "/readings/add/"  /* POST */
+#define CLOUD_READINGS_URL        CLOUD_BASE_URL "/readings/add"  /* POST */
 #define CLOUD_MESHES_URL          CLOUD_BASE_URL "/meshes"         /* GET */
 #define CLOUD_DEVICE_REGISTER_URL CLOUD_BASE_URL "/devices"        /* POST */
 #define CLOUD_DEVICE_UPDATE_URL   CLOUD_BASE_URL "/devices/"       /* PATCH {id} */
