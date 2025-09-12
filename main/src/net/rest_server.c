@@ -46,6 +46,7 @@ static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap);
 static esp_err_t rs_set_content_type_from_file(httpd_req_t *req, const char *filepath);
 static esp_err_t rs_rest_common_get_handler(httpd_req_t *req);
 static esp_err_t rs_system_info_get_handler(httpd_req_t *req);
+static esp_err_t rs_device_role_clear_post_handler(httpd_req_t *req);
 static void nvs_set_setup_stage(const char *stage);
 static esp_err_t rs_device_role_post_handler(httpd_req_t *req);
 static esp_err_t rs_user_creds_post_handler(httpd_req_t *req);
@@ -262,6 +263,31 @@ static esp_err_t test_and_save_wifi_credentials(const char *ssid, const char *pa
     } else {
         return ESP_ERR_INVALID_STATE;
     }
+}
+
+/* --- NEW: POST /api/v1/device/role/clear --- */
+static esp_err_t rs_device_role_clear_post_handler(httpd_req_t *req) {
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open("device", NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs open failed");
+        return ESP_FAIL;
+    }
+    // Erase role and setup stage to go back to the beginning
+    nvs_erase_key(nvs, "role");
+    nvs_erase_key(nvs, "setup");
+    err = nvs_commit(nvs);
+    nvs_close(nvs);
+
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs write failed");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Device role and setup stage cleared.");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\",\"role_cleared\":true}");
+    return ESP_OK;
 }
 
 /* --- NEW: Helper to set setup stage in NVS --- */
@@ -1079,6 +1105,14 @@ esp_err_t start_rest_server(const char *base_path)
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &system_info_get_uri);
+
+    httpd_uri_t device_role_clear_post_uri = {
+        .uri = "/api/v1/device/role/clear",
+        .method = HTTP_POST,
+        .handler = rs_device_role_clear_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &device_role_clear_post_uri);
 
     httpd_uri_t device_role_post_uri = {
         .uri = "/api/v1/device/role",

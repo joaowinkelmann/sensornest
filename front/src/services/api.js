@@ -128,6 +128,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
     }),
+  clearRole: () =>
+    doFetch(`${base}/api/v1/device/role/clear`, { method: "POST" }),
 
   saveUserCreds: (email, password) =>
     doFetch(`${base}/api/v1/provision/user`, {

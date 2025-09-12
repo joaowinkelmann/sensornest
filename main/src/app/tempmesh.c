@@ -259,6 +259,9 @@ void app_main(void)
     esp_log_level_set("wifi", ESP_LOG_WARN);
     esp_log_level_set("LED_IND", ESP_LOG_DEBUG);
 
+    // Inicializa e desliga o LED
+    led_indicator_init();
+
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -413,7 +416,9 @@ static bool wifi_boot_flow(void) {
     }
 
     /* ALWAYS attempt a short controller discovery while in provisioning/factory_reset/new state */
+    led_indicator_discovery_pulse_start();
     run_pre_provision_controller_scan(10000);
+    led_indicator_discovery_pulse_stop();
 
     ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");
     led_indicator_provisioning_start();

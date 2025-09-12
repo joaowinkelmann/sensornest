@@ -1,236 +1,119 @@
 #include "indicator/led_indicator.h"
 #include "esp_log.h"
-#include "led_strip.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <math.h>
-#include "esp_idf_version.h"
 
+// --- Includes específicos para cada alvo ---
 #if CONFIG_IDF_TARGET_ESP32C3
-#include "driver/gpio.h"
-#include "driver/ledc.h" // Use LEDC peripheral
+#include "driver/ledc.h"
+#else // Para S3 e outros com LED RGB
+#include "led_strip.h"
+#include "esp_idf_version.h"
 #endif
 
-// Target-dependent indicator GPIO. Adjust if your board uses a different pin.
+// --- Configuração de GPIO (ajuste conforme sua placa) ---
 #ifndef INDICATOR_GPIO
 #if CONFIG_IDF_TARGET_ESP32S3
-#define INDICATOR_GPIO          48    // typical S3 devkit RGB pin
-#elif CONFIG_IDF_TARGET_ESP32C3
-#define INDICATOR_GPIO          8     // common C3 Super Mini on-board LED (change if yours differs)
-#else
 #define INDICATOR_GPIO          48
+#elif CONFIG_IDF_TARGET_ESP32C3
+#define INDICATOR_GPIO          8
+#else
+#define INDICATOR_GPIO          48 // Padrão para outros alvos
 #endif
 #endif
 
-#define INDICATOR_MAX_LEDS      1
-#define PULSE_PERIOD_MS         3000   /* full breathe cycle */
-#define PULSE_STEP_MS           60
+// --- Constantes de Padrões de LED (Unificadas) ---
+// Padrão "Controller Pulse" (Respiração/Fade)
+#define PULSE_PERIOD_MS         3000   // Ciclo completo de respiração
+#define PULSE_STEP_MS           50     // Intervalo de atualização do brilho
+
+// Padrão "Provisioning" (Blink Duplo)
+#define PROV_BLINK_ON1_MS       60
+#define PROV_BLINK_OFF1_MS      100
+#define PROV_BLINK_ON2_MS       60
+#define PROV_BLINK_OFF2_MS      1500
+#define PROV_BLINK_COLOR_R      180 // Roxo para o S3
+#define PROV_BLINK_COLOR_G      0
+#define PROV_BLINK_COLOR_B      255
+
+// Padrão "Discovery Pulse" (Respiração Rápida Vermelha)
+#define DISCOVERY_PULSE_PERIOD_MS 1500   // Ciclo completo de respiração
+#define DISCOVERY_PULSE_STEP_MS   50     // Intervalo de atualização do brilho
+#define DISCOVERY_PULSE_COLOR_R   255    // Vermelho para o S3
+#define DISCOVERY_PULSE_COLOR_G   0
+#define DISCOVERY_PULSE_COLOR_B   0
+
+// Padrão "Worker Flash" (Flash Rápido de Debug)
+#define WORKER_FLASH_MS         150
+#define WORKER_FLASH_COLOR_R    255 // Amarelo para o S3
+#define WORKER_FLASH_COLOR_G    180
+#define WORKER_FLASH_COLOR_B    0
+
 
 static const char *TAG_IND = "LED_IND";
 static bool s_inited = false;
-static TaskHandle_t s_pulse_task = NULL;
+static TaskHandle_t s_indicator_task = NULL; // Handle único para qualquer tarefa de LED em execução
+
+/* ==========================================================================
+ * CAMADA DE ABSTRAÇÃO DE HARDWARE (HAL)
+ * Funções internas para controlar o hardware específico de cada chip.
+ * ========================================================================== */
 
 #if CONFIG_IDF_TARGET_ESP32C3
-/* --------------------------------------------------------------------------
- * ESP32C3 REFACTORED LEDC INDICATOR
- * -------------------------------------------------------------------------- */
-#ifndef INDICATOR_GPIO
-#define INDICATOR_GPIO 8
-#endif
+/* ------------------------- IMPLEMENTAÇÃO PARA ESP32-C3 (LEDC) ------------------------- */
 
-// --- LEDC configuration ---
 #define LEDC_TIMER              LEDC_TIMER_0
 #define LEDC_MODE               LEDC_LOW_SPEED_MODE
 #define LEDC_CHANNEL            LEDC_CHANNEL_0
-#define LEDC_DUTY_RES           LEDC_TIMER_13_BIT // 13-bit resolution (0-8191)
-#define LEDC_FREQUENCY          (5000) // 5 kHz PWM frequency
+#define LEDC_DUTY_RES           LEDC_TIMER_13_BIT // Resolução de 13 bits (0-8191)
+#define LEDC_FREQUENCY          (5000) // 5 kHz
 #define LEDC_MAX_DUTY           ((1 << LEDC_DUTY_RES) - 1)
 
-#define CTRL_BLINK_ON_MS   800
-#define CTRL_BLINK_OFF_MS  800
-#define WORKER_FLASH_MS    120
-#define PROV_BLINK_ON1_MS  60
-#define PROV_BLINK_OFF1_MS 100
-#define PROV_BLINK_ON2_MS  60
-#define PROV_BLINK_OFF2_MS 1500
+static void _hw_led_init(void) {
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode = LEDC_MODE,
+        .timer_num = LEDC_TIMER,
+        .duty_resolution = LEDC_DUTY_RES,
+        .freq_hz = LEDC_FREQUENCY,
+        .clk_cfg = LEDC_AUTO_CLK
+    };
+    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
 
+    ledc_channel_config_t ledc_channel = {
+        .speed_mode = LEDC_MODE,
+        .channel = LEDC_CHANNEL,
+        .timer_sel = LEDC_TIMER,
+        .intr_type = LEDC_INTR_DISABLE,
+        .gpio_num = INDICATOR_GPIO,
+        .duty = 0,
+        .hpoint = 0,
+        .flags.output_invert = 1 // Inverte para LEDs active-low (comum em devkits)
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+    ESP_LOGD(TAG_IND, "Init (C3 LEDC) GPIO=%d", INDICATOR_GPIO);
+}
 
-static inline void ind_drive(bool on) {
-    // Set duty to max for ON, 0 for OFF.
-    uint32_t duty = on ? LEDC_MAX_DUTY : 0;
+static void _hw_set_brightness(uint8_t brightness) {
+    if (!s_inited) return;
+    // Converte brilho (0-255) para o duty cycle do LEDC (0-8191)
+    uint32_t duty = (uint32_t)((float)brightness / 255.0f * (float)LEDC_MAX_DUTY);
     ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty);
     ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
 }
 
-static void ensure_inited_ledc(void) {
-    if (s_inited) return;
-
-    // Configure LEDC timer
-    ledc_timer_config_t ledc_timer = {
-        .speed_mode       = LEDC_MODE,
-        .timer_num        = LEDC_TIMER,
-        .duty_resolution  = LEDC_DUTY_RES,
-        .freq_hz          = LEDC_FREQUENCY,
-        .clk_cfg          = LEDC_AUTO_CLK
-    };
-    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
-
-    // Configure LEDC channel
-    ledc_channel_config_t ledc_channel = {
-        .speed_mode     = LEDC_MODE,
-        .channel        = LEDC_CHANNEL,
-        .timer_sel      = LEDC_TIMER,
-        .intr_type      = LEDC_INTR_DISABLE,
-        .gpio_num       = INDICATOR_GPIO,
-        .duty           = 0, // Initial duty OFF
-        .hpoint         = 0,
-        .flags.output_invert = 1 // Invert the output signal for active-low LEDs
-    };
-    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
-
-    s_inited = true;
-    ESP_LOGD(TAG_IND, "Init (C3 LEDC mode) GPIO=%d", INDICATOR_GPIO);
+static void _hw_set_color(uint8_t r, uint8_t g, uint8_t b) {
+    // Para um LED de cor única, qualquer cor não-preta significa "ligado no brilho máximo"
+    _hw_set_brightness((r | g | b) ? 255 : 0);
 }
 
-/* Worker flash: brief ON then OFF (non-blocking) */
-static void worker_flash_task(void *arg) {
-    uint32_t dur = (uint32_t)(uintptr_t)arg;
-    ESP_LOGD(TAG_IND, "worker_flash_task start dur=%u", (unsigned)dur);
-    ensure_inited_ledc();
-    ind_drive(true);
-    vTaskDelay(pdMS_TO_TICKS(dur));
-    ind_drive(false);
-    ESP_LOGD(TAG_IND, "worker_flash_task done");
-    vTaskDelete(NULL);
-}
+#else
+/* ------------------------- IMPLEMENTAÇÃO PARA ESP32-S3 (LED_STRIP) ------------------------- */
 
-/* Controller blink task: slow periodic flash while running role */
-static void controller_blink_task(void *arg) {
-    ESP_LOGD(TAG_IND, "controller_blink_task start (slow flash)");
-    ensure_inited_ledc();
-    bool on = false;
-    while (true) {
-        on = !on;
-        ind_drive(on);
-        vTaskDelay(pdMS_TO_TICKS(on ? CTRL_BLINK_ON_MS : CTRL_BLINK_OFF_MS));
-    }
-}
+#define INDICATOR_MAX_LEDS 1
+static led_strip_handle_t s_strip = NULL;
 
-/* --- NEW: Provisioning blink task (double flash) --- */
-static void provisioning_blink_task(void *arg) {
-    ESP_LOGD(TAG_IND, "provisioning_blink_task start (double flash)");
-    ensure_inited_ledc();
-    while (true) {
-        ind_drive(true);
-        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON1_MS));
-        ind_drive(false);
-        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_OFF1_MS));
-        ind_drive(true);
-        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON2_MS));
-        ind_drive(false);
-        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_OFF2_MS));
-    }
-}
-
-esp_err_t led_indicator_init(void) {
-    ensure_inited_ledc();
-    return ESP_OK;
-}
-
-void led_indicator_set(uint8_t r, uint8_t g, uint8_t b) {
-    /* Any non-zero => ON */
-    ensure_inited_ledc();
-    bool on = (r | g | b) != 0;
-    ind_drive(on);
-    ESP_LOGI(TAG_IND, "set r=%u g=%u b=%u -> %s", r,g,b,on?"ON":"OFF");
-}
-
-void led_indicator_off(void) {
-    ensure_inited_ledc();
-    ind_drive(false);
-    ESP_LOGI(TAG_IND, "off");
-}
-
-void led_indicator_flash_worker_debug(void) {
-    ensure_inited_ledc();
-    // Increased stack to avoid stack-protection/vfprintf panics on C3
-    if (xTaskCreate(worker_flash_task, "led_wflash", 2048, (void*)(uintptr_t)WORKER_FLASH_MS, 2, NULL) != pdPASS) {
-        ESP_LOGW(TAG_IND, "flash task create failed, doing inline flash");
-        ind_drive(true);
-        vTaskDelay(pdMS_TO_TICKS(WORKER_FLASH_MS));
-        ind_drive(false);
-    } else {
-        ESP_LOGD(TAG_IND, "flash task spawned");
-    }
-}
-
-void led_indicator_controller_pulse_start(void) {
-    ensure_inited_ledc();
-    if (s_pulse_task) {
-        ESP_LOGD(TAG_IND, "controller blink already running");
-        return;
-    }
-    // Increase stack to 2K for safe logging / runtime on C3
-    if (xTaskCreate(controller_blink_task, "led_ctrl_blink", 2048, NULL, 1, &s_pulse_task) != pdPASS) {
-        ESP_LOGE(TAG_IND, "controller blink task create failed");
-        s_pulse_task = NULL;
-    } else {
-        ESP_LOGD(TAG_IND, "controller blink started");
-    }
-}
-
-void led_indicator_controller_pulse_stop(void) {
-    if (!s_pulse_task) return;
-    TaskHandle_t h = s_pulse_task;
-    s_pulse_task = NULL;
-    vTaskDelete(h);
-    ind_drive(false);
-    ESP_LOGI(TAG_IND, "controller blink stopped");
-}
-
-void led_indicator_provisioning_start(void) {
-    ensure_inited_ledc();
-    if (s_pulse_task) {
-        ESP_LOGI(TAG_IND, "provisioning blink: another task is running, stopping it first.");
-        led_indicator_controller_pulse_stop(); // Generic stop function
-    }
-    if (xTaskCreate(provisioning_blink_task, "led_prov_blink", 2048, NULL, 1, &s_pulse_task) != pdPASS) {
-        ESP_LOGE(TAG_IND, "provisioning blink task create failed");
-        s_pulse_task = NULL;
-    } else {
-        ESP_LOGI(TAG_IND, "provisioning blink started");
-    }
-}
-
-void led_indicator_provisioning_stop(void) {
-    led_indicator_controller_pulse_stop(); // Same logic, can be reused
-}
-
-
-#else  /* ------------------ OTHER TARGETS (retain existing implementation) ------------------ */
-
- // LED strip handle used by non-ESP32C3 targets
- static led_strip_t *s_strip = NULL;
-
-// One-shot worker flash task (non-blocking caller)
-static void worker_flash_task(void *arg) {
-    const uint32_t on_ms = (uint32_t)(uintptr_t)arg;
-    // Yellow flash (R+G) for RGB strips
-    led_indicator_set(255, 180, 0);
-    vTaskDelay(pdMS_TO_TICKS(on_ms));
-    led_indicator_off();
-    vTaskDelete(NULL);
-}
-
-static void apply_color(uint8_t r, uint8_t g, uint8_t b) {
-    if (!s_inited) return;
-    led_strip_set_pixel(s_strip, 0, r, g, b);
-    led_strip_refresh(s_strip);
-}
-
-esp_err_t led_indicator_init(void) {
-    if (s_inited) return ESP_OK;
-
+static void _hw_led_init(void) {
     led_strip_config_t strip_config = {
         .strip_gpio_num = INDICATOR_GPIO,
         .max_leds = INDICATOR_MAX_LEDS,
@@ -240,83 +123,213 @@ esp_err_t led_indicator_init(void) {
     };
     led_strip_rmt_config_t rmt_config = {
         .clk_src = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz = 10 * 1000 * 1000,
+        .resolution_hz = 10 * 1000 * 1000, // 10MHz
         .mem_block_symbols = 0
     };
-
-    esp_err_t err = led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strip);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG_IND, "led_strip_new_rmt_device failed: %s", esp_err_to_name(err));
-        return err;
-    }
-    s_inited = true;
-    led_indicator_off();
-    ESP_LOGI(TAG_IND, "Initialized (GPIO=%d).", INDICATOR_GPIO);
-    return ESP_OK;
+    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strip));
+    led_strip_clear(s_strip);
+    ESP_LOGD(TAG_IND, "Init (S3 RMT) GPIO=%d", INDICATOR_GPIO);
 }
 
-void led_indicator_set(uint8_t r, uint8_t g, uint8_t b) { apply_color(r,g,b); }
-void led_indicator_off(void) { apply_color(0,0,0); }
-
-void led_indicator_flash_worker_debug(void) {
-    // Start short one-shot task to flash the worker LED without blocking caller.
-    const uint32_t flash_ms = 150;
-    if (xTaskCreate(worker_flash_task, "led_wflash", 2048, (void *)(uintptr_t)flash_ms, 2, NULL) != pdPASS) {
-        // Fallback: do a blocking flash if task creation failed.
-        led_indicator_set(255, 180, 0);
-        vTaskDelay(pdMS_TO_TICKS(flash_ms));
-        led_indicator_off();
-    }
+static void _hw_set_color(uint8_t r, uint8_t g, uint8_t b) {
+    if (!s_inited || !s_strip) return;
+    led_strip_set_pixel(s_strip, 0, r, g, b);
+    led_strip_refresh(s_strip);
 }
 
-static void pulse_task(void *arg) {
-#if CONFIG_IDF_TARGET_ESP32C3
-    /* For single-color LED on C3, use blue tint mapped to brightness */
-    const float base_b = 96.0f;
-    uint32_t t = 0;
-    while (true) {
-        float phase = (float)(t % PULSE_PERIOD_MS) / (float)PULSE_PERIOD_MS; // 0..1
-        float mag = 0.5f - 0.5f * cosf(2.0f * (float)M_PI * phase);
-        uint8_t brightness = (uint8_t)(base_b * mag);
-        apply_color(brightness, brightness, brightness); // applies to LEDC as brightness
-        vTaskDelay(pdMS_TO_TICKS(PULSE_STEP_MS));
-        t += PULSE_STEP_MS;
-    }
-#else
-    /* RGB breathe curve */
+static void _hw_set_brightness(uint8_t brightness) {
+    // Aplica o brilho a uma cor base (azul suave) para o efeito de respiração
     const float base_r = 0.0f;
     const float base_g = 18.0f;
     const float base_b = 96.0f;
+    float mag = (float)brightness / 255.0f;
+
+    uint8_t r = (uint8_t)(base_r * mag);
+    uint8_t g = (uint8_t)(base_g * mag);
+    uint8_t b = (uint8_t)(base_b * mag);
+    _hw_set_color(r, g, b);
+}
+
+#endif
+
+// --- Funções HAL Comuns ---
+static void _hw_led_off(void) {
+    _hw_set_brightness(0);
+}
+
+/* ==========================================================================
+ * LÓGICA E TAREFAS DE CONTROLE DE LED (COMUM A TODOS OS CHIPS)
+ * ========================================================================== */
+
+// --- Funções Genéricas de Início/Parada de Tarefas ---
+static void led_indicator_stop_task(void) {
+    if (!s_indicator_task) return;
+    TaskHandle_t h = s_indicator_task;
+    s_indicator_task = NULL; // Previne race condition
+    vTaskDelete(h);
+    _hw_led_off();
+    ESP_LOGI(TAG_IND, "Indicador de tarefa parado.");
+}
+
+static void led_indicator_start_task(TaskFunction_t task_func, const char *task_name) {
+    if (s_indicator_task) {
+        ESP_LOGD(TAG_IND, "Parando tarefa de LED anterior antes de iniciar a nova.");
+        led_indicator_stop_task();
+    }
+    if (xTaskCreate(task_func, task_name, 2048, NULL, 2, &s_indicator_task) != pdPASS) {
+        ESP_LOGE(TAG_IND, "Falha ao criar a tarefa %s", task_name);
+        s_indicator_task = NULL;
+    } else {
+        ESP_LOGI(TAG_IND, "Tarefa de indicador '%s' iniciada.", task_name);
+    }
+}
+
+// --- Tarefas de Padrão de LED ---
+
+/**
+ * @brief Tarefa para o efeito de respiração/fade (Controller Pulse).
+ * Usa uma curva de cosseno para um fade suave de 0 a 255.
+ */
+static void pulse_task(void *arg) {
     uint32_t t = 0;
-
     while (true) {
-        float phase = (float)(t % PULSE_PERIOD_MS) / (float)PULSE_PERIOD_MS; // 0..1
-        /* Smooth breathe curve: 0.5 - 0.5*cos(2πx) => 0..1 */
-        float mag = 0.5f - 0.5f * cosf(2.0f * (float)M_PI * phase);
+        float phase = (float)(t % PULSE_PERIOD_MS) / (float)PULSE_PERIOD_MS; // Fase de 0.0 a 1.0
+        float mag = 0.5f - 0.5f * cosf(2.0f * (float)M_PI * phase); // Magnitude de 0.0 a 1.0
+        uint8_t brightness = (uint8_t)(255.0f * mag);
 
-        uint8_t r = (uint8_t)(base_r * mag);
-        uint8_t g = (uint8_t)(base_g * mag);
-        uint8_t b = (uint8_t)(base_b * mag);
-        led_indicator_set(r,g,b);
+        _hw_set_brightness(brightness);
 
         vTaskDelay(pdMS_TO_TICKS(PULSE_STEP_MS));
-        t += PULSE_STEP_MS;
+        t = (t + PULSE_STEP_MS) % PULSE_PERIOD_MS;
     }
-#endif
+}
+
+/**
+ * @brief Tarefa para o efeito de respiração/fade vermelho (Discovery Pulse).
+ * Usa uma curva de cosseno para um fade suave.
+ */
+static void discovery_pulse_task(void *arg) {
+    uint32_t t = 0;
+    while (true) {
+        float phase = (float)(t % DISCOVERY_PULSE_PERIOD_MS) / (float)DISCOVERY_PULSE_PERIOD_MS;
+        float mag = 0.5f - 0.5f * cosf(2.0f * (float)M_PI * phase); // Magnitude de 0.0 a 1.0
+        uint8_t brightness = (uint8_t)(255.0f * mag);
+
+        #if CONFIG_IDF_TARGET_ESP32C3
+            _hw_set_brightness(brightness);
+        #else
+            uint8_t r = (uint8_t)((float)DISCOVERY_PULSE_COLOR_R * mag);
+            uint8_t g = (uint8_t)((float)DISCOVERY_PULSE_COLOR_G * mag);
+            uint8_t b = (uint8_t)((float)DISCOVERY_PULSE_COLOR_B * mag);
+            _hw_set_color(r, g, b);
+        #endif
+
+        vTaskDelay(pdMS_TO_TICKS(DISCOVERY_PULSE_STEP_MS));
+        t = (t + DISCOVERY_PULSE_STEP_MS) % DISCOVERY_PULSE_PERIOD_MS;
+    }
+}
+
+/**
+ * @brief Tarefa para o padrão de provisionamento (blink duplo).
+ */
+static void provisioning_blink_task(void *arg) {
+    while (true) {
+        _hw_set_color(PROV_BLINK_COLOR_R, PROV_BLINK_COLOR_G, PROV_BLINK_COLOR_B);
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON1_MS));
+        _hw_led_off();
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_OFF1_MS));
+        
+        _hw_set_color(PROV_BLINK_COLOR_R, PROV_BLINK_COLOR_G, PROV_BLINK_COLOR_B);
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON2_MS));
+        _hw_led_off();
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_OFF2_MS));
+    }
+}
+
+/**
+ * @brief Tarefa one-shot para o flash de debug do worker.
+ */
+static void worker_flash_task(void *arg) {
+    ESP_LOGD(TAG_IND, "worker_flash_task start");
+    #if CONFIG_IDF_TARGET_ESP32C3
+        _hw_set_brightness(255);
+    #else
+        _hw_set_color(WORKER_FLASH_COLOR_R, WORKER_FLASH_COLOR_G, WORKER_FLASH_COLOR_B);
+    #endif
+
+    vTaskDelay(pdMS_TO_TICKS(WORKER_FLASH_MS));
+    _hw_led_off();
+    
+    ESP_LOGD(TAG_IND, "worker_flash_task done");
+    vTaskDelete(NULL);
+}
+
+
+/* ==========================================================================
+ * API PÚBLICA
+ * ========================================================================== */
+
+esp_err_t led_indicator_init(void) {
+    if (s_inited) return ESP_OK;
+    _hw_led_init();
+    s_inited = true;
+    _hw_led_off();
+    // ESP_LOGI(TAG_IND, "Indicador de LED inicializado para %s.", CONFIG_IDF_TARGET);
+    ESP_LOGI(TAG_IND, "Indicador de LED inicializado.");
+    return ESP_OK;
+}
+
+void led_indicator_set(uint8_t r, uint8_t g, uint8_t b) {
+    if (!s_inited) led_indicator_init();
+    led_indicator_stop_task(); // Para qualquer padrão em execução
+    _hw_set_color(r, g, b);
+    ESP_LOGD(TAG_IND, "set r=%u g=%u b=%u", r, g, b);
+}
+
+void led_indicator_off(void) {
+    if (!s_inited) led_indicator_init();
+    led_indicator_stop_task(); // Para qualquer padrão em execução
+    _hw_led_off();
+    ESP_LOGD(TAG_IND, "off");
+}
+
+void led_indicator_flash_worker_debug(void) {
+    if (!s_inited) led_indicator_init();
+    if (xTaskCreate(worker_flash_task, "led_wflash", 2048, NULL, 3, NULL) != pdPASS) {
+        ESP_LOGW(TAG_IND, "Falha ao criar tarefa de flash, executando de forma bloqueante");
+        #if CONFIG_IDF_TARGET_ESP32C3
+            _hw_set_brightness(255);
+        #else
+            _hw_set_color(WORKER_FLASH_COLOR_R, WORKER_FLASH_COLOR_G, WORKER_FLASH_COLOR_B);
+        #endif
+        vTaskDelay(pdMS_TO_TICKS(WORKER_FLASH_MS));
+        _hw_led_off();
+    }
 }
 
 void led_indicator_controller_pulse_start(void) {
-    if (s_pulse_task) return;
-    if (led_indicator_init() != ESP_OK) return;
-    xTaskCreate(pulse_task, "led_pulse", 2048, NULL, 1, &s_pulse_task);
+    if (!s_inited) led_indicator_init();
+    led_indicator_start_task(pulse_task, "led_pulse");
 }
 
 void led_indicator_controller_pulse_stop(void) {
-    if (!s_pulse_task) return;
-    TaskHandle_t h = s_pulse_task;
-    s_pulse_task = NULL;
-    vTaskDelete(h);
-    led_indicator_off();
+    led_indicator_stop_task();
 }
 
-#endif /* CONFIG_IDF_TARGET_ESP32C3 */
+void led_indicator_provisioning_start(void) {
+    if (!s_inited) led_indicator_init();
+    led_indicator_start_task(provisioning_blink_task, "led_prov_blink");
+}
+
+void led_indicator_provisioning_stop(void) {
+    led_indicator_stop_task();
+}
+
+void led_indicator_discovery_pulse_start(void) {
+    if (!s_inited) led_indicator_init();
+    led_indicator_start_task(discovery_pulse_task, "led_disco_pulse");
+}
+
+void led_indicator_discovery_pulse_stop(void) {
+    led_indicator_stop_task();
+}

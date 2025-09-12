@@ -24,3 +24,9 @@ void led_indicator_provisioning_start(void);
 
 /* Provisioning: stop the double-flash indicator. */
 void led_indicator_provisioning_stop(void);
+
+/* Discovery: start a fast red pulsing indicator. */
+void led_indicator_discovery_pulse_start(void);
+
+/* Discovery: stop the fast red pulsing indicator. */
+void led_indicator_discovery_pulse_stop(void);

@@ -43,6 +43,7 @@
 
           <!-- Wi-Fi setup -->
           <div v-if="role && role !== 'WORKER' && !connected">
+            <q-btn flat dense icon="arrow_back" @click="goBack" class="q-mb-md" :label="$t('back')" />
             <q-select
               v-model="ssid"
               filled
@@ -88,6 +89,7 @@
 
           <!-- Worker controller selection (moved earlier for clarity) -->
           <div v-if="role==='WORKER' && !setupDone" class="q-mt-md">
+            <q-btn flat dense icon="arrow_back" @click="goBack" class="q-mb-md" :label="$t('back')" />
             <div class="text-h6">{{$t('selectController')}}</div>
             <q-input v-model="workerName" filled :label="$t('workerName')" class="q-mt-sm"/>
             <q-select
@@ -111,6 +113,7 @@
 
           <!-- Login Form -->
           <div v-if="role!=='WORKER' && connected && !loggedIn">
+            <q-btn flat dense icon="arrow_back" @click="goBack" class="q-mb-md" :label="$t('back')" />
             <div class="text-h6 q-mt-lg">{{ $t("cloudLogin") }}</div>
             <q-input
               v-model="userEmail"
@@ -433,6 +436,24 @@ function showError(e, fallbackKey) {
     type: "negative",
     message: message,
   });
+}
+
+async function goBack() {
+  // Simple case: just go back to role selection
+  if (role.value) {
+    try {
+      await api.clearRole();
+      role.value = null;
+      // Reset dependent state
+      status.value = null;
+      loggedIn.value = false;
+      device.value = null;
+      ssid.value = "";
+      password.value = "";
+    } catch (e) {
+      showError(e, "failedToGoBack");
+    }
+  }
 }
 
 async function pickRole(r) {
