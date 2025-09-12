@@ -33,9 +33,9 @@
 #define PROV_BLINK_OFF1_MS      100
 #define PROV_BLINK_ON2_MS       60
 #define PROV_BLINK_OFF2_MS      1500
-#define PROV_BLINK_COLOR_R      180 // Roxo para o S3
+#define PROV_BLINK_COLOR_R      90 // Roxo para o S3
 #define PROV_BLINK_COLOR_G      0
-#define PROV_BLINK_COLOR_B      255
+#define PROV_BLINK_COLOR_B      127
 
 // Padrão "Discovery Pulse" (Respiração Rápida Vermelha)
 #define DISCOVERY_PULSE_PERIOD_MS 1500   // Ciclo completo de respiração

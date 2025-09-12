@@ -321,7 +321,20 @@ esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
     s_collect_mode = true;
 
     ESP_LOGI(TAG_EN, "Starting controller discovery for %d ms...", duration_ms);
-    vTaskDelay(pdMS_TO_TICKS(duration_ms));
+
+    int64_t start_time = esp_timer_get_time();
+    uint8_t current_channel = 1;
+    while (esp_timer_get_time() - start_time < (int64_t)duration_ms * 1000) {
+        esp_wifi_set_channel(current_channel, WIFI_SECOND_CHAN_NONE);
+        ESP_LOGD(TAG_EN, "Scanning on channel %d", current_channel);
+        vTaskDelay(pdMS_TO_TICKS(500)); // Dwell on each channel for 500ms
+
+        current_channel++;
+        if (current_channel > 13) {
+            current_channel = 1;
+        }
+    }
+
     s_collect_mode = false;
     ESP_LOGI(TAG_EN, "Controller discovery finished. Found %d controllers.", s_ctrl_count);
 
