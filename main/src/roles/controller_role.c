@@ -233,7 +233,13 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
                                    (long long)now, device_readingsPerBatch, device_wakeUpInterval);
         if (payload_len > 0) {
             esp_err_t err = espnow_manager_send_to_mac(recv_info->mac_addr, (const uint8_t*)payload, payload_len);
-            if (err != ESP_OK) {
+            if (err == ESP_OK) {
+                ESP_LOGI(TAG_CR, "ACK sent successfully to " MACSTR, MAC2STR(recv_info->mac_addr));
+                // Flash green to indicate successful communication handshake
+                if (s_debug) {
+                    led_indicator_flash_success();
+                }
+            } else {
                 ESP_LOGW(TAG_CR, "Failed to queue ACK for sending: %s", esp_err_to_name(err));
             }
         }

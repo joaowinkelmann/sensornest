@@ -30,3 +30,6 @@ void led_indicator_discovery_pulse_start(void);
 
 /* Discovery: stop the fast red pulsing indicator. */
 void led_indicator_discovery_pulse_stop(void);
+
+/* Success: brief triple green flash (non-blocking helper for successful communication). */
+void led_indicator_flash_success(void);

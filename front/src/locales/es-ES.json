@@ -43,5 +43,10 @@
   "selectMesh": "Seleccionar Malla",
   "deviceBound": "Dispositivo Vinculado con Éxito",
   "setupComplete": "Configuración Completa",
-  "deviceWillRestart": "El dispositivo se reiniciará y aplicará las nuevas configuraciones."
+  "deviceWillRestart": "El dispositivo se reiniciará y aplicará las nuevas configuraciones.",
+  "back": "Atrás",
+  "selectController": "Seleccionar Controlador",
+  "workerName": "Nombre del Dispositivo",
+  "availableControllers": "Controladores Disponibles",
+  "bindWorker": "Vincular Dispositivo"
 }

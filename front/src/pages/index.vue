@@ -91,7 +91,6 @@
           <div v-if="role==='WORKER' && !setupDone" class="q-mt-md">
             <q-btn flat dense icon="arrow_back" @click="goBack" class="q-mb-md" :label="$t('back')" />
             <div class="text-h6">{{$t('selectController')}}</div>
-            <q-input v-model="workerName" filled :label="$t('workerName')" class="q-mt-sm"/>
             <q-select
               v-model="selectedControllerMac"
               :options="controllers.map(c=>({label:`${c.name||'Controller'} (${c.mac})`, value:c.mac}))"
@@ -105,6 +104,7 @@
                 <q-btn dense flat round icon="refresh" @click="scanControllers"/>
               </template>
             </q-select>
+            <q-input v-model="workerName" filled :label="$t('workerName')" class="q-mt-sm"/>
             <q-btn class="q-mt-md" color="primary"
                    :disable="!workerName || !selectedControllerMac"
                    :loading="bindingWorker"
@@ -525,6 +525,11 @@ async function scanControllers() {
   controllersLoading.value = true;
   try {
     controllers.value = await api.getControllers();
+    
+    // pega o primeiro controller pra preencher
+    if (controllers.value.length > 0 && !selectedControllerMac.value) {
+      selectedControllerMac.value = controllers.value[0].mac;
+    }
   } catch (e) {
     showError(e, "failedToScanControllers");
   } finally {

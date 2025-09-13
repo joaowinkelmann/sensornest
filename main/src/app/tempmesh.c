@@ -369,7 +369,7 @@ static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pas
 /* NEW: pre‑provision controller discovery helper (always runs in provisioning mode) */
 static void run_pre_provision_controller_scan(int duration_ms) {
     if (duration_ms < 1000) duration_ms = 1000;
-    if (duration_ms > 20000) duration_ms = 20000;
+    if (duration_ms > 30000) duration_ms = 30000;
     ESP_LOGI(TAG, "Pre-provision: scanning for controllers (%d ms).", duration_ms);
     if (espnow_manager_init() != ESP_OK) {
         ESP_LOGW(TAG, "ESPNOW init failed; skipping controller scan.");
@@ -417,7 +417,7 @@ static bool wifi_boot_flow(void) {
 
     /* ALWAYS attempt a short controller discovery while in provisioning/factory_reset/new state */
     led_indicator_discovery_pulse_start();
-    run_pre_provision_controller_scan(20000);
+    run_pre_provision_controller_scan(30000);
     led_indicator_discovery_pulse_stop();
 
     ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");

@@ -1084,7 +1084,7 @@ esp_err_t start_rest_server(const char *base_path)
     ESP_LOGI(TAG, "Starting HTTP Server");
     ESP_GOTO_ON_ERROR(httpd_start(&server, &config), err, TAG, "Failed to start http server");
 
-    wifi_manager_prefetch_scan(20000);
+    wifi_manager_prefetch_scan(30000);
 
     /* --- REFACTORED: Register a single, global CORS OPTIONS handler --- */
     /* This should be registered first to catch all OPTIONS requests */

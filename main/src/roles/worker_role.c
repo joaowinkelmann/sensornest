@@ -65,6 +65,11 @@ static void worker_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
             ESP_LOGI(TAG_WR, "SUCCESS: Received ACK from controller. Time set, config updated (batch=%d, interval=%d).",
                      device_readingsPerBatch, device_wakeUpInterval);
             s_ack_received = true; // Set flag on successful ACK
+            
+            // Flash green to indicate successful communication
+            if (s_debug) {
+                led_indicator_flash_success();
+            }
         }
         return;
     }

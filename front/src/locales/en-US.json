@@ -49,5 +49,10 @@
   "updateDeviceBtn": "Update Device",
   "deviceBound": "Device Successfully Bound",
   "setupComplete": "Setup Complete",
-  "deviceWillRestart": "The device will restart and apply the new settings."
+  "deviceWillRestart": "The device will restart and apply the new settings.",
+  "back": "Back",
+  "selectController": "Select Controller",
+  "workerName": "Device Name",
+  "availableControllers": "Available Controllers",
+  "bindWorker": "Bind Device"
 }

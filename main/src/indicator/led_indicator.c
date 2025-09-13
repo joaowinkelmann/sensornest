@@ -28,27 +28,33 @@
 #define PULSE_PERIOD_MS         3000   // Ciclo completo de respiração
 #define PULSE_STEP_MS           50     // Intervalo de atualização do brilho
 
-// Padrão "Provisioning" (Blink Duplo)
-#define PROV_BLINK_ON1_MS       60
-#define PROV_BLINK_OFF1_MS      100
-#define PROV_BLINK_ON2_MS       60
-#define PROV_BLINK_OFF2_MS      1500
-#define PROV_BLINK_COLOR_R      90
-#define PROV_BLINK_COLOR_G      0
-#define PROV_BLINK_COLOR_B      127
+// Padrão "Provisioning" (Blink Triplo)
+#define PROV_BLINK_ON_MS       60
+#define PROV_BLINK_OFF_MS      100
+#define PROV_BLINK_BREAK_MS    1500
+#define PROV_BLINK_COLOR_R     36
+#define PROV_BLINK_COLOR_G     36
+#define PROV_BLINK_COLOR_B     36
 
 // Padrão "Discovery Pulse" (Respiração Rápida Vermelha)
-#define DISCOVERY_PULSE_PERIOD_MS 1500   // Ciclo completo de respiração
+#define DISCOVERY_PULSE_PERIOD_MS 1000   // Ciclo completo de respiração
 #define DISCOVERY_PULSE_STEP_MS   50     // Intervalo de atualização do brilho
 #define DISCOVERY_PULSE_COLOR_R   255
 #define DISCOVERY_PULSE_COLOR_G   0
 #define DISCOVERY_PULSE_COLOR_B   0
 
 // Padrão "Worker Flash" (Flash Rápido de Debug)
-#define WORKER_FLASH_MS         100
+#define WORKER_FLASH_MS         50
 #define WORKER_FLASH_COLOR_R    127
 #define WORKER_FLASH_COLOR_G    90
 #define WORKER_FLASH_COLOR_B    0
+
+// Flash de Sucesso
+#define SUCCESS_FLASH_MS        200
+#define SUCCESS_FLASH_PAUSE_MS  150
+#define SUCCESS_FLASH_COLOR_R   0
+#define SUCCESS_FLASH_COLOR_G   255
+#define SUCCESS_FLASH_COLOR_B   0
 
 
 static const char *TAG_IND = "LED_IND";
@@ -112,8 +118,16 @@ static void _hw_set_color(uint8_t r, uint8_t g, uint8_t b) {
 
 #define INDICATOR_MAX_LEDS 1
 static led_strip_handle_t s_strip = NULL;
+static SemaphoreHandle_t s_strip_mutex = NULL; // Add mutex for thread safety
 
 static void _hw_led_init(void) {
+    if (s_strip) return; // Já inicializou
+    
+    // Create mutex if not already created
+    if (!s_strip_mutex) {
+        s_strip_mutex = xSemaphoreCreateMutex();
+    }
+    
     led_strip_config_t strip_config = {
         .strip_gpio_num = INDICATOR_GPIO,
         .max_leds = INDICATOR_MAX_LEDS,
@@ -124,17 +138,35 @@ static void _hw_led_init(void) {
     led_strip_rmt_config_t rmt_config = {
         .clk_src = RMT_CLK_SRC_DEFAULT,
         .resolution_hz = 10 * 1000 * 1000, // 10MHz
-        .mem_block_symbols = 0
+        .mem_block_symbols = 0,
+        .flags.with_dma = false
     };
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strip));
+    
+    esp_err_t ret = led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strip);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG_IND, "Failed to create LED strip: %s", esp_err_to_name(ret));
+        return;
+    }
+    
     led_strip_clear(s_strip);
     ESP_LOGD(TAG_IND, "Init (S3 RMT) GPIO=%d", INDICATOR_GPIO);
 }
 
 static void _hw_set_color(uint8_t r, uint8_t g, uint8_t b) {
-    if (!s_inited || !s_strip) return;
-    led_strip_set_pixel(s_strip, 0, r, g, b);
-    led_strip_refresh(s_strip);
+    if (!s_inited || !s_strip || !s_strip_mutex) return;
+    
+    // Take mutex with timeout to prevent blocking
+    if (xSemaphoreTake(s_strip_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        esp_err_t ret = led_strip_set_pixel(s_strip, 0, r, g, b);
+        if (ret == ESP_OK) {
+            led_strip_refresh(s_strip);
+        } else {
+            ESP_LOGW(TAG_IND, "LED set failed: %s", esp_err_to_name(ret));
+        }
+        xSemaphoreGive(s_strip_mutex);
+    } else {
+        ESP_LOGW(TAG_IND, "Failed to acquire LED mutex, skipping color update");
+    }
 }
 
 static void _hw_set_brightness(uint8_t brightness) {
@@ -176,7 +208,8 @@ static void led_indicator_start_task(TaskFunction_t task_func, const char *task_
         ESP_LOGD(TAG_IND, "Parando tarefa de LED anterior antes de iniciar a nova.");
         led_indicator_stop_task();
     }
-    if (xTaskCreate(task_func, task_name, 2048, NULL, 2, &s_indicator_task) != pdPASS) {
+    // Increase stack size from 2048 to 4096 to prevent overflow
+    if (xTaskCreate(task_func, task_name, 4096, NULL, 2, &s_indicator_task) != pdPASS) {
         ESP_LOGE(TAG_IND, "Falha ao criar a tarefa %s", task_name);
         s_indicator_task = NULL;
     } else {
@@ -235,14 +268,19 @@ static void discovery_pulse_task(void *arg) {
 static void provisioning_blink_task(void *arg) {
     while (true) {
         _hw_set_color(PROV_BLINK_COLOR_R, PROV_BLINK_COLOR_G, PROV_BLINK_COLOR_B);
-        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON1_MS));
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON_MS));
         _hw_led_off();
-        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_OFF1_MS));
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_OFF_MS));
         
         _hw_set_color(PROV_BLINK_COLOR_R, PROV_BLINK_COLOR_G, PROV_BLINK_COLOR_B);
-        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON2_MS));
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON_MS));
         _hw_led_off();
-        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_OFF2_MS));
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_OFF_MS));
+
+        _hw_set_color(PROV_BLINK_COLOR_R, PROV_BLINK_COLOR_G, PROV_BLINK_COLOR_B);
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_ON_MS));
+        _hw_led_off();
+        vTaskDelay(pdMS_TO_TICKS(PROV_BLINK_BREAK_MS));
     }
 }
 
@@ -261,6 +299,37 @@ static void worker_flash_task(void *arg) {
     _hw_led_off();
     
     ESP_LOGD(TAG_IND, "worker_flash_task done");
+    vTaskDelete(NULL);
+}
+
+/**
+ * @brief Tarefa one-shot para o flash de sucesso (verde).
+ */
+static void success_flash_task(void *arg) {
+    ESP_LOGD(TAG_IND, "success_flash_task start");
+    
+    vTaskDelay(pdMS_TO_TICKS(20));
+    
+    // --- First Flash ---
+    #if CONFIG_IDF_TARGET_ESP32C3
+        _hw_set_brightness(255);
+    #else
+        _hw_set_color(SUCCESS_FLASH_COLOR_R, SUCCESS_FLASH_COLOR_G, SUCCESS_FLASH_COLOR_B);
+    #endif
+    vTaskDelay(pdMS_TO_TICKS(SUCCESS_FLASH_MS));
+    _hw_led_off();
+
+    vTaskDelay(pdMS_TO_TICKS(SUCCESS_FLASH_PAUSE_MS));
+
+    #if CONFIG_IDF_TARGET_ESP32C3
+        _hw_set_brightness(255);
+    #else
+        _hw_set_color(SUCCESS_FLASH_COLOR_R, SUCCESS_FLASH_COLOR_G, SUCCESS_FLASH_COLOR_B);
+    #endif
+    vTaskDelay(pdMS_TO_TICKS(SUCCESS_FLASH_MS));
+    _hw_led_off();
+    
+    ESP_LOGD(TAG_IND, "success_flash_task done");
     vTaskDelete(NULL);
 }
 
@@ -303,6 +372,23 @@ void led_indicator_flash_worker_debug(void) {
             _hw_set_color(WORKER_FLASH_COLOR_R, WORKER_FLASH_COLOR_G, WORKER_FLASH_COLOR_B);
         #endif
         vTaskDelay(pdMS_TO_TICKS(WORKER_FLASH_MS));
+        _hw_led_off();
+    }
+}
+
+void led_indicator_flash_success(void) {
+    if (!s_inited) led_indicator_init();
+    
+    // Create task with higher stack and priority to ensure it runs
+    if (xTaskCreate(success_flash_task, "led_success", 3072, NULL, 4, NULL) != pdPASS) {
+        ESP_LOGW(TAG_IND, "Failed to create success flash task, trying direct execution");
+        // Fallback to direct execution if task creation fails
+        #if CONFIG_IDF_TARGET_ESP32C3
+            _hw_set_brightness(255);
+        #else
+            _hw_set_color(SUCCESS_FLASH_COLOR_R, SUCCESS_FLASH_COLOR_G, SUCCESS_FLASH_COLOR_B);
+        #endif
+        vTaskDelay(pdMS_TO_TICKS(SUCCESS_FLASH_MS));
         _hw_led_off();
     }
 }

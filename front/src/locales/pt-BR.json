@@ -48,5 +48,10 @@
   "deviceNameHint": "Forneça um nome para o dispositivo que está sendo configurado.",
   "registerDeviceBtn": "Registrar Dispositivo",
   "setupComplete": "Configuração Concluída",
-  "deviceWillRestart": "O dispositivo irá reiniciar e aplicar as novas configurações."
+  "deviceWillRestart": "O dispositivo irá reiniciar e aplicar as novas configurações.",
+  "back": "Voltar",
+  "selectController": "Selecionar Controlador",
+  "workerName": "Nome desse Dispositivo",
+  "availableControllers": "Controladores Disponíveis",
+  "bindWorker": "Vincular Dispositivo"
 }

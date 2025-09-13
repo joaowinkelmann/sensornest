@@ -327,7 +327,7 @@ esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
     while (esp_timer_get_time() - start_time < (int64_t)duration_ms * 1000) {
         esp_wifi_set_channel(current_channel, WIFI_SECOND_CHAN_NONE);
         ESP_LOGD(TAG_EN, "Scanning on channel %d", current_channel);
-        vTaskDelay(pdMS_TO_TICKS(500)); // Dwell on each channel for 500ms
+        vTaskDelay(pdMS_TO_TICKS(250)); // Dwell on each channel for 500ms
 
         current_channel++;
         if (current_channel > 13) {
