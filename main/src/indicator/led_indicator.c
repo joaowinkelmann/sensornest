@@ -33,21 +33,21 @@
 #define PROV_BLINK_OFF1_MS      100
 #define PROV_BLINK_ON2_MS       60
 #define PROV_BLINK_OFF2_MS      1500
-#define PROV_BLINK_COLOR_R      90 // Roxo para o S3
+#define PROV_BLINK_COLOR_R      90
 #define PROV_BLINK_COLOR_G      0
 #define PROV_BLINK_COLOR_B      127
 
 // Padrão "Discovery Pulse" (Respiração Rápida Vermelha)
 #define DISCOVERY_PULSE_PERIOD_MS 1500   // Ciclo completo de respiração
 #define DISCOVERY_PULSE_STEP_MS   50     // Intervalo de atualização do brilho
-#define DISCOVERY_PULSE_COLOR_R   255    // Vermelho para o S3
+#define DISCOVERY_PULSE_COLOR_R   255
 #define DISCOVERY_PULSE_COLOR_G   0
 #define DISCOVERY_PULSE_COLOR_B   0
 
 // Padrão "Worker Flash" (Flash Rápido de Debug)
-#define WORKER_FLASH_MS         150
-#define WORKER_FLASH_COLOR_R    255 // Amarelo para o S3
-#define WORKER_FLASH_COLOR_G    180
+#define WORKER_FLASH_MS         100
+#define WORKER_FLASH_COLOR_R    127
+#define WORKER_FLASH_COLOR_G    90
 #define WORKER_FLASH_COLOR_B    0
 
 
