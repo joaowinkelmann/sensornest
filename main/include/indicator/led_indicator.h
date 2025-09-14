@@ -1,6 +1,5 @@
 #pragma once
 #include <stdbool.h>
-#include <stdint.h>
 #include "esp_err.h"
 
 /* Initialize (idempotent). Safe to call multiple times. */

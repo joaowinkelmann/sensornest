@@ -131,7 +131,7 @@ static void beacon_task(void *arg) {
     for (;;) {
         send_controller_beacon_once(false);
         send_count++;
-        if (send_count <= 5 || (send_count % 10) == 0) {
+        if (send_count <= 5 || (send_count % 30) == 0) {
             ESP_LOGI(TAG_EN, "Beacon sent (%lu) interval=%dms watermark=%u",
                      (unsigned long)send_count, s_beacon_interval_ms,
                      (unsigned)uxTaskGetStackHighWaterMark(NULL));
@@ -439,6 +439,15 @@ esp_err_t espnow_manager_config_role(bool is_controller) {
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &apcfg));
         ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_LR)); // Controller's SoftAP uses long-range mode
+        ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(48)); // 20 dBm
+
+        // get wifi power
+        int8_t power = 0;
+        esp_wifi_get_max_tx_power(&power);
+        
+        ESP_LOGI(TAG_EN, "ESP-NOW started with power set to %d (0.25 dBm).", power);
+
+
     }
 
     // Add broadcast peer(s)

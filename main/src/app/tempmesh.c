@@ -51,7 +51,6 @@ static bool s_wifi_started = false;
 #define DHT_PULLUP_MS 1500 // Tempo de espera antes de realizar a leitura do sensor DHT em millissegundos
 
 // --- WiFi connection logic (declarations moved up for visibility) ---
-static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
@@ -87,7 +86,6 @@ extern void captive_dns_task(void *pv);
 
 esp_err_t start_rest_server(const char *base_path);
 static bool wifi_boot_flow(void);
-static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len);
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 const char* get_esp_model(void);
@@ -337,33 +335,6 @@ esp_err_t _auth_http_event_handler(esp_http_client_event_t *evt) {
             break;
     }
     return ESP_OK;
-}
-
-static bool load_wifi_credentials(char *out_ssid, size_t ssid_len, char *out_pass, size_t pass_len) {
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open("wifi", NVS_READONLY, &nvs);
-    if (err != ESP_OK) {
-        ESP_LOGI(TAG, "No 'wifi' namespace yet in NVS (err=%s)", esp_err_to_name(err));
-        return false;
-    }
-
-    size_t ssz = ssid_len;
-    size_t psz = pass_len;
-    err = nvs_get_str(nvs, "ssid", out_ssid, &ssz);
-    if (err != ESP_OK) {
-        ESP_LOGI(TAG, "SSID not found in NVS");
-        nvs_close(nvs);
-        return false;
-    }
-    err = nvs_get_str(nvs, "pass", out_pass, &psz);
-    if (err != ESP_OK) {
-        ESP_LOGI(TAG, "Password not found in NVS");
-        nvs_close(nvs);
-        return false;
-    }
-    nvs_close(nvs);
-    ESP_LOGI(TAG, "Loaded Wi-Fi creds from NVS: SSID='%s'", out_ssid);
-    return true;
 }
 
 /* NEW: pre‑provision controller discovery helper (always runs in provisioning mode) */

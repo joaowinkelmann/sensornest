@@ -54,5 +54,6 @@
   "selectController": "Select Controller",
   "workerName": "Device Name",
   "availableControllers": "Available Controllers",
-  "bindWorker": "Bind Device"
+  "bindWorker": "Bind Device",
+  "workerBound": "Device Successfully Bound"
 }

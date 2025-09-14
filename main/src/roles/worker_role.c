@@ -152,9 +152,16 @@ esp_err_t worker_role_start(void) {
 
     espnow_manager_init();
     esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR); // Enable long-range mode for connecting with the Controller's SoftAP
+    ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(48)); // 20 dBm
     espnow_manager_register_callbacks(worker_send_cb, worker_recv_cb);
     espnow_manager_config_role(false);
     espnow_manager_enable_power_saving(); // Enable power saving for worker
+
+    // get wifi power
+    int8_t power = 0;
+    esp_wifi_get_max_tx_power(&power);
+    
+    ESP_LOGI(TAG_WR, "ESP-NOW started with power set to %d (0.25 dBm).", power);
 
     load_controller_binding();
 

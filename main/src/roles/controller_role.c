@@ -284,8 +284,11 @@ esp_err_t controller_role_start(void) {
         nvs_close(nvs);
     }
     espnow_manager_start_controller_beacon(ctrl_name, 1000); // shorter interval for better discovery while testing
-    ESP_LOGI(TAG_CR, "Controller beacon activated name='%s' interval=%dms",
-             ctrl_name, 1000);
+    uint8_t mac[6];
+    esp_wifi_get_mac(WIFI_IF_STA, mac);
+
+    ESP_LOGI(TAG_CR, "Controller beacon activated: name='%s' interval=%dms, MAC='" MACSTR "'",
+            ctrl_name, 1000, MAC2STR(mac));
     uint8_t ch=espnow_manager_get_fixed_channel(); wifi_second_chan_t sc=WIFI_SECOND_CHAN_NONE;
     esp_wifi_get_channel(&ch,&sc);
     ESP_LOGI(TAG_CR, "Beacon active on channel=%u", ch);

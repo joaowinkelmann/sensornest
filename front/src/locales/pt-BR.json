@@ -53,5 +53,6 @@
   "selectController": "Selecionar Controlador",
   "workerName": "Nome desse Dispositivo",
   "availableControllers": "Controladores Disponíveis",
-  "bindWorker": "Vincular Dispositivo"
+  "bindWorker": "Vincular Dispositivo",
+  "workerBound": "Dispositivo Vinculado com Sucesso"
 }
