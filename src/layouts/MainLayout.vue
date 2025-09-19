@@ -14,6 +14,7 @@
         <q-tabs v-if="$q.screen.gt.sm" align="right" class="desktop-tabs">
           <q-route-tab to="/" label="Home" />
           <q-route-tab to="/meshes" label="Meshes" />
+          <q-route-tab to="/devices" label="Devices" />
           <q-route-tab to="/reports" label="My Reports" />
           <q-route-tab to="/data" label="View Data" />
           <q-route-tab to="/map-editor" label="Map Editor" />
@@ -45,6 +46,12 @@
             <q-icon name="grid_on" />
           </q-item-section>
           <q-item-section>Meshes</q-item-section>
+        </q-item>
+        <q-item clickable v-ripple to="/devices">
+          <q-item-section avatar>
+            <q-icon name="developer_board" />
+          </q-item-section>
+          <q-item-section>Devices</q-item-section>
         </q-item>
         <q-item clickable v-ripple to="/reports">
           <q-item-section avatar>

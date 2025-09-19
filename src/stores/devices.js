@@ -8,23 +8,31 @@ export const useDevicesStore = defineStore('devices', {
     error: null,
   }),
   actions: {
-    // now accepts a meshId and calls /meshes/{meshId}/devices
-    async fetchDevices(meshId) {
-      if (!meshId) {
-        this.devices = []
-        return
-      }
-      this.loading = true
-      this.error = null
+    async fetchDevices({ meshId = null, zoneId = null } = {}) {
+      this.loading = true;
+      this.error = null;
       try {
-        const response = await apiClient.get(`/meshes/${meshId}/devices`)
-        this.devices = response.data
+        let url = '/devices';
+        const params = {};
+        if (meshId) {
+          url = `/meshes/${meshId}/devices`;
+        }
+        if (zoneId) {
+          // This endpoint is not in the spec, but let's assume it could exist
+          // or filtering is done client-side. For now, we add it as a query param.
+          // A better approach would be to have a dedicated endpoint or filter on the client.
+          // Based on spec, we have /zones/{zoneId}/devices
+          url = `/zones/${zoneId}/devices`;
+        }
+
+        const response = await apiClient.get(url, { params });
+        this.devices = response.data;
       } catch (e) {
-        this.error = 'Failed to fetch devices.'
-        this.devices = []
-        console.error(e)
+        this.error = 'Failed to fetch devices.';
+        this.devices = [];
+        console.error(e);
       } finally {
-        this.loading = false
+        this.loading = false;
       }
     },
     clearDevices() {

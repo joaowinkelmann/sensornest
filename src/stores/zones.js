@@ -48,6 +48,19 @@ export const useZonesStore = defineStore('zones', {
         this.loading = false;
       }
     },
+    async fetchAllZones() {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await apiClient.get('/zones');
+        this.zones = response.data;
+      } catch (e) {
+        this.error = 'Failed to fetch all zones.';
+        console.error(e);
+      } finally {
+        this.loading = false;
+      }
+    },
     // Action to set the active zone
     setActiveZone(zoneId) {
       if (this.activeZoneId === zoneId) return; // Avoid re-fetching if already active

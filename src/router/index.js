@@ -47,6 +47,11 @@ const routes = [
         name: 'meshes',
         component: () => import('@/views/meshes/MeshesView.vue'),
       },
+      {
+        path: 'devices',
+        name: 'devices',
+        component: () => import('@/views/devices/DevicesView.vue'),
+      },
     ],
   },
   // Catch-all redirect
