@@ -1,5 +1,5 @@
 {
-  "name": "front-tempmesh",
+  "name": "front-sensornest",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "lint": "eslint . --fix",
     "format": "prettier --write src/",
-    "start": "pm2 serve dist 7772 --spa --name front-tempmesh"
+    "start": "pm2 serve dist 7772 --spa --name front-sensornest"
   },
   "dependencies": {
     "@quasar/extras": "^1.17.0",

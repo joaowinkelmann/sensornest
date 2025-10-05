@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 
-APP_NAME="front-tempmesh"
+APP_NAME="front-sensornest"
 APP_DIR="/var/www/html/$APP_NAME"
 LOG_FILE="$APP_DIR/run-deployment.log"
 DIST_DIR="$APP_DIR/dist"

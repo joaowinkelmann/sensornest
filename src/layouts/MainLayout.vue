@@ -7,7 +7,7 @@
           <!-- <q-avatar>
             <img src="">
           </q-avatar> -->
-          TempMesh
+          SensorNest
         </q-toolbar-title>
 
         <!-- Desktop Navigation -->

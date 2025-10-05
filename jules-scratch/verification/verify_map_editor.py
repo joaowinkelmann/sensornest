@@ -8,7 +8,7 @@ def run(playwright):
         page = context.new_page()
 
         # Register a new user
-        page.goto("http://localhost:3000/tempmesh/register")
+        page.goto("http://localhost:3000/sensornest/register")
         page.wait_for_load_state("networkidle")
 
         page.get_by_label("Name").fill("Jules")
@@ -21,7 +21,7 @@ def run(playwright):
 
         # Wait for registration to complete and redirect to login
         expect(page.get_by_text("Registration successful! Please log in.")).to_be_visible()
-        page.wait_for_url("http://localhost:3000/tempmesh/login")
+        page.wait_for_url("http://localhost:3000/sensornest/login")
 
         # Log in with the new user
         page.wait_for_load_state("networkidle")
@@ -42,7 +42,7 @@ def run(playwright):
         expect(page.locator(".text-h6:has-text('Meshes')")).to_be_visible()
 
         # Go to map editor
-        page.goto("http://localhost:3000/tempmesh/map-editor")
+        page.goto("http://localhost:3000/sensornest/map-editor")
         page.wait_for_load_state("networkidle")
 
         # Wait for map to load

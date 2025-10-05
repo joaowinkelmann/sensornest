@@ -1,4 +1,4 @@
-name: Tempmesh Front-end Deploy
+name: SensorNest Front-end Deploy
 
 on:
     push:

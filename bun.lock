@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "front-tempmesh",
+      "name": "front-sensornest",
       "dependencies": {
         "@quasar/extras": "^1.17.0",
         "axios": "^1.12.2",

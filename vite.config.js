@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
   // Carrega as variaveis de ambiente do arquivo .env
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    base: '/tempmesh/',
+    base: '/sensornest/',
     plugins: [
       vue({
         template: { transformAssetUrls }

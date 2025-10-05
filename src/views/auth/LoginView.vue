@@ -4,7 +4,7 @@
       <q-page class="flex flex-center bg-grey-2">
         <q-card style="width: 400px">
           <q-card-section class="q-pa-lg">
-            <div class="text-h5 q-mb-md text-center">Sign in to TempMesh</div>
+            <div class="text-h5 q-mb-md text-center">Sign in to SensorNest</div>
             <q-form @submit.prevent="handleLogin" class="q-gutter-md">
               <q-input
                 filled
