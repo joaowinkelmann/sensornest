@@ -1,14 +1,14 @@
 <template>
   <q-page class="q-pa-md">
     <div class="row q-col-gutter-md">
-      <div class="col-12 col-md-6 col-lg-4" v-for="item in dashboardItems" :key="item.title">
+      <div class="col-12 col-md-6 col-lg-4" v-for="item in dashboardItems" :key="item.titleKey">
         <q-card class="cursor-pointer" @click="navigate(item.route)">
           <q-card-section>
-            <div class="text-h6">{{ item.title }}</div>
-            <div class="text-subtitle2">{{ item.caption }}</div>
+            <div class="text-h6">{{ t(item.titleKey) }}</div>
+            <div class="text-subtitle2">{{ t(item.captionKey) }}</div>
           </q-card-section>
           <q-card-actions align="right">
-            <q-btn flat color="primary" :label="item.actionLabel" />
+            <q-btn flat color="primary" :label="t(item.actionLabelKey)" />
           </q-card-actions>
         </q-card>
       </div>
@@ -17,33 +17,35 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
+const { t } = useI18n();
 
 const dashboardItems = [
   {
-    title: 'Meshes',
-    caption: 'Admin for defining and editing the logged users',
-    actionLabel: 'Go to Meshes',
-    route: '/meshes' // Placeholder
+    titleKey: 'home.meshes.title',
+    captionKey: 'home.meshes.caption',
+    actionLabelKey: 'home.meshes.actionLabel',
+    route: '/meshes'
   },
   {
-    title: 'My reports',
-    caption: 'Personalized reports for device readings in meshes',
-    actionLabel: 'Go to Reports',
-    route: '/reports' // Placeholder
+    titleKey: 'home.reports.title',
+    captionKey: 'home.reports.caption',
+    actionLabelKey: 'home.reports.actionLabel',
+    route: '/reports'
   },
   {
-    title: 'View data',
-    caption: 'For future heatmap and interactive reading analysis',
-    actionLabel: 'Go to Data View',
-    route: '/data' // Placeholder
+    titleKey: 'home.data.title',
+    captionKey: 'home.data.caption',
+    actionLabelKey: 'home.data.actionLabel',
+    route: '/data'
   },
   {
-    title: 'Map editor',
-    caption: 'The currently implemented Leaflet vertex editor for Zones',
-    actionLabel: 'Go to Map Editor',
+    titleKey: 'home.mapEditor.title',
+    captionKey: 'home.mapEditor.caption',
+    actionLabelKey: 'home.mapEditor.actionLabel',
     route: '/map-editor'
   }
 ];

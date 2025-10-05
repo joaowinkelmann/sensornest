@@ -1,0 +1,24 @@
+{
+  "home": {
+    "meshes": {
+      "title": "Meshes",
+      "caption": "Admin for defining and editing the logged users",
+      "actionLabel": "Go to Meshes"
+    },
+    "reports": {
+      "title": "My reports",
+      "caption": "Personalized reports for device readings in meshes",
+      "actionLabel": "Go to Reports"
+    },
+    "data": {
+      "title": "View data",
+      "caption": "For future heatmap and interactive reading analysis",
+      "actionLabel": "Go to Data View"
+    },
+    "mapEditor": {
+      "title": "Map editor",
+      "caption": "The currently implemented Leaflet vertex editor for Zones",
+      "actionLabel": "Go to Map Editor"
+    }
+  }
+}

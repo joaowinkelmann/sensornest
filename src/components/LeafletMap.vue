@@ -34,9 +34,9 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import L from 'leaflet';
 import MapControls from './MapControls.vue';
-import { useMapManager } from './composables/useMapManager';
-import { useZoneRenderer } from './composables/useZoneRenderer';
-import { useDeviceRenderer } from './composables/useDeviceRenderer';
+import { useMapManager } from '../composables/useMapManager';
+import { useZoneRenderer } from '../composables/useZoneRenderer';
+import { useDeviceRenderer } from '../composables/useDeviceRenderer';
 
 // Define props
 const props = defineProps({
