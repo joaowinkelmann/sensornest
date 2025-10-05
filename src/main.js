@@ -10,6 +10,7 @@ import { Quasar, Dialog, Notify } from 'quasar'
 
 import App from './App.vue'
 import router from './router'
+import i18n from "./plugins/i18n";
 
 const app = createApp(App)
 
@@ -21,5 +22,6 @@ app.use(Quasar, {
     notify: { position: 'bottom-left', timeout: 3000 },
   },
 })
+app.use(i18n)
 
 app.mount('#app')
