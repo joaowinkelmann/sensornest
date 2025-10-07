@@ -13,7 +13,7 @@
 #include "net/wifi_manager.h"
 #include "indicator/led_indicator.h"
 
-// Forward declare (temporarily reusing code from tempmesh.c until fully moved)
+// Forward declare (temporarily reusing code from sensornest.c until fully moved)
 extern bool send_batched_data(void);
 extern void perform_sensor_reading(void);
 extern void simulate_or_sleep(uint64_t secs);
@@ -31,7 +31,7 @@ extern RTC_DATA_ATTR bool device_config_initialized;
 extern RTC_DATA_ATTR int device_readingsPerBatch;
 extern RTC_DATA_ATTR int device_wakeUpInterval;
 
-/* Hooks implemented in tempmesh.c we still reuse */
+/* Hooks implemented in sensornest.c we still reuse */
 extern bool send_batched_data(void);          // will be internalized later
 extern void perform_sensor_reading(void);     // same
 extern void simulate_or_sleep(uint64_t secs); // same

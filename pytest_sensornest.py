@@ -10,8 +10,8 @@ from pytest_embedded_idf.utils import idf_parametrize
 
 @pytest.mark.generic
 @idf_parametrize('target', ['supported_targets'], indirect=['target'])
-def test_tempmesh(dut: IdfDut) -> None:
+def test_sensornest(dut: IdfDut) -> None:
     # check and log bin size
-    binary_file = os.path.join(dut.app.binary_path, 'tempmesh.bin')
+    binary_file = os.path.join(dut.app.binary_path, 'sensornest.bin')
     bin_size = os.path.getsize(binary_file)
-    logging.info('tempmesh_bin_size : {}KB'.format(bin_size // 1024))
+    logging.info('sensornest_bin_size : {}KB'.format(bin_size // 1024))

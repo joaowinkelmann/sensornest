@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS
-        "src/app/tempmesh.c"
+        "src/app/sensornest.c"
         "src/security/certs.c"
         "src/security/pmk.c"
         "src/sensor/sensor.c"

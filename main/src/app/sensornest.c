@@ -70,7 +70,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 static void factory_reset_button_task(void *pvParameters);
 static void do_factory_reset(void);
 
-static const char *TAG = "MAIN_APP";
+static const char *TAG = "SensorNest";
 extern const char *cloud_ca_pem;
 
 // --- NEW: Struct to hold response data for the event handler ---

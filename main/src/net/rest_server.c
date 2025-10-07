@@ -1361,7 +1361,7 @@ static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
     }
 
     // If a fresh scan wasn't explicitly requested, prefer the cached pre-provision results
-    // saved by [`wifi_boot_flow`](main/src/app/tempmesh.c) under NVS key "pre_ctrls".
+    // saved by [`wifi_boot_flow`](main/src/app/sensornest.c) under NVS key "pre_ctrls".
     if (!force && !fast) {
         nvs_handle_t nvs;
         if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {

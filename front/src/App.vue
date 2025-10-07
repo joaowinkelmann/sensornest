@@ -2,7 +2,7 @@
   <q-layout view="hHh lpR fFf">
     <q-header class="bg-primary text-white">
       <q-toolbar>
-        <q-toolbar-title>Tempmesh Setup</q-toolbar-title>
+        <q-toolbar-title>SensorNest Setup</q-toolbar-title>
         <q-space />
         <q-btn
           dense

@@ -30,13 +30,13 @@ void controller_role_set_debug(bool enabled) {
     s_debug = enabled;
 }
 
-/* Reuse RTC vars defined in tempmesh.c */
+/* Reuse RTC vars defined in sensornest.c */
 extern RTC_DATA_ATTR bool time_is_set;
 extern RTC_DATA_ATTR bool device_config_initialized;
 extern RTC_DATA_ATTR int  device_readingsPerBatch;
 extern RTC_DATA_ATTR int  device_wakeUpInterval;
 
-/* Reuse helper functions still in tempmesh.c */
+/* Reuse helper functions still in sensornest.c */
 extern bool send_batched_data(void);
 
 /* Local helpers (duplicated from worker for now; later unify) */
