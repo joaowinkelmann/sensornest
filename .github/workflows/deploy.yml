@@ -20,7 +20,9 @@ jobs:
               uses: easingthemes/ssh-deploy@main
               env:
                     SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
-                    ARGS: "-rltgoDzvO --delete"
+                    # -a implies -rlptgoD. Kept compression and omit-dir-times, removed -v
+                    # --info=stats prints only a brief summary at the end.
+                    ARGS: "-azO --delete --info=stats"
                     SOURCE: "./"
                     REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
                     REMOTE_USER: ${{ secrets.REMOTE_USER }}
