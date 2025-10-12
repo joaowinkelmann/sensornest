@@ -36,8 +36,6 @@ jobs:
                         .scripts/halt.sh
                     SCRIPT_AFTER: |
                         whoami
-                        ls -al
-                        echo $RSYNC_STDOUT
                         cd ${{ secrets.TARGET_DIR }}
                         sudo systemctl start nginx
                         echo "Starting Node process..."
