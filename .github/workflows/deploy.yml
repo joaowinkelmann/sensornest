@@ -29,15 +29,19 @@ jobs:
                     TARGET: ${{ secrets.TARGET_DIR }}
                     EXCLUDE: "/node_modules/, **.env, .env.local, .gitignore, .git/, .github/, .vscode/"
                     SCRIPT_BEFORE: |
+                        set -euo pipefail
                         echo "===> Starting deployment"
                         sudo systemctl stop nginx
-                        echo "Halting Node process..."
+                        echo "|||| Running halt.sh..."
                         cd ${{ secrets.TARGET_DIR }}
-                        .scripts/halt.sh
+                        bash .scripts/halt.sh
                     SCRIPT_AFTER: |
+                        set -euo pipefail
+                        set -x
                         whoami
                         cd ${{ secrets.TARGET_DIR }}
                         sudo systemctl start nginx
-                        echo "Starting Node process..."
-                        .scripts/run.sh
+                        echo "|||| Running run.sh..."
+                        chmod +x .scripts/*.sh
+                        bash .scripts/run.sh
                         echo "===> Finished deployment"
