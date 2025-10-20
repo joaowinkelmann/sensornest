@@ -40,10 +40,9 @@ static bool g_debug_mode_enabled = false;
 // Track one‑time creation/initialization of STA netif & Wi-Fi driver
 static bool s_sta_netif_created = false;
 static bool s_wifi_inited = false;
-static bool s_wifi_started = false;
 
 // Constants
-#define us_PER_SECOND 1000000ULL  /* Conversion factor for micro seconds to seconds */
+#define us_PER_SECOND 1000000ULL  /* Conversão de micro segundos para segundos*/
 
 // Config do sensor
 #define DHT_TYPE DHT_TYPE_DHT11
@@ -53,7 +52,6 @@ static bool s_wifi_started = false;
 // --- WiFi connection logic (declarations moved up for visibility) ---
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
-static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
 // BOOT button: per-target defaults.
 #ifndef BOOT_BTN_GPIO
@@ -67,13 +65,13 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 #endif
 
 #define BOOT_BTN_HOLD_RESET_MS  300           // segurar BOOT por 0.3 segundo para reset de fábrica
+#define PRE_PROVISION_SCAN_MS   30000         // duração do scan pré-provisionamento (30s)
 static void factory_reset_button_task(void *pvParameters);
 static void do_factory_reset(void);
 
 static const char *TAG = "SensorNest";
 extern const char *cloud_ca_pem;
 
-// --- NEW: Struct to hold response data for the event handler ---
 typedef struct {
     char *buffer;
     int buffer_size;
@@ -108,7 +106,6 @@ static void go_to_sleep(uint64_t sleep_time_seconds) {
         vTaskDelay(pdMS_TO_TICKS(sleep_time_seconds * 1000));
         return;
     }
-
 
     ESP_LOGI(TAG, "Entrando em deep sleep por %llu segundos.", sleep_time_seconds);
     
@@ -295,9 +292,6 @@ void app_main(void)
     bool setup_complete = wifi_boot_flow();
 
     if (setup_complete) {
-        // Se a configuração estiver completa, inicia a lógica principal de coleta e envio.
-        // Esta função não retornará, pois colocará o dispositivo para dormir.
-        // collect_and_send_task();
         worker_role_set_debug(g_debug_mode_enabled);
         controller_role_set_debug(g_debug_mode_enabled);
         esp_err_t r = role_manager_start();
@@ -309,7 +303,6 @@ void app_main(void)
     } else {
         ESP_LOGW(TAG, "Modo de provisionamento iniciado.");
         // O dispositivo permanecerá acordado no modo de provisionamento.
-        // --- FIX: Keep main task alive in provisioning mode ---
         while(1) {
             vTaskDelay(pdMS_TO_TICKS(10000));
         }
@@ -337,19 +330,18 @@ esp_err_t _auth_http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
-/* NEW: pre‑provision controller discovery helper (always runs in provisioning mode) */
 static void run_pre_provision_controller_scan(int duration_ms) {
-    if (duration_ms < 1000) duration_ms = 1000;
-    if (duration_ms > 30000) duration_ms = 30000;
-    ESP_LOGI(TAG, "Pre-provision: scanning for controllers (%d ms).", duration_ms);
+    if (duration_ms < 1000) duration_ms = 1000; // minimo de 1s
+    if (duration_ms > 30000) duration_ms = 30000; // capa em 30s
+    ESP_LOGI(TAG, "Pré-provisionamento: escaneando controladores por %d ms...", duration_ms);
     if (espnow_manager_init() != ESP_OK) {
-        ESP_LOGW(TAG, "ESPNOW init failed; skipping controller scan.");
+        ESP_LOGW(TAG, "Falhou ao inciar o ESP-NOW para escaneamento.");
         return;
     }
-    espnow_manager_config_role(false); // Configure as worker for scanning
+    espnow_manager_config_role(false); // enquanto ta escaneando, age como worker
     char *json = NULL;
     if (espnow_manager_collect_controllers(duration_ms, &json) == ESP_OK && json) {
-        ESP_LOGI(TAG, "Controller discovery result: %s", json);
+        ESP_LOGI(TAG, "Controladores encontrados: %s", json);
         nvs_handle_t nvs;
         if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
             nvs_set_str(nvs, "pre_ctrls", json);
@@ -358,12 +350,11 @@ static void run_pre_provision_controller_scan(int duration_ms) {
         }
         free(json);
     } else {
-        ESP_LOGI(TAG, "No controllers discovered in pre-provision scan.");
+        ESP_LOGI(TAG, "Nenhum controlador encontrado durante o escaneamento.");
         free(json);
     }
 }
 
-// --- REFACTORED: Boot flow orchestrator ---
 static bool wifi_boot_flow(void) {
     char stage[32] = {0};
     nvs_handle_t nvs;
@@ -381,23 +372,22 @@ static bool wifi_boot_flow(void) {
     }
 
     if (strcmp(stage, "complete") == 0) {
-        ESP_LOGI(TAG, "Setup complete (stage='%s'). Proceeding to main task.", stage);
+        ESP_LOGI(TAG, "Setup completo (stage='%s'). Iniciando fluxo principal.", stage);
         led_indicator_provisioning_stop();
         return true;
     }
 
-    /* ALWAYS attempt a short controller discovery while in provisioning/factory_reset/new state */
+    /* Período de descoberta pré-provisionamento */
     led_indicator_discovery_pulse_start();
-    run_pre_provision_controller_scan(30000);
+    run_pre_provision_controller_scan(PRE_PROVISION_SCAN_MS);
     led_indicator_discovery_pulse_stop();
 
-    ESP_LOGI(TAG, "Setup not complete (stage: '%s'). Starting provisioning server.", stage[0] ? stage : "new");
+    ESP_LOGI(TAG, "Setup não completo (stage: '%s'). Iniciando provisionamento.", stage[0] ? stage : "new");
     led_indicator_provisioning_start();
     start_softap_and_rest_server();
     return false;
 }
 
-// --- NEW: Start SoftAP with "ESP-{shortID}" and launch REST server ---
 static void start_softap_and_rest_server(void) {
     // Create both AP and STA default interfaces so we can scan/connect while AP is up
     // It's safe to call these multiple times.
@@ -441,11 +431,11 @@ static void start_softap_and_rest_server(void) {
 
     ESP_LOGI(TAG, "SoftAP SSID: %s @ ch. %d", ssid, wifi_config.ap.channel);
 
-    // Start the REST server
+    // Inicia o servidor REST
     ESP_ERROR_CHECK(mount_www_fs());
     ESP_ERROR_CHECK(start_rest_server("/www"));
 
-    // Start the captive DNS task
+    // Inicia o DNS Cativo
     xTaskCreate(&captive_dns_task, "captive_dns", 4096, NULL, 3, NULL);
 }
 
@@ -470,7 +460,7 @@ static esp_err_t mount_www_fs(void) {
     return ESP_OK;
 }
 
-// --- NEW: persist setup stage helper ---
+// Guarda o estágio de setup para o NVS
 static void set_setup_stage(const char *stage) {
     nvs_handle_t nvs;
     if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {

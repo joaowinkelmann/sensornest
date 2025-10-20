@@ -498,9 +498,7 @@ CONFIG_PARTITION_TABLE_MD5=y
 #
 # Example Configuration
 #
-CONFIG_EXAMPLE_MDNS_HOST_NAME="dashboard"
 CONFIG_EXAMPLE_WEB_MOUNT_POINT="/www"
-CONFIG_EXAMPLE_DEPLOY_WEB_PAGES=y
 # end of Example Configuration
 
 #

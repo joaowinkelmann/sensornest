@@ -39,12 +39,6 @@ void batch_store_clear(void) {
     s_count = 0;
 }
 
-static void format_time(time_t ts, char *buf, size_t len) {
-    struct tm tm_info;
-    gmtime_r(&ts, &tm_info);
-    strftime(buf, len, "%Y-%m-%dT%H:%M:%SZ", &tm_info);
-}
-
 esp_err_t batch_store_build_json(char **out_json) {
     if (!out_json) return ESP_ERR_INVALID_ARG;
     *out_json = NULL;

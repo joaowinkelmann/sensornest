@@ -335,7 +335,6 @@ const status = ref(null);
 const pollTimer = ref(null);
 const debugEnabled = ref(false);
 
-// --- NEW: Login and device/mesh state ---
 const userEmail = ref("");
 const userPassword = ref("");
 const loginPasswordVisible = ref(false);
@@ -588,19 +587,18 @@ async function doLogin() {
   }
 }
 
-// --- NEW: Methods for device and mesh flow ---
 async function checkDevice() {
-  console.log("Checking device status from server..."); // <-- UPDATED
+  console.log("Checking device status from server...");
   try {
     // This call is redundant if login response already provides the device.
     // We keep it for flows where login is not the entry point (e.g. page refresh).
     const dev = await api.getDevice();
-    console.log("getDevice API response:", dev); // <-- UPDATED
+    console.log("getDevice API response:", dev);
     device.value = dev;
-    console.log("Device state after checkDevice:", device.value); // <-- ADDED
+    console.log("Device state after checkDevice:", device.value);
     // Always fetch meshes to display the name if already bound
     if (device.value?.id) {
-      console.log("Device has ID, fetching meshes..."); // <-- ADDED
+      console.log("Device has ID, fetching meshes...");
       await fetchMeshes();
     }
   } catch (e) {
@@ -623,7 +621,7 @@ async function registerDevice() {
       newDeviceReadingsPerBatch.value,
       newDeviceWakeUpInterval.value
     );
-    console.log("Register Response:", regResponse); // <-- Added log
+    console.log("Register Response:", regResponse);
     $q.notify({ type: "positive", message: t("deviceRegistered") });
     await checkDevice(); // Re-check to proceed to mesh selection
   } catch (e) {
@@ -634,7 +632,7 @@ async function registerDevice() {
 async function fetchMeshes() {
   try {
     const meshesResponse = await api.getMeshes();
-    console.log("Meshes:", meshesResponse); // <-- Added log
+    console.log("Meshes:", meshesResponse);
     meshes.value = meshesResponse;
   } catch (e) {
     showError(e, "failedToFetchMeshes");

@@ -138,7 +138,6 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
 
-  // --- NEW: Cloud device and mesh APIs ---
   getDevice: () => doFetch(`${base}/api/v1/cloud/device`),
   registerDevice: (name, role, meshId, readingsPerBatch, wakeUpInterval) =>
     doFetch(`${base}/api/v1/cloud/device/register`, {

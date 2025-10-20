@@ -77,7 +77,7 @@ static void fetch_remote_config(void) {
     }
 }
 
-/* NEW: accumulate worker batches (raw JSON) for merge */
+// Acumula 6 lotes de workers para envio conjunto
 #define MAX_WORKER_BATCHES 6
 static char *s_worker_batches[MAX_WORKER_BATCHES];
 static int   s_worker_batch_count = 0;

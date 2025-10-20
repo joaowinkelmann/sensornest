@@ -58,17 +58,13 @@ static esp_err_t rs_wifi_scan_get_handler(httpd_req_t *req);
 static esp_err_t rs_wifi_status_get_handler(httpd_req_t *req);
 static esp_err_t rs_probe_generate_204_handler(httpd_req_t *req);
 static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req);
-static esp_err_t rs_captive_redirect_handler(httpd_req_t *req);
-// REMOVED: static esp_err_t rs_cloud_login_post_handler(httpd_req_t *req);
 static esp_err_t rs_cloud_device_get_handler(httpd_req_t *req);
 static esp_err_t rs_cloud_meshes_get_handler(httpd_req_t *req);
-// static esp_err_t rs_cloud_device_bind_post_handler(httpd_req_t *req);
 static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req);
 static esp_err_t rs_cors_options_handler(httpd_req_t *req);
 static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx);
 static void wifi_test_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req);
-static bool rs_has_station_ip(void);
 static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req);
 static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req);
 
@@ -102,8 +98,6 @@ static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap) {
     return true;
 }
 
-#if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
-/* Set HTTP response content type according to file extension */
 static esp_err_t rs_set_content_type_from_file(httpd_req_t *req, const char *filepath)
 {
     const char *type = "text/plain";
@@ -160,29 +154,28 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
             if (httpd_resp_send_chunk(req, chunk, read_bytes) != ESP_OK) {
                 // --- NEW: Add a small delay on EAGAIN to allow client to catch up ---
                 if (httpd_get_global_transport_ctx(req->handle) && errno == EAGAIN) {
-                    vTaskDelay(pdMS_TO_TICKS(50)); // Wait 50ms
+                    vTaskDelay(pdMS_TO_TICKS(50)); // segura por 50ms
                     if (httpd_resp_send_chunk(req, chunk, read_bytes) == ESP_OK) {
                         continue; // Retry succeeded
                     }
                 }
                 fclose(fd);
-                ESP_LOGE(TAG, "File sending failed!");
+                ESP_LOGE(TAG, "Falhou ao enviar arquivo");
                 /* Abort sending file */
                 httpd_resp_sendstr_chunk(req, NULL);
                 /* Respond with 500 Internal Server Error */
-                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to send file");
+                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Falhou ao enviar arquivo");
                 return ESP_FAIL;
             }
         }
     } while (read_bytes > 0);
     /* Close file after sending complete */
     fclose(fd);
-    ESP_LOGI(TAG, "File sending complete: %s", filepath);
+    ESP_LOGI(TAG, "Envio realizado com sucesso: %s", filepath);
     /* Respond with an empty chunk to signal HTTP response completion */
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
-#endif // CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
 
 /* Simple handler for getting system handler */
 static esp_err_t rs_system_info_get_handler(httpd_req_t *req)
@@ -211,7 +204,6 @@ static void wifi_test_event_handler(void* arg, esp_event_base_t event_base, int3
     }
 }
 
-// --- NEW: Helper to test Wi-Fi credentials and save on success ---
 static esp_err_t test_and_save_wifi_credentials(const char *ssid, const char *pass) {
     s_wifi_event_group = xEventGroupCreate();
 
@@ -236,7 +228,7 @@ static esp_err_t test_and_save_wifi_credentials(const char *ssid, const char *pa
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_connect());
 
-    ESP_LOGI(TAG, "Testing Wi-Fi connection to SSID: %s", ssid);
+    ESP_LOGI(TAG, "Testando conexão Wi-Fi no SSID: %s", ssid);
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
@@ -265,7 +257,7 @@ static esp_err_t test_and_save_wifi_credentials(const char *ssid, const char *pa
     }
 }
 
-/* --- NEW: POST /api/v1/device/role/clear --- */
+/* --- POST /api/v1/device/role/clear --- */
 static esp_err_t rs_device_role_clear_post_handler(httpd_req_t *req) {
     nvs_handle_t nvs;
     esp_err_t err = nvs_open("device", NVS_READWRITE, &nvs);
@@ -290,7 +282,7 @@ static esp_err_t rs_device_role_clear_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* --- NEW: Helper to set setup stage in NVS --- */
+// Setter para o estágio de configuração no NVS
 static void nvs_set_setup_stage(const char *stage) {
     nvs_handle_t nvs;
     if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
@@ -300,7 +292,7 @@ static void nvs_set_setup_stage(const char *stage) {
     }
 }
 
-/* --- NEW: POST /api/v1/device/role --- */
+/* --- POST /api/v1/device/role --- */
 static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
     int total_len = req->content_len;
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
@@ -371,7 +363,7 @@ static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* --- NEW: POST /api/v1/provision/user --- */
+/* --- POST /api/v1/provision/user --- */
 static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
     if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
@@ -463,16 +455,7 @@ static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// OPTIONAL: add helper before rs_user_creds_post_handler to ensure STA has IP
-static bool rs_has_station_ip(void) {
-    esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (!sta) return false;
-    esp_netif_ip_info_t ip;
-    if (esp_netif_get_ip_info(sta, &ip) != ESP_OK) return false;
-    return ip.ip.addr != 0;
-}
-
-/* --- NEW: POST /api/v1/device/debug --- */
+/* --- POST /api/v1/device/debug --- */
 static esp_err_t rs_device_debug_post_handler(httpd_req_t *req) {
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
     if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
@@ -657,7 +640,7 @@ static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req)
     if (err == ESP_OK) err = nvs_get_str(nvs, "pass", (char*)cfg.sta.password, &psz);
     nvs_close(nvs);
     if (err != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid creds");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "credenciais inválidas");
         return ESP_FAIL;
     }
 
@@ -667,7 +650,6 @@ static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req)
     esp_wifi_start();
     esp_wifi_connect();
 
-    // --- NEW: mark as connecting ---
     nvs_set_setup_stage("connecting");
 
     ESP_LOGI(TAG, "Retrying Wi-Fi connection with SSID: %s", cfg.sta.ssid);
@@ -677,7 +659,6 @@ static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* --- NEW: Wi-Fi scan (GET /api/v1/wifi/scan) --- */
 static esp_err_t rs_wifi_scan_get_handler(httpd_req_t *req) {
     // First try cached prefetch result
     char *cached = NULL;
@@ -745,7 +726,7 @@ static esp_err_t rs_wifi_scan_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* --- NEW: Wi-Fi status (GET /api/v1/wifi/status) --- */
+/* --- Wi-Fi status (GET /api/v1/wifi/status) --- */
 static esp_err_t rs_wifi_status_get_handler(httpd_req_t *req) {
     cJSON *root = cJSON_CreateObject();
     bool connected = false;
@@ -806,35 +787,7 @@ static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);
 }
 
-/* catch-all GET -> redirect to landing page (index.html) */
-// Wrap the captive redirect handler so it's only compiled when needed
-#if !CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
-static esp_err_t rs_captive_redirect_handler(httpd_req_t *req)
-{
-    char host[128] = {0}, ua[128] = {0}, referer[128] = {0};
-    httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
-    httpd_req_get_hdr_value_str(req, "User-Agent", ua, sizeof(ua));
-    httpd_req_get_hdr_value_str(req, "Referer", referer, sizeof(referer));
-
-    ESP_LOGI(TAG, "captive redirect: uri=%s host=%s UA='%s' Referer='%s'",
-             req->uri, host[0]?host:"(no host)", ua, referer);
-
-    const char *target = "/";
-    char location[256];
-    snprintf(location, sizeof(location), "http://192.168.4.1%s", target);
-
-    ESP_LOGI(TAG, "External domain redirect: %s -> %s", req->uri, location);
-
-    httpd_resp_set_status(req, "302 Found");
-    httpd_resp_set_hdr(req, "Location", location);
-    httpd_resp_sendstr(req, "");
-    return ESP_OK;
-}
-#endif
-
-// --- REMOVED: rs_cloud_login_post_handler is now redundant ---
-
-// --- NEW: GET /api/v1/cloud/device?mac=AA:BB:CC:DD:EE:FF ---
+// --- GET /api/v1/cloud/device?mac=AA:BB:CC:DD:EE:FF ---
 static esp_err_t rs_cloud_device_get_handler(httpd_req_t *req) {
     char query[128] = {0};
     char mac[32] = {0};
@@ -864,7 +817,7 @@ static esp_err_t rs_cloud_device_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// --- NEW: GET /api/v1/cloud/meshes ---
+// --- GET /api/v1/cloud/meshes ---
 static esp_err_t rs_cloud_meshes_get_handler(httpd_req_t *req) {
     char *meshes_json = NULL;
     esp_err_t err = rc_get_meshes(&meshes_json);
@@ -1049,7 +1002,6 @@ static esp_err_t rs_cloud_device_update_post_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* --- REFACTORED: Generic handler for all CORS pre-flight OPTIONS requests --- */
 static esp_err_t rs_cors_options_handler(httpd_req_t *req) {
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "POST, GET, OPTIONS");
@@ -1058,7 +1010,6 @@ static esp_err_t rs_cors_options_handler(httpd_req_t *req) {
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 }
-
 
 esp_err_t start_rest_server(const char *base_path)
 {
@@ -1187,7 +1138,7 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &cloud_device_get_uri);
 
-    // --- NEW: Mesh selection endpoints ---
+    // Busca as meshes
     httpd_uri_t cloud_meshes_get_uri = {
         .uri = "/api/v1/cloud/meshes",
         .method = HTTP_GET,
@@ -1226,7 +1177,7 @@ esp_err_t start_rest_server(const char *base_path)
     /* Register captive portal probe handlers (specific paths) */
     rs_register_captive_handlers(server, rest_context);
 
-    // --- NEW: Additional handlers for worker/controller provisioning ---
+    // Traz os controllers encontrados durante a escaneamento
     httpd_uri_t controllers_scan_get = {
         .uri      = "/api/v1/controllers/scan",
         .method   = HTTP_GET,
@@ -1243,24 +1194,15 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &worker_bind_post);
 
-#if CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
-    /* Register file server LAST as a fallback */
+    // último fallback para o resto dos GETs
     httpd_uri_t common_get_uri = {
         .uri = "/*",
         .method = HTTP_GET,
         .handler = rs_rest_common_get_handler,
         .user_ctx = rest_context
     };
+
     httpd_register_uri_handler(server, &common_get_uri);
-#else
-    httpd_uri_t wildcard = {
-        .uri = "/*",
-        .method = HTTP_GET,
-        .handler = rs_captive_redirect_handler,
-        .user_ctx = rest_context
-    };
-    httpd_register_uri_handler(server, &wildcard);
-#endif
 
     return ESP_OK;
 err:
@@ -1273,9 +1215,6 @@ err:
 //  --- ADD forward declarations for captive probe handlers & registrar ---
 static esp_err_t rs_probe_generate_204_handler(httpd_req_t *req);
 static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req);
-#if !CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
-static esp_err_t rs_captive_redirect_handler(httpd_req_t *req);
-#endif
 
 // Registrar to fix implicit declaration error
 static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx) {

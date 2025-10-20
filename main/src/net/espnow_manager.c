@@ -28,7 +28,6 @@ static espnow_mgr_rx_cb_t s_recv_cb = NULL;
 static bool s_inited = false;
 static bool s_is_controller = false;
 
-/* NEW: fixed channel (0 = none) */
 static uint8_t s_fixed_channel = 0;
 
 #define CTRL_PREFIX "CTRL|"
@@ -51,10 +50,7 @@ static TaskHandle_t s_beacon_task = NULL;
 static char s_beacon_name[33] = "Controller";
 static int s_beacon_interval_ms = 2000;
 
-// Forward
 static void update_beacon_payload_locked(void);
-static void dump_hex(const uint8_t *d, int len, int max);
-// Correct the signature of the internal send callback forward declaration
 static void internal_send_cb(const esp_now_send_info_t *info, esp_now_send_status_t status);
 static void internal_recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len);
 static void espnow_manager_task(void *pvParameter);
@@ -64,20 +60,6 @@ static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data,
 static uint8_t s_beacon_payload[64];
 static size_t  s_beacon_payload_len = 0;
 #define CTRL_BEACON_STACK   3072  // words (~12 KB). Adjust if still low.
-
-static void dump_hex(const uint8_t *d, int len, int max)
-{
-    if (!d || len <= 0) return;
-    if (max > 64) max = 64;
-    char line[3*64+1];
-    int n = len < max ? len : max;
-    int o = 0;
-    for (int i=0;i<n && o < (int)sizeof(line)-3;i++) {
-        o += snprintf(line+o, sizeof(line)-o, "%02X ", d[i]);
-    }
-    line[o]=0;
-    ESP_LOGD(TAG_EN, "RX HEX (%d/%d): %s", n, len, line);
-}
 
 /* Single beacon send */
 static void send_controller_beacon_once(bool log_always) {
@@ -188,7 +170,7 @@ static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data,
         return;
     }
 
-    // New format: CTRL|<channel>|<name>
+    // CTRL|<channel>|<name>
     const char *payload = (const char*)data + strlen(CTRL_PREFIX);
     char *pipe = strchr(payload, '|');
     if (!pipe) {
@@ -426,7 +408,6 @@ esp_err_t espnow_manager_config_role(bool is_controller) {
     ESP_ERROR_CHECK(esp_wifi_get_mode(&mode));
 
     if (is_controller && mode == WIFI_MODE_STA) {
-        // ... existing logic to set APSTA mode ...
         wifi_config_t apcfg = {0};
         uint8_t mac[6];
         esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
@@ -446,8 +427,6 @@ esp_err_t espnow_manager_config_role(bool is_controller) {
         esp_wifi_get_max_tx_power(&power);
         
         ESP_LOGI(TAG_EN, "ESP-NOW started with power set to %d (0.25 dBm).", power);
-
-
     }
 
     // Add broadcast peer(s)

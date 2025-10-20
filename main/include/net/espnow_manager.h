@@ -3,9 +3,7 @@
 #include <stdbool.h>
 #include "esp_err.h"
 #include "esp_wifi_types.h"
-#include "esp_now.h" // For esp_now_send_status_t
-
-// --- NEW: Event-driven, queue-based architecture ---
+#include "esp_now.h"
 
 typedef enum {
     ESPNOW_MGR_SEND_CB,
@@ -79,5 +77,5 @@ uint8_t  espnow_manager_get_fixed_channel(void);
 void espnow_manager_set_controller_mac(const uint8_t mac[6]);
 bool espnow_manager_get_controller_mac(uint8_t mac[6]);
 
-/* NEW: Configure ESP-NOW for power-saving mode (for worker) */
+// Configura o modo de economia de energia do ESP-NOW (para worker)
 esp_err_t espnow_manager_enable_power_saving(void);

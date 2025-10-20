@@ -89,52 +89,6 @@ bool rc_has_token(void) {
     return (err == ESP_OK && need > 1);
 }
 
-/* --- Generic HTTP response accumulation (simple blocking) --- */
-static esp_err_t rc_http_fetch(esp_http_client_handle_t client, char **out_buf, int *out_len, int limit) {
-    if (!out_buf) return ESP_ERR_INVALID_ARG;
-    *out_buf = NULL;
-
-    // Ensure the request is actually performed before trying to read
-    esp_err_t err = esp_http_client_perform(client);
-    if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "http perform failed: %s", esp_err_to_name(err));
-        return err;
-    }
-
-    int status = esp_http_client_get_status_code(client);
-    int content_len = esp_http_client_get_content_length(client);
-    bool is_chunked = esp_http_client_is_chunked_response(client);
-    ESP_LOGD(RC_TAG, "http fetch: status=%d content_len=%d chunked=%d", status, content_len, is_chunked);
-
-    int buf_size = content_len > 0 ? content_len : limit;
-    if (buf_size > limit) buf_size = limit;
-    if (buf_size <= 0) buf_size = 1;
-
-    char *buf = malloc(buf_size + 1);
-    if (!buf) {
-        ESP_LOGE(RC_TAG, "http fetch: alloc failed for %d bytes", buf_size);
-        return ESP_ERR_NO_MEM;
-    }
-
-    // Use esp_http_client_read_response which handles chunked responses and reads until EOF or buffer fills.
-    int read_len = esp_http_client_read_response(client, buf, buf_size);
-    if (read_len < 0) {
-        ESP_LOGE(RC_TAG, "http fetch: read_response failed: %d", read_len);
-        free(buf);
-        return ESP_FAIL;
-    }
-
-    // If response was larger than buffer, try to capture remaining bytes in a loop (best-effort)
-    if (read_len == buf_size && !is_chunked && content_len > buf_size) {
-        ESP_LOGW(RC_TAG, "http fetch: response truncated (content_len=%d buf=%d)", content_len, buf_size);
-    }
-
-    buf[read_len] = '\0';
-    *out_buf = buf;
-    if (out_len) *out_len = read_len;
-    return ESP_OK;
-}
-
 /* --- Public: format own station MAC (uppercase colon separated) --- */
 char *rc_format_own_mac(char *dst, size_t len) {
     if (len < 18) return NULL;
@@ -144,10 +98,6 @@ char *rc_format_own_mac(char *dst, size_t len) {
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     return dst;
 }
-
-/* Replace previous rc_http_fetch-based login with event-driven accumulation
- * (mirrors the old get_auth_token() pattern in sensornest.c).
- */
 
 /* Accumulator for esp_http_client event handler */
 typedef struct {
@@ -195,7 +145,7 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
 
 esp_err_t rc_login(const char *email, const char *password, bool use_cache) {
     if (use_cache && rc_has_token()) {
-        ESP_LOGI(RC_TAG, "rc_login: Using cached token.");
+        ESP_LOGI(RC_TAG, "rc_login: Usando token em cache.");
         return ESP_OK;
     }
     return rc_perform_login(email, password, true);
@@ -418,7 +368,7 @@ retry_auth:
     return (status == 0) ? ESP_ERR_HTTP_CONNECT : ESP_FAIL;
 }
 
-/* --- NEW: Fetch all meshes for the authenticated user --- */
+// Busca as meshes para o usuário autenticado
 esp_err_t rc_get_meshes(char **out_json) {
     if (!out_json) return ESP_ERR_INVALID_ARG;
     *out_json = NULL;
@@ -487,14 +437,14 @@ retry_auth:
     return (status == 0) ? ESP_ERR_HTTP_CONNECT : ESP_FAIL;
 }
 
-/* --- NEW: Update the current device on the cloud (name/readings/wake/mesh/role) --- */
+// Atualiza as informações do dispositivo atual na nuvem
 esp_err_t rc_update_device(const char *name, int readingsPerBatch, int wakeUpInterval,
                            const char *mesh_id, const char *role) {
-     // At least one arg should be provided
+
     if ((!name || !name[0]) && readingsPerBatch <= 0 && wakeUpInterval <= 0 &&
         (!mesh_id || !mesh_id[0]) && (!role || !role[0])) {
          return ESP_ERR_INVALID_ARG;
-     }
+    }
 
     char *device_json = NULL;
     char device_id[40] = {0};

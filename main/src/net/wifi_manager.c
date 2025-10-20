@@ -44,7 +44,6 @@ esp_err_t wifi_manager_init(void) {
         return err;
     }
 
-    /* NEW: detect pre-created STA netif (e.g. provisioning already did it) */
     if (!s_sta_created) {
         if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) {
             ESP_LOGI(TAG, "STA netif already exists (provisioning path); reusing.");
@@ -163,7 +162,6 @@ void wifi_manager_disconnect(void) {
     ESP_LOGI(TAG, "Disconnected.");
 }
 
-// --- NEW: cached scan storage ---
 static char *s_cached_scan_json = NULL;
 static uint32_t s_cache_ts_ms = 0;
 static SemaphoreHandle_t s_scan_mux = NULL;

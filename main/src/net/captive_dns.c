@@ -173,7 +173,7 @@ static size_t create_dns_response(const uint8_t *query_packet, size_t query_len,
     return query_len + sizeof(dns_answer_t);
 }
 
-// --- ADD: simple rate limit & single-instance guard ---
+// Define quantos requests DNS pode responder por segundo
 #define DNS_MAX_RESP_PER_SEC 40
 
 static uint32_t rl_window_start_ms = 0;
