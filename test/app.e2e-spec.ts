@@ -12,7 +12,7 @@ import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 
-describe('App E2E', () => {
+describe('SensorNest E2E', () => {
   let app: NestFastifyApplication;
   let prisma: PrismaClient;
   let accessToken: string;
@@ -366,6 +366,107 @@ describe('App E2E', () => {
         email: newUserEmail,
         name: newUserName,
       }),
+    });
+  });
+
+  describe('E2E Estatísticas', () => {
+    let deviceId: string;
+
+    // Define alguns valores para realizar os testes
+    const temps = [20.0, 26.0, 34.2];
+    const hums = [40.0, 65.0, 55.0];
+
+    const expectedMaxTemp = Math.max(...temps);
+    const expectedAvgTemp =
+      temps.reduce((a, b) => a + b, 0) / temps.length;
+
+    const expectedMaxHum = Math.max(...hums);
+    const expectedAvgHum =
+      hums.reduce((a, b) => a + b, 0) / hums.length;
+
+    beforeAll(async () => {
+      await request(app.getHttpServer())
+        .post('/readings/add')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          data: temps.map((t, i) => ({
+            mac: knownWorkerMac,
+            temp: t,
+            hum: hums[i],
+          })),
+        })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get(`/devices/mac/${knownWorkerMac}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveProperty('id');
+      deviceId = res.body.id;
+    });
+
+    it('calcula estatísticas do Dispositivo (max/avg)', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/statistics/device/${deviceId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const body = res.body;
+      expect(body).toHaveProperty('day');
+      const day = body.day;
+
+      expect(day.highestTemperature).toBeCloseTo(expectedMaxTemp, 5);
+      expect(day.averageTemperature).toBeCloseTo(expectedAvgTemp, 5);
+
+      if (typeof day.highestHumidity === 'number') {
+        expect(day.highestHumidity).toBeCloseTo(expectedMaxHum, 5);
+      }
+      if (typeof day.averageHumidity === 'number') {
+        expect(day.averageHumidity).toBeCloseTo(expectedAvgHum, 5);
+      }
+    });
+
+    it('calcula estatísticas da Zone (max/avg)', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/statistics/zone/${zoneId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const body = res.body;
+      expect(body).toHaveProperty('day');
+      const day = body.day;
+
+      expect(day.highestTemperature).toBeCloseTo(expectedMaxTemp, 5);
+      expect(day.averageTemperature).toBeCloseTo(expectedAvgTemp, 5);
+
+      if (typeof day.highestHumidity === 'number') {
+        expect(day.highestHumidity).toBeCloseTo(expectedMaxHum, 5);
+      }
+      if (typeof day.averageHumidity === 'number') {
+        expect(day.averageHumidity).toBeCloseTo(expectedAvgHum, 5);
+      }
+    });
+
+    it('calcula estatísticas da Mesh (max/avg)', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/statistics/mesh/${meshId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const body = res.body;
+      expect(body).toHaveProperty('day');
+      const day = body.day;
+
+      expect(day.highestTemperature).toBeCloseTo(expectedMaxTemp, 5);
+      expect(day.averageTemperature).toBeCloseTo(expectedAvgTemp, 5);
+
+      if (typeof day.highestHumidity === 'number') {
+        expect(day.highestHumidity).toBeCloseTo(expectedMaxHum, 5);
+      }
+      if (typeof day.averageHumidity === 'number') {
+        expect(day.averageHumidity).toBeCloseTo(expectedAvgHum, 5);
+      }
     });
   });
 });

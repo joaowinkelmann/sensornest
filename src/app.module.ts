@@ -17,6 +17,7 @@ import { MailerModule } from '@nestjs-modules/mailer';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DeviceCheckerModule } from './device-checker/device-checker.module';
 import { MailerServiceModule } from './mailer/mailer.module';
+import { StatisticsModule } from './statistics/statistics.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { MailerServiceModule } from './mailer/mailer.module';
     }),
     DeviceCheckerModule,
     MailerServiceModule,
+    StatisticsModule,
   ],
   controllers: [AppController],
   providers: [
