@@ -1,7 +1,12 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { StatisticsService } from './statistics.service';
 import { AuthGuard } from '../auth/auth.guard';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 
 @ApiBearerAuth()
 @ApiTags('Statistics')
