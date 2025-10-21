@@ -378,7 +378,7 @@ esp_err_t espnow_manager_init(void) {
     }
 
     s_inited = true;
-    ESP_LOGI(TAG_EN, "ESP-NOW Manager initialized successfully.");
+    ESP_LOGI(TAG_EN, "Gerenciador ESP-NOW iniciado com sucesso");
     return ESP_OK;
 }
 

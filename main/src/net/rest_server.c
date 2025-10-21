@@ -62,6 +62,7 @@ static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req);
 static esp_err_t rs_cloud_device_get_handler(httpd_req_t *req);
 static esp_err_t rs_cloud_meshes_get_handler(httpd_req_t *req);
 static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req);
+static esp_err_t rs_cloud_mesh_create_post_handler(httpd_req_t *req);
 static esp_err_t rs_cors_options_handler(httpd_req_t *req);
 static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx);
 static void wifi_test_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
@@ -845,6 +846,57 @@ static esp_err_t rs_cloud_meshes_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+/* --- POST /api/v1/cloud/meshes/create --- */
+static esp_err_t rs_cloud_mesh_create_post_handler(httpd_req_t *req) {
+    rest_server_context_t *ctx = (rest_server_context_t*)req->user_ctx;
+    if (!rs_read_body(req, ctx->scratch, sizeof(ctx->scratch))) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
+        return ESP_FAIL;
+    }
+    cJSON *root = cJSON_Parse(ctx->scratch);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_FAIL;
+    }
+
+    cJSON *j_name = cJSON_GetObjectItem(root, "name");
+    cJSON *j_lat = cJSON_GetObjectItem(root, "lat");
+    cJSON *j_lon = cJSON_GetObjectItem(root, "lon");
+
+    if (!cJSON_IsString(j_name) || !j_name->valuestring[0] ||
+        !cJSON_IsNumber(j_lat) || !cJSON_IsNumber(j_lon)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "name, lat, and lon are required");
+        return ESP_FAIL;
+    }
+
+    const char *name = j_name->valuestring;
+    double lat = j_lat->valuedouble;
+    double lon = j_lon->valuedouble;
+
+    esp_err_t err = rc_create_mesh(name, lat, lon);
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK) {
+        httpd_resp_sendstr(req, "{\"status\":\"ok\",\"created\":true}");
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_INVALID_STATE) {
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_sendstr(req, "{\"error\":\"unauthorized\"}");
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_INVALID_ARG) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "{\"error\":\"invalid_payload\"}");
+        return ESP_OK;
+    }
+    httpd_resp_set_status(req, "502 Bad Gateway");
+    httpd_resp_sendstr(req, "{\"error\":\"cloud_error_creating_mesh\"}");
+    return ESP_OK;
+}
+
 static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req) {
     rest_server_context_t *ctx = (rest_server_context_t*)req->user_ctx;
     if (!rs_read_body(req, ctx->scratch, sizeof(ctx->scratch))) {
@@ -1038,7 +1090,7 @@ esp_err_t start_rest_server(const char *base_path)
     // Optionally raise if you increased lwIP limits:
     // config.max_open_sockets = 8;
 
-    ESP_LOGI(TAG, "Starting HTTP Server");
+    ESP_LOGI(TAG, "Iniciando servidor HTTP");
     ESP_GOTO_ON_ERROR(httpd_start(&server, &config), err, TAG, "Failed to start http server");
 
     wifi_manager_prefetch_scan(30000);
@@ -1161,6 +1213,15 @@ esp_err_t start_rest_server(const char *base_path)
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &cloud_meshes_get_uri);
+
+    // Cria uma mesh
+    httpd_uri_t cloud_mesh_create_post_uri = {
+        .uri = "/api/v1/cloud/meshes/create",
+        .method = HTTP_POST,
+        .handler = rs_cloud_mesh_create_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &cloud_mesh_create_post_uri);
 
     httpd_uri_t cloud_device_register_post_uri = {
         .uri = "/api/v1/cloud/device/register",

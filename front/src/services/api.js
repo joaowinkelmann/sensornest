@@ -190,4 +190,15 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, name }),
     }),
+
+  createMesh: (name, lat, lon) =>
+    doFetch(`${base}/api/v1/cloud/meshes/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        lat: lat ?? -23.5505,
+        lon: lon ?? -46.6333,
+      }),
+    }),
 };

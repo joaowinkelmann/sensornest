@@ -353,7 +353,7 @@ retry_auth:
     }
     if (status == 200) {
         *out_json = acc.buf;
-        ESP_LOGI(RC_TAG, "device fetch success (%d bytes)", (int)acc.len);
+        ESP_LOGI(RC_TAG, "device encontrado com successo pelo MAC (%d bytes)", (int)acc.len);
         return ESP_OK;
     }
     if (status == 401) {
@@ -438,6 +438,70 @@ retry_auth:
     ESP_LOGW(RC_TAG, "meshes fetch status=%d body=%s", status, acc.buf ? acc.buf : "");
     free(acc.buf);
     return (status == 0) ? ESP_ERR_HTTP_CONNECT : ESP_FAIL;
+}
+
+/* Create a new mesh for the authenticated user */
+esp_err_t rc_create_mesh(const char *name, double lat, double lon) {
+    if (!name || !name[0]) return ESP_ERR_INVALID_ARG;
+
+    char token[512];
+    if (!rc_get_token(token, sizeof(token))) {
+        ESP_LOGW(RC_TAG, "create_mesh: no token");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+retry_once:
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "name", name);
+    cJSON_AddNumberToObject(root, "lat", lat);
+    cJSON_AddNumberToObject(root, "lon", lon);
+    char *body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!body) return ESP_ERR_NO_MEM;
+
+    esp_http_client_config_t cfg = {
+        .url = CLOUD_MESHES_URL,
+        .method = HTTP_METHOD_POST,
+        .cert_pem = cloud_ca_pem,
+        .timeout_ms = 15000,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&cfg);
+    if (!client) {
+        free(body);
+        return ESP_FAIL;
+    }
+
+    char auth[600];
+    snprintf(auth, sizeof(auth), "Bearer %s", token);
+    esp_http_client_set_header(client, "Authorization", auth);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, body, strlen(body));
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+    free(body);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(RC_TAG, "create_mesh: HTTP POST error: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    if (status == 201) {
+        ESP_LOGI(RC_TAG, "create_mesh: success");
+        return ESP_OK;
+    }
+
+    if (status == 401) {
+        ESP_LOGW(RC_TAG, "create_mesh: 401 -> re-auth & retry");
+        if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
+            goto retry_once;
+        }
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    ESP_LOGE(RC_TAG, "create_mesh: failed with HTTP status %d", status);
+    return ESP_FAIL;
 }
 
 // Atualiza as informações do dispositivo atual na nuvem

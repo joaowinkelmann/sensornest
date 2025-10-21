@@ -198,8 +198,15 @@
               :loading="!meshes.length"
             />
 
-            <div class="q-mt-sm text-caption">
-              Need a new mesh? <a href="#" @click.prevent>Create one here</a> (coming soon).
+            <div class="q-mt-sm row items-center q-gutter-sm">
+              <span class="text-caption">{{ $t("needNewMesh") }}</span>
+              <q-btn
+                dense
+                flat
+                color="primary"
+                :label="$t('createMeshBtn')"
+                @click="showCreateMeshDialog = true"
+              />
             </div>
 
             <div v-if="!device" class="q-mt-lg">
@@ -333,16 +340,74 @@
         </q-card-actions>
       </q-card>
     </div>
+
+    <!-- Dialog for creating a new mesh -->
+    <q-dialog v-model="showCreateMeshDialog">
+      <q-card style="min-width: 350px">
+        <q-card-section>
+          <div class="text-h6">{{ $t("createNewMesh") }}</div>
+        </q-card-section>
+
+        <q-card-section class="q-pt-none">
+          <q-input
+            v-model="newMeshName"
+            filled
+            :label="$t('meshName')"
+            :hint="$t('meshNameHint')"
+            autofocus
+          />
+          <div class="row q-col-gutter-sm q-mt-sm">
+            <div class="col-6">
+              <q-input
+                v-model.number="newMeshLat"
+                type="number"
+                step="0.000001"
+                filled
+                :label="$t('latitude')"
+                :hint="$t('latHint')"
+              />
+            </div>
+            <div class="col-6">
+              <q-input
+                v-model.number="newMeshLon"
+                type="number"
+                step="0.000001"
+                filled
+                :label="$t('longitude')"
+                :hint="$t('lonHint')"
+              />
+            </div>
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn flat :label="$t('cancel')" color="primary" v-close-popup />
+          <q-btn
+            flat
+            :label="$t('create')"
+            color="primary"
+            :loading="creatingMesh"
+            :disable="!newMeshName"
+            @click="createMesh"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup>
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { api } from "@/services/api";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 
 const { t } = useI18n();
 const $q = useQuasar();
+
+// Defaults for mesh center if user leaves blank
+const DEFAULT_LAT = -23.5505;
+const DEFAULT_LON = -46.6333;
 
 const role = ref(null); // 'CONTROLLER' or 'WORKER'
 const ssid = ref("");
@@ -381,6 +446,13 @@ const selectedControllerMac = ref("");
 const workerName = ref("");
 const controllersLoading = ref(false);
 const bindingWorker = ref(false);
+
+// Add missing dialog state refs (if not present)
+const showCreateMeshDialog = ref(false);
+const newMeshName = ref("");
+const newMeshLat = ref(DEFAULT_LAT);
+const newMeshLon = ref(DEFAULT_LON);
+const creatingMesh = ref(false);
 
 const connected = computed(() => !!status.value?.connected);
 const step = computed(() => {
@@ -846,6 +918,34 @@ async function fetchInitialStatus() {
     }
   } catch (e) {
     showError(e, "failedToGetInitialStatus");
+  }
+}
+
+async function createMesh() {
+  console.log("[createMesh] clicked");
+  creatingMesh.value = true;
+  try {
+    const lat = Number.isFinite(newMeshLat.value) ? newMeshLat.value : DEFAULT_LAT;
+    const lon = Number.isFinite(newMeshLon.value) ? newMeshLon.value : DEFAULT_LON;
+
+    await api.createMesh(newMeshName.value.trim(), lat, lon);
+    $q.notify({ type: "positive", message: t("meshCreated") });
+
+    showCreateMeshDialog.value = false;
+
+    // Refresh meshes and try selecting the one just created by name
+    await fetchMeshes();
+    const m = meshes.value.find(m => m.name === newMeshName.value.trim());
+    if (m) selectedMeshId.value = m.id;
+
+    // Reset fields
+    newMeshName.value = "";
+    newMeshLat.value = DEFAULT_LAT;
+    newMeshLon.value = DEFAULT_LON;
+  } catch (e) {
+    showError(e, "failedToCreateMesh");
+  } finally {
+    creatingMesh.value = false;
   }
 }
 
