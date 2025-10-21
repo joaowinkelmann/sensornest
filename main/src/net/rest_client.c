@@ -34,6 +34,9 @@ extern const char *cloud_ca_pem;
 #define CLOUD_DEVICE_REGISTER_URL CLOUD_BASE_URL "/devices"        /* POST */
 #define CLOUD_DEVICE_UPDATE_URL   CLOUD_BASE_URL "/devices/"       /* PATCH {id} */
 
+/* Add user registration endpoint */
+#define CLOUD_USER_REGISTER_URL   CLOUD_BASE_URL "/users/register"
+
 #define NVS_NS_AUTH             "auth"
 #define NVS_KEY_TOKEN           "token"
 #define NVS_KEY_EMAIL           "email"
@@ -716,5 +719,63 @@ retry_send:
         return ESP_ERR_INVALID_STATE;
     }
     if (status == 401) return ESP_ERR_INVALID_STATE;
+    return ESP_FAIL;
+}
+
+/* Register a new user (POST /users/register), then login to persist token */
+esp_err_t rc_register_user(const char *email, const char *password, const char *name) {
+    if (!email || !password || !name || !email[0] || !password[0] || !name[0]) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return ESP_ERR_NO_MEM;
+    cJSON_AddStringToObject(root, "email", email);
+    cJSON_AddStringToObject(root, "password", password);
+    cJSON_AddStringToObject(root, "name", name);
+    char *body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!body) return ESP_ERR_NO_MEM;
+
+    esp_http_client_config_t cfg = {
+        .url = CLOUD_USER_REGISTER_URL,
+        .method = HTTP_METHOD_POST,
+        .cert_pem = cloud_ca_pem,
+        .timeout_ms = 15000,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&cfg);
+    if (!client) { free(body); return ESP_FAIL; }
+
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, body, strlen(body));
+
+    ESP_LOGI(RC_TAG, "user register: POST %s", CLOUD_USER_REGISTER_URL);
+    esp_err_t err = esp_http_client_perform(client);
+    int status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+    free(body);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(RC_TAG, "user register: HTTP error: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    if (status == 201) {
+        // User created; try immediate login to store token for next steps
+        esp_err_t lerr = rc_login(email, password, false);
+        if (lerr == ESP_OK) {
+            ESP_LOGI(RC_TAG, "user register: success and login OK");
+            return ESP_OK;
+        }
+        ESP_LOGW(RC_TAG, "user register: created, but login failed: %s", esp_err_to_name(lerr));
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (status == 400) {
+        ESP_LOGW(RC_TAG, "user register: 400 Bad Request");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ESP_LOGE(RC_TAG, "user register: failed with HTTP status %d", status);
     return ESP_FAIL;
 }

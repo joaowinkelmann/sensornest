@@ -8,3 +8,5 @@ bool rc_load_creds(char *email, size_t e_len, char *pass, size_t p_len);
 esp_err_t rc_get_meshes(char **out_json);
 esp_err_t rc_update_device(const char *name, int readingsPerBatch, int wakeUpInterval, const char *mesh_id, const char *role);
 esp_err_t rc_register_device(const char *name, const char *role, const char *mesh_id, int readingsPerBatch, int wakeUpInterval, int x, int y);
+/* Register a new user in the cloud, then perform login to store token on success */
+esp_err_t rc_register_user(const char *email, const char *password, const char *name);

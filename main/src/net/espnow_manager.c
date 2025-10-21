@@ -302,7 +302,7 @@ esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
     memset(s_ctrls, 0, sizeof(s_ctrls));
     s_collect_mode = true;
 
-    ESP_LOGI(TAG_EN, "Starting controller discovery for %d ms...", duration_ms);
+    ESP_LOGI(TAG_EN, "Iniciando varredura de Controllers por %d ms...", duration_ms);
 
     int64_t start_time = esp_timer_get_time();
     uint8_t current_channel = 1;
@@ -318,7 +318,7 @@ esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
     }
 
     s_collect_mode = false;
-    ESP_LOGI(TAG_EN, "Controller discovery finished. Found %d controllers.", s_ctrl_count);
+    ESP_LOGI(TAG_EN, "Descoberta de controllers finalizada. Encontrados %d controladores.", s_ctrl_count);
 
     cJSON *root = cJSON_CreateArray();
     if (!root) return ESP_ERR_NO_MEM;

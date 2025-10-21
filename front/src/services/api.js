@@ -183,4 +183,11 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, controllerMac, channel }),
     }),
+
+  registerUser: (email, password, name) =>
+    doFetch(`${base}/api/v1/provision/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name }),
+    }),
 };

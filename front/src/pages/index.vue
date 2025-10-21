@@ -10,7 +10,6 @@
         <q-linear-progress :value="progressValue" color="primary" class="q-mb-sm" />
 
         <q-card-section class="q-pt-none">
-          <!-- Role selection -->
           <div v-if="!role" class="row q-col-gutter-md q-mb-md">
             <div class="col-12 text-subtitle1">{{ $t("selectRole") }}</div>
             <div class="col-12 col-md-6">
@@ -29,7 +28,6 @@
                 </q-card-section>
               </q-card>
             </div>
-            <!-- DEBUG TOGGLE -->
             <div class="col-12 q-mt-md">
               <q-toggle
                 v-model="debugEnabled"
@@ -41,7 +39,6 @@
             </div>
           </div>
 
-          <!-- Wi-Fi setup -->
           <div v-if="role && role !== 'WORKER' && !connected">
             <q-btn flat dense icon="arrow_back" @click="goBack" class="q-mb-md" :label="$t('back')" />
             <q-select
@@ -87,7 +84,6 @@
             />
           </div>
 
-          <!-- Worker controller selection (moved earlier for clarity) -->
           <div v-if="role==='WORKER' && !setupDone" class="q-mt-md">
             <q-btn flat dense icon="arrow_back" @click="goBack" class="q-mb-md" :label="$t('back')" />
             <div class="text-h6">{{$t('selectController')}}</div>
@@ -111,10 +107,22 @@
                    :label="$t('bindWorker')" @click="bindWorker"/>
           </div>
 
-          <!-- Login Form -->
           <div v-if="role!=='WORKER' && connected && !loggedIn">
             <q-btn flat dense icon="arrow_back" @click="goBack" class="q-mb-md" :label="$t('back')" />
-            <div class="text-h6 q-mt-lg">{{ $t("cloudLogin") }}</div>
+            <div class="text-h6 q-mt-lg">
+              {{ isRegisterMode ? $t("createAccount") : $t("cloudLogin") }}
+            </div>
+
+            <q-input
+              v-if="isRegisterMode"
+              v-model="userName"
+              class="q-mt-md"
+              filled
+              :label="$t('yourName')"
+              type="text"
+              :disable="loginLoading"
+            />
+
             <q-input
               v-model="userEmail"
               class="q-mt-md"
@@ -139,8 +147,10 @@
                 />
               </template>
             </q-input>
+
             <div class="row q-mt-md q-gutter-sm">
               <q-btn
+                v-if="!isRegisterMode"
                 color="primary"
                 :label="$t('login')"
                 :disable="!userEmail || !userPassword"
@@ -148,15 +158,33 @@
                 @click="doLogin"
               />
               <q-btn
+                v-if="!isRegisterMode"
                 color="secondary"
                 outline
                 :label="$t('register')"
-                disable
+                :disable="loginLoading"
+                @click="isRegisterMode = true"
+              />
+
+              <q-btn
+                v-if="isRegisterMode"
+                color="primary"
+                :label="$t('createAccount')"
+                :disable="!userEmail || !userPassword || !userName"
+                :loading="loginLoading"
+                @click="doRegister"
+              />
+              <q-btn
+                v-if="isRegisterMode"
+                flat
+                :label="$t('backToLogin')"
+                :disable="loginLoading"
+                @click="isRegisterMode = false"
               />
             </div>
           </div>
 
-          <!-- Mesh Selection -->
+
           <div v-if="role!=='WORKER' && loggedIn && (!device?.meshId || changingMesh)">
             <div class="text-h6 q-mt-lg">{{ $t("selectMeshTitle") }}</div>
             <q-select
@@ -170,12 +198,10 @@
               :loading="!meshes.length"
             />
 
-            <!-- Placeholder for creating a new mesh -->
             <div class="q-mt-sm text-caption">
               Need a new mesh? <a href="#" @click.prevent>Create one here</a> (coming soon).
             </div>
 
-            <!-- If device is not yet registered, show registration form -->
             <div v-if="!device" class="q-mt-lg">
               <div class="text-subtitle1">{{ $t("registerDeviceTitle") }}</div>
               <q-input
@@ -214,7 +240,6 @@
               />
             </div>
 
-            <!-- If device exists and user is editing params, show editable fields -->
             <div v-else-if="changingMesh" class="q-mt-lg">
               <div class="text-subtitle1">{{ $t("registerDeviceTitle") }}</div>
               <q-input
@@ -252,7 +277,6 @@
               </div>
             </div>
 
-            <!-- Show bind button only if device exists but is not bound -->
             <q-btn
               v-if="device && !device.meshId"
               class="q-mt-md"
@@ -263,7 +287,6 @@
             />
           </div>
 
-          <!-- Device Bound Status -->
           <div v-if="role!=='WORKER' && loggedIn && device && device.meshId && !changingMesh">
             <q-icon name="cloud_done" color="positive" size="xl" class="q-mt-lg"/>
             <div class="text-h6">{{ $t("deviceBoundTitle") }}</div>
@@ -287,14 +310,12 @@
             </div>
           </div>
 
-          <!-- Final Status -->
           <div v-if="setupDone">
              <q-icon name="cloud_done" color="positive" size="xl" class="q-mt-lg"/>
              <div class="text-h6">{{ $t('setupComplete') }}</div>
              <div class="text-subtitle2">{{ $t('deviceWillRestart') }}</div>
           </div>
 
-          <!-- Retry button -->
           <div v-if="status?.error">
             <q-btn color="negative" :label="$t('retry')" @click="retry" />
           </div>
@@ -340,6 +361,10 @@ const userPassword = ref("");
 const loginPasswordVisible = ref(false);
 const loginLoading = ref(false);
 const loggedIn = ref(false);
+
+const isRegisterMode = ref(false);
+const userName = ref("");
+
 const device = ref(null);
 const newDeviceName = ref("");
 const newDeviceReadingsPerBatch = ref(5); // Default value
@@ -348,14 +373,14 @@ const meshes = ref([]);
 const selectedMeshId = ref(null);
 const changingMesh = ref(false);
 const setupDone = ref(false);
-const completingSetup = ref(false); // <--- ADDED
+const completingSetup = ref(false);
 const updatingDeviceLoading = ref(false);
 
 const controllers = ref([]);
 const selectedControllerMac = ref("");
 const workerName = ref("");
 const controllersLoading = ref(false);
-const bindingWorker = ref(false); // <--- MISSING REF (caused bind to abort with ReferenceError)
+const bindingWorker = ref(false);
 
 const connected = computed(() => !!status.value?.connected);
 const step = computed(() => {
@@ -395,7 +420,9 @@ const statusText = computed(() => {
     if (ssid.value) return t("status_enterPassword");
     return t("status_selectNetwork");
   }
-  if (!loggedIn.value) return t("status_login");
+  if (!loggedIn.value) {
+    return isRegisterMode.value ? t("status_register") : t("status_login");
+  }
   if (!device?.meshId || changingMesh.value) return t("status_selectMesh");
   return t("status_complete");
 });
@@ -449,6 +476,8 @@ async function goBack() {
       device.value = null;
       ssid.value = "";
       password.value = "";
+      isRegisterMode.value = false;
+      userName.value = "";
     } catch (e) {
       showError(e, "failedToGoBack");
     }
@@ -565,19 +594,42 @@ async function bindWorker() {
   }
 }
 
+async function doRegister() {
+  loginLoading.value = true;
+  try {
+    await api.registerUser(userEmail.value, userPassword.value, userName.value);
+    
+    $q.notify({
+      type: "positive",
+      message: t("registerSuccess"),
+      caption: t("pleaseLogin"),
+    });
+    
+    // Reset fields and go back to login mode
+    isRegisterMode.value = false;
+    userPassword.value = ""; // Clear password for security
+    userName.value = ""; 
+
+  } catch (e) {
+    showError(e, "registerFailed");
+  } finally {
+    loginLoading.value = false;
+  }
+}
+
 async function doLogin() {
   loginLoading.value = true;
   try {
     const loginResponse = await api.saveUserCreds(userEmail.value, userPassword.value);
-    console.log("Login Response:", loginResponse); // <-- Existing log
-    console.log("Device object from login:", loginResponse.device); // <-- ADDED
+    console.log("Login Response:", loginResponse);
+    console.log("Device object from login:", loginResponse.device);
     loggedIn.value = true;
     $q.notify({
       type: "positive",
       message: t("loginSuccess")
     });
     device.value = loginResponse.device;
-    console.log("Device state after login:", device.value); // <-- ADDED
+    console.log("Device state after login:", device.value);
     // Always fetch meshes after login to prepare for the next step
     await fetchMeshes();
   } catch (e) {
@@ -587,22 +639,19 @@ async function doLogin() {
   }
 }
 
+// --- Methods for device and mesh flow ---
 async function checkDevice() {
   console.log("Checking device status from server...");
   try {
-    // This call is redundant if login response already provides the device.
-    // We keep it for flows where login is not the entry point (e.g. page refresh).
     const dev = await api.getDevice();
     console.log("getDevice API response:", dev);
     device.value = dev;
     console.log("Device state after checkDevice:", device.value);
-    // Always fetch meshes to display the name if already bound
     if (device.value?.id) {
       console.log("Device has ID, fetching meshes...");
       await fetchMeshes();
     }
   } catch (e) {
-    // Don't show error for 404, it's an expected state (device not registered)
     if (e.message.includes("404")) {
        device.value = null;
     } else {
@@ -613,7 +662,6 @@ async function checkDevice() {
 
 async function registerDevice() {
   try {
-    // Pass selected meshId and new params during registration
     const regResponse = await api.registerDevice(
       newDeviceName.value,
       role.value,
@@ -623,8 +671,9 @@ async function registerDevice() {
     );
     console.log("Register Response:", regResponse);
     $q.notify({ type: "positive", message: t("deviceRegistered") });
-    await checkDevice(); // Re-check to proceed to mesh selection
-  } catch (e) {
+    await checkDevice();
+  } catch (e)
+ {
     showError(e, "failedToRegisterDevice");
   }
 }
@@ -642,31 +691,31 @@ async function fetchMeshes() {
 async function updateDevice() {
   updatingDeviceLoading.value = true;
   try {
-    // Use updateDevice to set mesh + optional name/readings/interval
     const resp = await api.updateDevice(
       newDeviceName.value || undefined,
       newDeviceReadingsPerBatch.value || undefined,
       newDeviceWakeUpInterval.value || undefined,
       selectedMeshId.value || undefined
     );
-    updatingDeviceLoagind.value = false;
+    // Typo fix: updatingDeviceLoagind -> updatingDeviceLoading
+    updatingDeviceLoading.value = false; 
     console.log("Update Response:", resp);
     $q.notify({ type: "positive", message: t("deviceBound") });
-    await checkDevice(); // Re-check to update UI
+    await checkDevice();
     changingMesh.value = false;
   } catch (e) {
+    // Also ensure loading is false on error
+    updatingDeviceLoading.value = false; 
     showError(e, "failedToupdateDevice");
   }
 }
 
 async function changeMesh() {
-  // kept for backward compatibility: redirect to the new "changeDeviceParams" flow
   return changeDeviceParams();
 }
 
 async function changeDeviceParams() {
   changingMesh.value = true;
-  // prefill with current device values when available
   selectedMeshId.value = device.value?.meshId || null;
   newDeviceName.value = device.value?.name || newDeviceName.value || "";
   newDeviceReadingsPerBatch.value = device.value?.readingsPerBatch || newDeviceReadingsPerBatch.value;
@@ -674,14 +723,13 @@ async function changeDeviceParams() {
   await fetchMeshes();
 }
 
-// Save handler used by the edit screen: bind if mesh changed, or register if device missing
 async function asyncSaveDeviceParams() {
+  // *** NEW: Set loading state ***
+  updatingDeviceLoading.value = true;
   try {
     if (!device.value) {
-      // device not registered yet -> register
       await registerDevice();
     } else {
-      // If mesh changed or other params changed, call updateDevice
       await api.updateDevice(
         newDeviceName.value || undefined,
         newDeviceReadingsPerBatch.value || undefined,
@@ -689,13 +737,14 @@ async function asyncSaveDeviceParams() {
         selectedMeshId.value || device.value.meshId || undefined,
         role.value
       );
-      // Note: device name / interval update endpoint now implemented
       $q.notify({ type: "positive", message: t("deviceBound") });
       changingMesh.value = false;
       await checkDevice();
     }
   } catch (e) {
     showError(e, "failedToupdateDevice");
+  } finally {
+    updatingDeviceLoading.value = false;
   }
 }
 
@@ -703,9 +752,7 @@ async function completeSetup() {
   if (completingSetup.value) return;
   completingSetup.value = true;
   try {
-    // Call endpoint (device will actually restart almost immediately)
     await api.completeSetup();
-    // Inform user and keep UI for ~10s so they can safely disconnect
     $q.notify({
       type: "positive",
       message: t("setupFinalizing"),
@@ -777,14 +824,12 @@ async function fetchInitialStatus() {
     role.value = setupStatus.role;
     debugEnabled.value = setupStatus.debug;
     if (role.value === 'WORKER') {
-      // Skip Wi-Fi / cloud; directly begin controller discovery
       scanControllers();
       return;
     }
     if (setupStatus.stage === 'user_saved' || setupStatus.stage === 'mesh_selected') {
-        console.log("Stage is 'user_saved' or 'mesh_selected', setting loggedIn and checking device."); // <-- ADDED
+        console.log("Stage is 'user_saved' or 'mesh_selected', setting loggedIn and checking device.");
         loggedIn.value = true;
-        // If logged in, check device status immediately
         await checkDevice();
     }
     if (setupStatus.connected) {

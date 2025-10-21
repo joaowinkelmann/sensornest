@@ -449,13 +449,13 @@ static esp_err_t mount_www_fs(void) {
     };
     esp_err_t ret = esp_vfs_littlefs_register(&conf);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to mount LittleFS at /www: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Falhou ao montar LittleFS em /www: %s", esp_err_to_name(ret));
         return ret;
     }
     size_t total = 0, used = 0;
     ret = esp_littlefs_info(conf.partition_label, &total, &used);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "LittleFS mounted: total=%u KB, used=%u KB", (unsigned)(total/1024), (unsigned)(used/1024));
+        ESP_LOGI(TAG, "LittleFS montado: total=%u KB, usados=%u KB", (unsigned)(total/1024), (unsigned)(used/1024));
     }
     return ESP_OK;
 }

@@ -50,6 +50,7 @@ static esp_err_t rs_device_role_clear_post_handler(httpd_req_t *req);
 static void nvs_set_setup_stage(const char *stage);
 static esp_err_t rs_device_role_post_handler(httpd_req_t *req);
 static esp_err_t rs_user_creds_post_handler(httpd_req_t *req);
+static esp_err_t rs_user_register_post_handler(httpd_req_t *req);
 static esp_err_t rs_device_debug_post_handler(httpd_req_t *req);
 static esp_err_t rs_setup_status_get_handler(httpd_req_t *req);
 static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req);
@@ -197,10 +198,10 @@ static esp_err_t rs_system_info_get_handler(httpd_req_t *req)
 static void wifi_test_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
-        ESP_LOGI(TAG, "Wi-Fi test connection failed.");
+        ESP_LOGI(TAG, "Teste de conexão Wi-Fi falhou.");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-        ESP_LOGI(TAG, "Wi-Fi test connection successful.");
+        ESP_LOGI(TAG, "Teste de conexão Wi-Fi realizado com sucesso.");
     }
 }
 
@@ -240,7 +241,12 @@ static esp_err_t test_and_save_wifi_credentials(const char *ssid, const char *pa
     esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip);
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id);
     vEventGroupDelete(s_wifi_event_group);
-    esp_wifi_disconnect(); // Stop the connection attempt
+    s_wifi_event_group = NULL;
+
+    // If we did not connect, stop the attempt; otherwise keep STA up
+    if (!(bits & WIFI_CONNECTED_BIT)) {
+        esp_wifi_disconnect();
+    }
 
     if (bits & WIFI_CONNECTED_BIT) {
         // Connection successful, save credentials
@@ -1097,6 +1103,15 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &user_creds_post_uri);
 
+    // NEW: user registration endpoint
+    httpd_uri_t user_register_post_uri = {
+        .uri = "/api/v1/provision/register",
+        .method = HTTP_POST,
+        .handler = rs_user_register_post_handler,
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &user_register_post_uri);
+
     httpd_uri_t device_debug_post_uri = {
         .uri = "/api/v1/device/debug",
         .method = HTTP_POST,
@@ -1423,5 +1438,98 @@ static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req) {
     vTaskDelay(pdMS_TO_TICKS(150));
     ESP_LOGI(TAG, "rs_worker_bind_post_handler: restarting now");
     esp_restart();
+    return ESP_OK;
+}
+
+/* --- POST /api/v1/provision/register ---
+ * Registers a new user in the cloud, then logs in and returns initial state. */
+static esp_err_t rs_user_register_post_handler(httpd_req_t *req) {
+    char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
+    if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid body");
+        return ESP_FAIL;
+    }
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_FAIL;
+    }
+
+    cJSON *j_email = cJSON_GetObjectItem(root, "email");
+    cJSON *j_pass  = cJSON_GetObjectItem(root, "password");
+    cJSON *j_name  = cJSON_GetObjectItem(root, "name");
+
+    if (!cJSON_IsString(j_email) || !cJSON_IsString(j_pass) || !cJSON_IsString(j_name) ||
+        !j_email->valuestring[0] || !j_pass->valuestring[0] || !j_name->valuestring[0]) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "email, password and name are required");
+        return ESP_FAIL;
+    }
+
+    char email_buf[128] = {0};
+    char pass_buf[128]  = {0};
+    char name_buf[128]  = {0};
+    strlcpy(email_buf, j_email->valuestring, sizeof(email_buf));
+    strlcpy(pass_buf,  j_pass->valuestring,  sizeof(pass_buf));
+    strlcpy(name_buf,  j_name->valuestring,  sizeof(name_buf));
+    cJSON_Delete(root);
+
+    esp_err_t err = rc_register_user(email_buf, pass_buf, name_buf);
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK) {
+        nvs_set_setup_stage("user_saved");
+
+        // Optionally return current device (same behavior as saving creds)
+        char *device_json = NULL;
+        esp_err_t derr = rc_get_device_by_mac(NULL, &device_json);
+        if (derr == ESP_OK && device_json) {
+            cJSON *resp_root = cJSON_CreateObject();
+            if (resp_root) {
+                cJSON_AddStringToObject(resp_root, "status", "ok");
+                cJSON *device_obj = cJSON_Parse(device_json);
+                if (device_obj) {
+                    // Persist device name from cloud for controller beacon if present
+                    cJSON *j_name_dev = cJSON_GetObjectItem(device_obj, "name");
+                    if (j_name_dev && cJSON_IsString(j_name_dev) && j_name_dev->valuestring[0]) {
+                        nvs_handle_t nvs;
+                        if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
+                            nvs_set_str(nvs, "name", j_name_dev->valuestring);
+                            nvs_commit(nvs);
+                            nvs_close(nvs);
+                            espnow_manager_set_controller_name(j_name_dev->valuestring);
+                        }
+                    }
+                    cJSON_AddItemToObject(resp_root, "device", device_obj);
+                }
+                char *resp_str = cJSON_PrintUnformatted(resp_root);
+                if (resp_str) {
+                    httpd_resp_sendstr(req, resp_str);
+                    free(resp_str);
+                }
+                cJSON_Delete(resp_root);
+            }
+            free(device_json);
+            return ESP_OK;
+        }
+        // Default minimal success payload
+        httpd_resp_sendstr(req, "{\"status\":\"ok\",\"registered\":true,\"loggedIn\":true}");
+        return ESP_OK;
+    }
+
+    if (err == ESP_ERR_INVALID_ARG) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "{\"error\":\"invalid_payload\"}");
+        return ESP_OK;
+    }
+    if (err == ESP_ERR_INVALID_STATE) {
+        // Created but login failed (token not stored)
+        httpd_resp_set_status(req, "202 Accepted");
+        httpd_resp_sendstr(req, "{\"status\":\"partial\",\"registered\":true,\"loggedIn\":false}");
+        return ESP_OK;
+    }
+
+    httpd_resp_set_status(req, "502 Bad Gateway");
+    httpd_resp_sendstr(req, "{\"error\":\"cloud_error_registering_user\"}");
     return ESP_OK;
 }
