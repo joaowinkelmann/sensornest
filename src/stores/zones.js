@@ -68,10 +68,15 @@ export const useZonesStore = defineStore('zones', {
       this.activeZoneId = zoneId;
       this.isZoneDirty = false; // Reset dirty state when changing zone
 
-      // Fetch devices for the current mesh (devices endpoint is mesh-scoped now)
       const devicesStore = useDevicesStore();
       const meshesStore = useMeshesStore();
-      devicesStore.fetchDevices(meshesStore.selectedMeshId);
+
+      if (zoneId) {
+        // FIX: pass options object so it hits /meshes/{meshId}/devices
+        devicesStore.fetchDevices({ meshId: meshesStore.selectedMeshId });
+      } else {
+        devicesStore.clearDevices();
+      }
     },
     // Action to optimistically update a zone locally
     updateLocalZone(zoneId, zoneData) {

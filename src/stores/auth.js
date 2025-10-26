@@ -8,6 +8,10 @@ export const useAuthStore = defineStore('auth', {
     user: null,
     loading: false,
     error: null,
+    // cache flags
+    profileLoaded: false,
+    profileLoadedAt: null,
+    _profilePromise: null,
   }),
   getters: {
     isAuthenticated: (state) => !!state.token,
@@ -31,13 +35,44 @@ export const useAuthStore = defineStore('auth', {
     },
     async getProfile() {
       if (!this.token) return;
+      this.loading = true;
+      this.error = null;
       try {
         const response = await apiClient.get('auth/profile');
-        this.user = response.data.user;
+        console.log("user fetch", response.data);
+        this.user = response.data.user; // keep current behavior
+        // cache flags
+        this.profileLoaded = true;
+        this.profileLoadedAt = Date.now();
       } catch (e) {
         console.error('Failed to fetch profile:', e);
         this.logout(); // Logout if token is invalid
+      } finally {
+        this.loading = false;
       }
+    },
+    // New: only fetch if not loaded, or if stale, or if forced
+    async getProfileIfNeeded({ force = false, maxAgeMs = 5 * 60 * 1000 } = {}) {
+      if (!this.token) return;
+
+      const isFresh = this.profileLoaded && this.profileLoadedAt && (Date.now() - this.profileLoadedAt) < maxAgeMs;
+      if (!force && isFresh) return;
+
+      // de-duplicate concurrent calls
+      if (this._profilePromise) {
+        await this._profilePromise;
+        return;
+      }
+
+      this._profilePromise = (async () => {
+        try {
+          await this.getProfile();
+        } finally {
+          this._profilePromise = null;
+        }
+      })();
+
+      await this._profilePromise;
     },
     async updateProfile(userData) {
       this.loading = true;
@@ -61,6 +96,9 @@ export const useAuthStore = defineStore('auth', {
       this.user = null;
       localStorage.removeItem('token');
       router.push('/login');
+      // reset cache flags
+      this.profileLoaded = false;
+      this.profileLoadedAt = null;
     },
   },
 });

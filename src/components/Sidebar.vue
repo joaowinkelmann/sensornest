@@ -13,14 +13,16 @@
   >
     <q-scroll-area class="fit">
       <q-list padding>
-        <q-item class="q-my-md">
+        <q-item class="q-my-md" clickable to="/">
           <q-item-section avatar>
-            <q-avatar size="lg">
-              <img src="/logo.png" alt="SensorNest Logo" />
-            </q-avatar>
+            <q-icon>
+              <img src="/sensornest/logo.webp" alt="SensorNest Logo" />
+            </q-icon>
           </q-item-section>
           <q-item-section>
-            <q-toolbar-title>SensorNest</q-toolbar-title>
+            <q-item-label class="text-weight-bold" style="font-size: 1.25rem;">
+              SensorNest
+            </q-item-label>
           </q-item-section>
         </q-item>
 
@@ -70,15 +72,20 @@
 
     <div class="absolute-bottom q-mb-md">
       <q-separator class="q-my-md" />
-      <q-item>
+      <q-item clickable v-ripple to="/profile">
         <q-item-section avatar>
-          <q-avatar icon="person" />
+          <q-icon name="person" />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{ user?.name || 'User' }}</q-item-label>
         </q-item-section>
-        <q-item-section side>
-          <q-btn flat round icon="logout" @click="$emit('logout')" />
+      </q-item>
+      <q-item clickable v-ripple @click="$emit('logout')">
+        <q-item-section avatar>
+          <q-icon name="logout" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Logout</q-item-label>
         </q-item-section>
       </q-item>
     </div>
@@ -87,6 +94,9 @@
 
 <script setup>
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 defineProps({
   modelValue: {

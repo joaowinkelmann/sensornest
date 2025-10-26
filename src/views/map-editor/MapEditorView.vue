@@ -72,9 +72,8 @@ onMounted(() => {
 
 watch(() => zonesStore.activeZoneId, (newZoneId) => {
   zonesStore.backupVertices = null;
-  if (newZoneId) {
-    devicesStore.fetchDevices(meshesStore.selectedMeshId);
-  } else {
+  // Removed duplicate fetch; zones store now handles fetching on change
+  if (!newZoneId) {
     devicesStore.clearDevices();
   }
 });
