@@ -50,6 +50,16 @@ const routes = [
         name: 'devices',
         component: () => import('@/views/devices/DevicesView.vue'),
       },
+      {
+        path: 'reports',
+        name: 'reports',
+        component: () => import('@/views/reports/ReportsView.vue'),
+      },
+      {
+        path: 'data',
+        name: 'data',
+        component: () => import('@/views/data/DataView.vue'),
+      },
     ],
   },
   // Catch-all redirect
