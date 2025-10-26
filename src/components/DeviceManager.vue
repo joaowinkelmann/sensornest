@@ -38,6 +38,7 @@
         </q-item-section>
         <q-item-section side>
           <q-btn flat round icon="edit" @click="openEditDialog(device)" />
+          <q-btn flat round icon="bar_chart" @click="showStatistics(device)" />
         </q-item-section>
       </q-item>
     </q-list>
@@ -48,6 +49,30 @@
       @close="showDialog = false"
       @device-updated="handleDeviceUpdated"
     />
+
+    <q-dialog v-model="showStatsDialog">
+      <q-card>
+        <q-card-section>
+          <div class="text-h6">Statistics for {{ selectedDevice?.name }}</div>
+        </q-card-section>
+
+        <q-card-section v-if="loading">
+          <q-spinner-dots size="50px" />
+        </q-card-section>
+
+        <q-card-section v-if="error">
+          <p class="text-negative">Could not load statistics.</p>
+        </q-card-section>
+
+        <q-card-section v-if="statistics">
+          <pre>{{ statistics }}</pre>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn flat label="Close" color="primary" v-close-popup />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
@@ -56,18 +81,22 @@ import { ref, onMounted, computed } from 'vue';
 import { useDevicesStore } from '@/stores/devices';
 import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
+import { useStatistics } from '@/composables/useStatistics';
 import DeviceDialog from './DeviceDialog.vue';
 import { useQuasar } from 'quasar';
 
 const devicesStore = useDevicesStore();
 const meshesStore = useMeshesStore();
 const zonesStore = useZonesStore();
+const { statistics, loading, error, fetchStatistics } = useStatistics();
 const $q = useQuasar();
 
 const selectedMesh = ref(null);
 const selectedZone = ref(null);
 const showDialog = ref(false);
 const editingDevice = ref(null);
+const showStatsDialog = ref(false);
+const selectedDevice = ref(null);
 
 onMounted(async () => {
   await meshesStore.fetchMeshes();
@@ -100,6 +129,12 @@ const onZoneChange = (zoneId) => {
 const openEditDialog = (device) => {
   editingDevice.value = { ...device };
   showDialog.value = true;
+};
+
+const showStatistics = async (device) => {
+  selectedDevice.value = device;
+  await fetchStatistics('device', device.id);
+  showStatsDialog.value = true;
 };
 
 const handleDeviceUpdated = () => {

@@ -50,6 +50,16 @@ const routes = [
         name: 'devices',
         component: () => import('@/views/devices/DevicesView.vue'),
       },
+      {
+        path: 'reports',
+        name: 'reports',
+        component: () => import('@/views/reports/ReportsView.vue'),
+      },
+      {
+        path: 'data',
+        name: 'data',
+        component: () => import('@/views/data/DataView.vue'),
+      },
     ],
   },
   // Catch-all redirect
@@ -68,19 +78,17 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
 
-  // Try to fetch profile if we have a token but no user object yet.
-  if (authStore.token && !authStore.user) {
-    await authStore.getProfile();
+  // Only fetch profile if needed (once per app session, or if stale/forced)
+  if (authStore.token) {
+    await authStore.getProfileIfNeeded();
   }
 
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
   const isAuthenticated = authStore.isAuthenticated;
 
   if (requiresAuth && !isAuthenticated) {
-    // Redirect to login page if trying to access a protected route without being authenticated
     next('/login');
   } else if ((to.name === 'login' || to.name === 'register') && isAuthenticated) {
-    // Redirect to home if trying to access login/register pages while already authenticated
     next('/');
   } else {
     next();

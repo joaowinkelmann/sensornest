@@ -105,7 +105,6 @@ const {
 } = useMapManager(mapContainer);
 
 const {
-  zoneLayers,
   drawZones,
   clearZoneLayers
 } = useZoneRenderer(map, props, emit);

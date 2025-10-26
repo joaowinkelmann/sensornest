@@ -140,6 +140,12 @@ watch(() => props.mode, () => {
   background-color: rgba(0, 0, 0, 0.15);
 }
 
+@media (max-width: 768px) {
+  .divider {
+    display: none;
+  }
+}
+
 .mode-controls {
   border-radius: 8px;
   overflow: hidden;

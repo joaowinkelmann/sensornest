@@ -1,42 +1,53 @@
 {
   "home": {
     "meshes": {
-      "title": "Meshes",
-      "caption": "Admin for defining and editing the logged users",
-      "actionLabel": "Go to Meshes"
+      "title": "Mallas",
+      "caption": "Gestiona tus redes de dispositivos",
+      "actionLabel": "Ir a Mallas"
     },
     "reports": {
-      "title": "My reports",
-      "caption": "Personalized reports for device readings in meshes",
-      "actionLabel": "Go to Reports"
+      "title": "Informes",
+      "caption": "Ver y generar informes",
+      "actionLabel": "Ver Informes"
     },
     "data": {
-      "title": "View data",
-      "caption": "For future heatmap and interactive reading analysis",
-      "actionLabel": "Go to Data View"
+      "title": "Datos",
+      "caption": "Explora los datos recopilados",
+      "actionLabel": "Explorar Datos"
     },
     "mapEditor": {
-      "title": "Map editor",
-      "caption": "The currently implemented Leaflet vertex editor for Zones",
-      "actionLabel": "Go to Map Editor"
+      "title": "Editor de Mapas",
+      "caption": "Crea y edita mapas de zonas",
+      "actionLabel": "Abrir Editor"
     }
   },
   "mapControls": {
     "buttons": {
-      "addVertex": "Agregar vértice",
-      "removeVertex": "Eliminar vértice",
-      "moveVertex": "Mover vértice",
-      "moveDevices": "Mover dispositivos",
-      "newZone": "Nueva zona",
-      "panMap": "Mover mapa"
+      "addVertex": "Añadir Punto",
+      "removeVertex": "Quitar Punto",
+      "moveVertex": "Mover Punto",
+      "moveDevices": "Mover Dispositivos",
+      "newZone": "Nueva Zona",
+      "panMap": "Mover Mapa"
     },
     "instructions": {
-      "add": "Haga clic en el mapa para agregar un vértice a la zona seleccionada.",
-      "remove": "Haga clic en un marcador de vértice para eliminarlo.",
-      "move": "Arrastre un marcador de vértice para moverlo.",
-      "moveDevices": "Arrastre un dispositivo a una nueva posición.",
-      "pan": "Desplácese y haga zoom libremente en el mapa.",
-      "noZoneSelected": "Seleccione una zona antes de editar vértices."
+      "add": "Haz clic en el mapa para añadir un punto",
+      "remove": "Haz clic en un punto para eliminarlo",
+      "move": "Arrastra un punto para moverlo",
+      "moveDevices": "Arrastra un dispositivo para cambiar su posición",
+      "pan": "Mueve y haz zoom en el mapa",
+      "noZoneSelected": "Selecciona una zona para empezar a editar"
     }
+  },
+  "sidebar": {
+    "home": "Inicio",
+    "meshes": "Mallas",
+    "mapEditor": "Editor de Mapas",
+    "devices": "Dispositivos",
+    "profile": "Perfil",
+    "data": "Datos",
+    "reports": "Informes",
+    "logout": "Cerrar Sesión",
+    "user": "Usuario"
   }
 }

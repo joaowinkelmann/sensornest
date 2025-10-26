@@ -2,41 +2,52 @@
   "home": {
     "meshes": {
       "title": "Meshes",
-      "caption": "Admin for defining and editing the logged users",
+      "caption": "Manage your device networks",
       "actionLabel": "Go to Meshes"
     },
     "reports": {
-      "title": "My reports",
-      "caption": "Personalized reports for device readings in meshes",
-      "actionLabel": "Go to Reports"
+      "title": "Reports",
+      "caption": "View and generate reports",
+      "actionLabel": "View Reports"
     },
     "data": {
-      "title": "View data",
-      "caption": "For future heatmap and interactive reading analysis",
-      "actionLabel": "Go to Data View"
+      "title": "Data",
+      "caption": "Explore collected data",
+      "actionLabel": "Explore Data"
     },
     "mapEditor": {
-      "title": "Map editor",
-      "caption": "The currently implemented Leaflet vertex editor for Zones",
-      "actionLabel": "Go to Map Editor"
+      "title": "Map Editor",
+      "caption": "Create and edit zone maps",
+      "actionLabel": "Open Editor"
     }
   },
   "mapControls": {
     "buttons": {
-      "addVertex": "Add Vertex",
-      "removeVertex": "Remove Vertex",
-      "moveVertex": "Move Vertex",
+      "addVertex": "Add Point",
+      "removeVertex": "Remove Point",
+      "moveVertex": "Move Point",
       "moveDevices": "Move Devices",
       "newZone": "New Zone",
       "panMap": "Pan Map"
     },
     "instructions": {
-      "add": "Click on the map to add a vertex to the selected zone.",
-      "remove": "Click on a vertex marker to remove it.",
-      "move": "Drag a vertex marker to move it.",
-      "moveDevices": "Drag a device to a new position.",
-      "pan": "Pan and zoom the map freely.",
-      "noZoneSelected": "Please select a zone before editing vertices."
+      "add": "Click on the map to add a point",
+      "remove": "Click on a point to remove it",
+      "move": "Drag a point to move it",
+      "moveDevices": "Drag a device to change its position",
+      "pan": "Pan and zoom the map",
+      "noZoneSelected": "Select a zone to start editing"
     }
+  },
+  "sidebar": {
+    "home": "Home",
+    "meshes": "Meshes",
+    "mapEditor": "Map Editor",
+    "devices": "Devices",
+    "reports": "Reports",
+    "data": "Data",
+    "profile": "Profile",
+    "logout": "Logout",
+    "user": "User"
   }
 }

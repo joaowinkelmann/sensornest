@@ -61,7 +61,7 @@ export function useZoneRenderer(map, props, emit) {
         emit('vertex-removed', index);
       });
     } else if (mode === 'move') {
-      marker.on('dragstart', (e) => {
+      marker.on('dragstart', () => {
         // Disable map dragging while moving vertex
         if (map.value) {
           map.value.dragging.disable();
@@ -90,7 +90,7 @@ export function useZoneRenderer(map, props, emit) {
         });
       });
 
-      marker.on('drag', (e) => {
+      marker.on('drag', () => {
         // Optional: emit real-time updates during drag
         // emit('vertex-moving', { index: index, latlng: e.target.getLatLng() });
       });

@@ -10,7 +10,27 @@ export default defineConfig([
     files: ['**/*.{js,mjs,jsx,vue}'],
   },
 
-  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**']),
+  {
+    name: 'config/node-globals',
+    files: ['vite.config.js', 'vitest.config.js', 'eslint.config.js', 'jsconfig.json'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+
+  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**', 'jsconfig.json']),
+
+  {
+    name: 'vue/rules',
+    files: ['**/*.vue'],
+    languageOptions: {
+      globals: {
+        ...globals.vue,
+      },
+    },
+  },
 
   {
     languageOptions: {
