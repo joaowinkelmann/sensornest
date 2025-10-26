@@ -74,16 +74,16 @@ jobs:
           SOURCE: "./"
 
           # Do not overwrite server env and other local-only/dev files
-          EXCLUDE: |
-            /node_modules/
-            /dist/
-            .git/
-            .github/
-            .vscode/
-            .DS_Store
-            .env
-            .env.*
-            **/*.env
+          EXCLUDE: >
+            --exclude '/node_modules/'
+            --exclude '/dist/'
+            --exclude '.git/'
+            --exclude '.github/'
+            --exclude '.vscode/'
+            --exclude '.DS_Store'
+            --exclude '.env'
+            --exclude '.env.*'
+            --exclude '*.env'
 
           SCRIPT_BEFORE: |
             set -euo pipefail
