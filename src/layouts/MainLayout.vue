@@ -1,6 +1,6 @@
 <template>
   <q-layout view="hHh lpR fFf">
-    <Sidebar v-model="leftDrawerOpen" :user="authStore.user" @logout="handleLogout" />
+    <MainSidebar v-model="leftDrawerOpen" :user="authStore.user" @logout="handleLogout" />
 
     <q-page-container>
       <router-view />
@@ -14,7 +14,7 @@
 
 <script setup>
 import { ref } from 'vue';
-import Sidebar from '@/components/Sidebar.vue';
+import MainSidebar from '@/components/MainSidebar.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useRouter } from 'vue-router';
 

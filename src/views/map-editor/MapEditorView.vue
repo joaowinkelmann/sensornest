@@ -32,14 +32,12 @@ import { useQuasar } from 'quasar';
 import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
 import { useDevicesStore } from '@/stores/devices';
-import { useRouter } from 'vue-router';
 
 import LeafletMap from '@/components/LeafletMap.vue';
 import FloatingSidebar from '@/components/FloatingSidebar.vue';
 import MeshDialog from '@/components/MeshDialog.vue';
 
 const $q = useQuasar();
-const router = useRouter();
 const meshesStore = useMeshesStore();
 const zonesStore = useZonesStore();
 const devicesStore = useDevicesStore();

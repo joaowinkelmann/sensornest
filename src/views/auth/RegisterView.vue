@@ -44,7 +44,7 @@ const handleRegister = async () => {
   success.value = '';
   loading.value = true;
   try {
-    const response = await apiClient.post('/users/register', {
+    await apiClient.post('/users/register', {
       name: name.value,
       email: email.value,
       password: password.value,

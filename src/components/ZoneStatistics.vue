@@ -1,49 +1,54 @@
 <template>
-  <div>
-    <div class="text-h6 q-mt-md">Zone Statistics</div>
-    <q-list bordered separator>
-      <q-item v-for="zone in zonesStore.zones.filter(z => z.meshId === meshId)" :key="zone.id">
-        <q-item-section>
-          <q-item-label>{{ zone.name }}</q-item-label>
-        </q-item-section>
-        <q-item-section side>
-          <q-btn flat round icon="bar_chart" @click="showStatistics(zone)" aria-label="Show statistics" />
-        </q-item-section>
-      </q-item>
-    </q-list>
+  <div class="q-pa-md">
+    <q-card>
+      <q-card-section>
+        <div class="text-h6">Zone Statistics</div>
+        <div class="text-subtitle2">Select a zone to view statistics</div>
+      </q-card-section>
 
-    <q-dialog v-model="showStatsDialog">
-      <q-card>
-        <q-card-section>
-          <div class="text-h6">Statistics for {{ selectedZone?.name }}</div>
-        </q-card-section>
+      <q-card-section>
+        <q-list bordered separator>
+          <q-item v-for="zone in zonesStore.zones" :key="zone.id">
+            <q-item-section>
+              <q-item-label>{{ zone.name }}</q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-btn
+                flat
+                round
+                icon="bar_chart"
+                aria-label="Show statistics"
+                @click="loadStatistics('zone', zone.id)"
+              />
+            </q-item-section>
+          </q-item>
+        </q-list>
+      </q-card-section>
 
-        <q-card-section v-if="loading">
-          <q-spinner-dots size="50px" />
-        </q-card-section>
+      <q-card-section v-if="loading">
+        <q-spinner-dots color="primary" size="40px" />
+        <p>Loading statistics...</p>
+      </q-card-section>
 
-        <q-card-section v-if="error">
-          <p class="text-negative">Could not load statistics.</p>
-        </q-card-section>
+      <q-card-section v-if="error">
+        <p class="text-negative">{{ error }}</p>
+      </q-card-section>
 
-        <q-card-section v-if="statistics">
-          <pre>{{ statistics }}</pre>
-        </q-card-section>
-
-        <q-card-actions align="right">
-          <q-btn flat label="Close" color="primary" v-close-popup />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+      <q-card-section v-if="statistics">
+        <div class="text-h6">Results</div>
+        <!-- Render your statistics here -->
+        <pre>{{ statistics }}</pre>
+      </q-card-section>
+    </q-card>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { onMounted } from 'vue';
 import { useZonesStore } from '@/stores/zones';
 import { useStatistics } from '@/composables/useStatistics';
 
-const props = defineProps({
+defineProps({
   meshId: {
     type: String,
     required: true,
@@ -53,16 +58,11 @@ const props = defineProps({
 const zonesStore = useZonesStore();
 const { statistics, loading, error, fetchStatistics } = useStatistics();
 
-const showStatsDialog = ref(false);
-const selectedZone = ref(null);
-
 onMounted(() => {
   zonesStore.fetchAllZones();
 });
 
-const showStatistics = async (zone) => {
-  selectedZone.value = zone;
-  await fetchStatistics('zone', zone.id);
-  showStatsDialog.value = true;
+const loadStatistics = (type, id) => {
+  fetchStatistics(type, id);
 };
 </script>

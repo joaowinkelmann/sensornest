@@ -30,42 +30,42 @@
           <q-item-section avatar>
             <q-icon name="home" />
           </q-item-section>
-          <q-item-section>Home</q-item-section>
+          <q-item-section>{{t('sidebar.home')}}</q-item-section>
         </q-item>
 
         <q-item clickable v-ripple to="/meshes">
           <q-item-section avatar>
             <q-icon name="grid_on" />
           </q-item-section>
-          <q-item-section>Meshes</q-item-section>
+          <q-item-section>{{t('sidebar.meshes')}}</q-item-section>
         </q-item>
 
         <q-item clickable v-ripple to="/devices">
           <q-item-section avatar>
             <q-icon name="developer_board" />
           </q-item-section>
-          <q-item-section>Devices</q-item-section>
+          <q-item-section>{{t('sidebar.devices')}}</q-item-section>
         </q-item>
 
         <q-item clickable v-ripple to="/reports">
           <q-item-section avatar>
             <q-icon name="assessment" />
           </q-item-section>
-          <q-item-section>My Reports</q-item-section>
+          <q-item-section>{{t('sidebar.reports')}}</q-item-section>
         </q-item>
 
         <q-item clickable v-ripple to="/data">
           <q-item-section avatar>
             <q-icon name="analytics" />
           </q-item-section>
-          <q-item-section>View Data</q-item-section>
+          <q-item-section>{{t('sidebar.data')}}</q-item-section>
         </q-item>
 
         <q-item clickable v-ripple to="/map-editor">
           <q-item-section avatar>
             <q-icon name="map" />
           </q-item-section>
-          <q-item-section>Map Editor</q-item-section>
+          <q-item-section>{{t('sidebar.mapEditor')}}</q-item-section>
         </q-item>
       </q-list>
     </q-scroll-area>
@@ -77,7 +77,7 @@
           <q-icon name="person" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>{{ user?.name || 'User' }}</q-item-label>
+          <q-item-label>{{ user?.name || t('sidebar.user') }}</q-item-label>
         </q-item-section>
       </q-item>
       <q-item clickable v-ripple @click="$emit('logout')">

@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Quasar } from 'quasar';
 import ZoneStatistics from '../ZoneStatistics.vue';
-import { useZonesStore } from '@/stores/zones';
-import { useStatistics } from '@/composables/useStatistics';
+// import { useZonesStore } from '@/stores/zones';
+// import { useStatistics } from '@/composables/useStatistics';
 
 const mockFetchStatistics = vi.fn();
 

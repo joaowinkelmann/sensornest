@@ -1,19 +1,27 @@
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import vueDevTools from 'vite-plugin-vue-devtools'
 import { quasar, transformAssetUrls } from '@quasar/vite-plugin'
 
 export default defineConfig(({ mode }) => {
-  // Carrega as variaveis de ambiente do arquivo .env
+  // Load all env variables
   const env = loadEnv(mode, process.cwd(), '')
+
+  // Create a new object to hold only the variables that should be exposed to the client
+  const processEnv = {}
+  for (const key in env) {
+    // Only expose variables that are explicitly prefixed with VITE_
+    if (key.startsWith('VITE_')) {
+      processEnv[key] = env[key]
+    }
+  }
+
   return {
     base: '/sensornest/',
     plugins: [
       vue({
         template: { transformAssetUrls }
       }),
-      vueDevTools(),
       quasar({
         sassVariables: '/src/css/quasar.variables.sass',
       })
@@ -27,5 +35,9 @@ export default defineConfig(({ mode }) => {
       port: parseInt(env.VITE_PORT || '3000', 10),
       allowedHosts: ['winkels.com.br'],
     },
+    define: {
+      // Use the filtered object instead of the full 'env'
+      'process.env': processEnv
+    }
   }
 })

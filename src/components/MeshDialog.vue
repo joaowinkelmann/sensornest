@@ -186,7 +186,7 @@ const handleSubmit = async () => {
         return;
       }
       // Otherwise, just update the metadata.
-      const { id, ...updatePayload } = { ...meshData.value };
+      const {...updatePayload } = { ...meshData.value };
       await meshesStore.updateMesh(meshId, updatePayload);
       emit('close');
 
