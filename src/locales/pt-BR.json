@@ -20,5 +20,23 @@
       "caption": "The currently implemented Leaflet vertex editor for Zones",
       "actionLabel": "Go to Map Editor"
     }
+  },
+  "mapControls": {
+    "buttons": {
+      "addVertex": "Adicionar vértice",
+      "removeVertex": "Remover vértice",
+      "moveVertex": "Mover vértice",
+      "moveDevices": "Mover dispositivos",
+      "newZone": "Nova zona",
+      "panMap": "Mover mapa"
+    },
+    "instructions": {
+      "add": "Clique no mapa para adicionar um vértice à zona selecionada.",
+      "remove": "Clique em um marcador de vértice para removê-lo.",
+      "move": "Arraste um marcador de vértice para movê-lo.",
+      "moveDevices": "Arraste um dispositivo para uma nova posição.",
+      "pan": "Desloque e dê zoom livremente no mapa.",
+      "noZoneSelected": "Selecione uma zona antes de editar vértices."
+    }
   }
 }

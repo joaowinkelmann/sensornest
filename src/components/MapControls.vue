@@ -44,6 +44,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import ControlButton from './ControlButton.vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
   mode: {
@@ -63,32 +66,33 @@ const handleOtherClick = (control) => {
 };
 
 // Control definitions
-const vertexControls = [
-  { mode: 'add', label: 'Add Vertex', icon: 'add_circle', color: 'primary' },
-  { mode: 'remove', label: 'Remove Vertex', icon: 'remove_circle', color: 'negative' },
-  { mode: 'move', label: 'Move Vertex', icon: 'open_with', color: 'info' }
-];
+// changed to computed to react to locale changes
+const vertexControls = computed(() => ([
+  { mode: 'add', label: t('mapControls.buttons.addVertex'), icon: 'add_circle', color: 'primary' },
+  { mode: 'remove', label: t('mapControls.buttons.removeVertex'), icon: 'remove_circle', color: 'negative' },
+  { mode: 'move', label: t('mapControls.buttons.moveVertex'), icon: 'open_with', color: 'info' }
+]));
 
-const otherControls = [
-  { mode: 'move-devices', label: 'Move Devices', icon: 'swipe', color: 'teal' },
-  { mode: 'draw-zone', label: 'New Zone', icon: 'edit', color: 'accent' },
-  { mode: null, label: 'Pan Map', icon: 'pan_tool', color: 'positive' }
-];
+const otherControls = computed(() => ([
+  { mode: 'move-devices', label: t('mapControls.buttons.moveDevices'), icon: 'swipe', color: 'teal' },
+  { mode: 'draw-zone', label: t('mapControls.buttons.newZone'), icon: 'edit', color: 'accent' },
+  { mode: null, label: t('mapControls.buttons.panMap'), icon: 'pan_tool', color: 'positive' }
+]));
 
 // Instructions for each mode
-const modeInstructions = {
-  add: { icon: 'touch_app', text: 'Click on the map to add a vertex to the selected zone.' },
-  remove: { icon: 'delete', text: 'Click on a vertex marker to remove it.' },
-  move: { icon: 'drag_indicator', text: 'Drag a vertex marker to move it.' },
-  'move-devices': { icon: 'swipe', text: 'Drag a device to a new position.' },
-  null: { icon: 'pan_tool', text: 'Pan and zoom the map freely.' }
-};
+const modeInstructions = computed(() => ({
+  add: { icon: 'touch_app', text: t('mapControls.instructions.add') },
+  remove: { icon: 'delete', text: t('mapControls.instructions.remove') },
+  move: { icon: 'drag_indicator', text: t('mapControls.instructions.move') },
+  'move-devices': { icon: 'swipe', text: t('mapControls.instructions.moveDevices') },
+  null: { icon: 'pan_tool', text: t('mapControls.instructions.pan') }
+}));
 
 const currentInstruction = computed(() => {
   if (!props.activeZone && ['add', 'remove', 'move'].includes(props.mode)) {
-    return { icon: 'warning', text: 'Please select a zone before editing vertices.' };
+    return { icon: 'warning', text: t('mapControls.instructions.noZoneSelected') };
   }
-  return modeInstructions[props.mode];
+  return modeInstructions.value[props.mode];
 });
 
 const showInstruction = ref(false);
