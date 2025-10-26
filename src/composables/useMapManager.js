@@ -34,7 +34,7 @@ export function useMapManager(mapContainer) {
 
       let mapOptions = {
         zoom: 15,
-        zoomControl: true,
+        zoomControl: false,
         attributionControl: false,
       };
 
@@ -85,6 +85,8 @@ export function useMapManager(mapContainer) {
       }
 
       tileLayer.addTo(map.value);
+
+      L.control.zoom({ position: 'topright' }).addTo(map.value);
 
       resolve(map.value);
     });

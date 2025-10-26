@@ -17,7 +17,7 @@
 
     <div class="floating-sidebar" :class="{ expanded }" @transitionend="onTransitionEnd" ref="sidebarRef">
       <div class="sidebar-toggle" @click="toggleSidebar">
-        <q-icon :name="expanded ? 'close' : 'menu'" size="24px" color="white" />
+        <q-icon :name="expanded ? 'close' : 'build'" size="24px" color="white" />
       </div>
       <transition name="sidebar-actions-fade">
         <div v-if="expanded || showActions" class="sidebar-actions-wrapper" :class="{ visible: expanded }">

@@ -290,7 +290,7 @@ const handleSaveNewZone = (vertices) => {
 
 .floating-sidebar-position {
   position: absolute;
-  top: 20px;
+  top: 96px;
   right: 20px;
   z-index: 1000;
 }

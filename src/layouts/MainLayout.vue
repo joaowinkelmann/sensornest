@@ -5,6 +5,10 @@
     <q-page-container>
       <router-view />
     </q-page-container>
+
+    <q-page-sticky position="top-left" :offset="[18, 18]" v-if="$q.screen.lt.md && !leftDrawerOpen">
+      <q-btn fab icon="menu" color="primary" @click="toggleLeftDrawer" />
+    </q-page-sticky>
   </q-layout>
 </template>
 
@@ -22,5 +26,9 @@ const leftDrawerOpen = ref(true);
 const handleLogout = () => {
   authStore.logout();
   router.push('/login');
+};
+
+const toggleLeftDrawer = () => {
+  leftDrawerOpen.value = !leftDrawerOpen.value;
 };
 </script>
