@@ -1,47 +1,113 @@
-name: SensorNest Front-end Deploy
+name: SensorNest Frontend Deploy
 
 on:
-    push:
-        branches: [main]
-    pull_request:
-        branches: [main]
-    
-    workflow_dispatch:
-    
-jobs:
-    deploy:
-        name: Deploy over SSH
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
-            - name: Copy files with SSH
-              uses: easingthemes/ssh-deploy@main
-              env:
-                    SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
-                    # -a implies -rlptgoD. Kept compression and omit-dir-times, removed -v
-                    # --info=stats prints only a brief summary at the end.
-                    ARGS: "-azO --delete --info=stats"
-                    SOURCE: "./"
-                    REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
-                    REMOTE_USER: ${{ secrets.REMOTE_USER }}
-                    TARGET: ${{ secrets.TARGET_DIR }}
-                    EXCLUDE: "/node_modules/, **.env, .env.local, .gitignore, .git/, .github/, .vscode/"
-                    SCRIPT_BEFORE: |
-                        set -euo pipefail
-                        echo "===> Starting deployment"
-                        sudo systemctl stop nginx
-                        echo "|||| Running halt.sh..."
-                        cd ${{ secrets.TARGET_DIR }}
-                        bash .scripts/halt.sh
-                    SCRIPT_AFTER: |
-                        set -euo pipefail
-                        set -x
-                        whoami
-                        cd ${{ secrets.TARGET_DIR }}
-                        sudo systemctl start nginx
-                        echo "|||| Running run.sh..."
-                        chmod +x .scripts/*.sh
-                        bash .scripts/run.sh
-                        echo "===> Finished deployment"
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint, Unit Test (Vitest), and Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Show versions
+        run: |
+          bun --version
+          node --version || true
+          npm --version || true
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Run unit tests (Vitest)
+        run: bun run test
+
+      - name: Ensure Vite/Quasar build
+        run: bun run build
+
+  deploy:
+    name: Deploy over SSH
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copy files with SSH (rsync)
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+          REMOTE_USER: ${{ secrets.REMOTE_USER }}
+          TARGET: ${{ secrets.TARGET_DIR }}
+
+          # Keep it quiet and fast, delete removed files on remote
+          # -a implies -rlptgoD; -z for compression; -O omit dir times; --delete for clean deploys
+          ARGS: "-azO --delete --info=stats"
+
+          # Send only source files; build happens on the server via .scripts/run.sh
+          SOURCE: "./"
+
+          # Do not overwrite server env and other local-only/dev files
+          EXCLUDE: |
+            /node_modules/
+            /dist/
+            .git/
+            .github/
+            .vscode/
+            .DS_Store
+            .env
+            .env.*
+            **/*.env
+
+          SCRIPT_BEFORE: |
+            set -euo pipefail
+            echo "===> Starting deployment"
+            echo "===> Stopping nginx"
+            sudo systemctl stop nginx || true
+            echo "===> Running halt.sh..."
+            cd "${{ secrets.TARGET_DIR }}"
+            if [ -x .scripts/halt.sh ]; then
+              bash .scripts/halt.sh
+            else
+              echo "WARN: .scripts/halt.sh not found or not executable, continuing"
+            fi
+
+          SCRIPT_AFTER: |
+            set -euo pipefail
+            set -x
+            cd "${{ secrets.TARGET_DIR }}"
+            chmod +x .scripts/*.sh || true
+
+            echo "===> Running run.sh"
+            bash .scripts/run.sh
+
+            echo "===> Starting nginx"
+            sudo systemctl start nginx || true
+            set +x
+            echo "===> Finished deployment"
