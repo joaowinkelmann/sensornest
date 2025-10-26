@@ -19,7 +19,7 @@ app.use(router)
 app.use(Quasar, {
   plugins: { Dialog, Notify },
   config: {
-    notify: { position: 'bottom-left', timeout: 3000 },
+    notify: { position: 'top', timeout: 2000 },
   },
 })
 app.use(i18n)

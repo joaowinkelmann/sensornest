@@ -49,5 +49,20 @@
     "reports": "Informes",
     "logout": "Cerrar Sesión",
     "user": "Usuario"
-  }
+  },
+  "notifications": {
+    "meshSaved": "Malla guardada correctamente",
+    "meshSelected": "Malla seleccionada",
+    "meshPleaseSelect": "Por favor, seleccione una malla primero",
+    "zoneSaved": "Zona guardada correctamente",
+    "zoneNoActive": "No hay zona activa para guardar",
+    "zonePleaseSelect": "Por favor, seleccione una zona primero",
+    "zoneSavedError": "Error al guardar la zona",
+    "zoneCreated": "Zona creada",
+    "zoneCreatedError": "Error al crear la zona",
+    "zoneUpdated": "Zona actualizada",
+    "zoneDeleted": "Zona eliminada",
+    "deviceMoved": "Posición del dispositivo actualizada",
+    "deviceMovedError": "Error al actualizar la posición del dispositivo"
+}
 }

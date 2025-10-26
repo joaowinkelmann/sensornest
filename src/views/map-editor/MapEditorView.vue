@@ -32,11 +32,13 @@ import { useQuasar } from 'quasar';
 import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
 import { useDevicesStore } from '@/stores/devices';
+import { useI18n } from 'vue-i18n';
 
 import LeafletMap from '@/components/LeafletMap.vue';
 import FloatingSidebar from '@/components/FloatingSidebar.vue';
 import MeshDialog from '@/components/MeshDialog.vue';
 
+const { t } = useI18n();
 const $q = useQuasar();
 const meshesStore = useMeshesStore();
 const zonesStore = useZonesStore();
@@ -63,7 +65,7 @@ onMounted(() => {
   if (!meshesStore.selectedMeshId) {
     $q.notify({
       type: 'info',
-      message: 'Please select a mesh to start editing.',
+      message: t('notifications.meshPleaseSelect'),
     });
   }
 });
@@ -157,7 +159,7 @@ const findInsertionIndex = (vertices, newPoint) => {
 const handleVertexAdded = (latlng) => {
   const activeZone = zonesStore.activeZone;
   if (!activeZone) {
-    $q.notify({ type: 'warning', message: 'Please select or create a zone first.' });
+    $q.notify({ type: 'warning', message: t('notifications.zonePleaseSelect') });
     return;
   }
   if (zonesStore.backupVertices === null) {
@@ -197,14 +199,14 @@ const handleDeviceMoved = async ({ id, latlng }) => {
     await devicesStore.updateDevice(id, { x, y });
     $q.notify({
       type: 'positive',
-      message: 'Device position updated successfully!',
+      message: t('notifications.deviceMoved'),
       timeout: 2000
     });
   } catch (error) {
     console.error('Failed to update device position:', error);
     $q.notify({
       type: 'negative',
-      message: 'Failed to update device position.',
+      message: t('notifications.deviceMovedError'),
     });
     devicesStore.fetchDevices(meshesStore.selectedMeshId);
   }
@@ -213,7 +215,7 @@ const handleDeviceMoved = async ({ id, latlng }) => {
 const saveZone = async () => {
   const zone = zonesStore.activeZone;
   if (!zone) {
-    $q.notify({ type: 'warning', message: 'No active zone to save.' });
+    $q.notify({ type: 'warning', message: t('notifications.noActiveZone') });
     return;
   }
   try {
@@ -221,22 +223,22 @@ const saveZone = async () => {
     mapRef.value?.setMode(null);
     zonesStore.backupVertices = null;
     zonesStore.isZoneDirty = false;
-    $q.notify({ type: 'positive', message: 'Zone saved successfully!' });
+    $q.notify({ type: 'positive', message: t('notifications.zoneSaved') });
   } catch (error) {
     console.error('Failed to save zone:', error);
-    $q.notify({ type: 'negative', message: 'Failed to save zone. Please try again.' });
+    $q.notify({ type: 'negative', message: t('notifications.zoneSavedError') });
   }
 };
 
 const onMeshSelected = (meshId) => {
   meshesStore.selectMesh(meshId);
   showMeshDialog.value = false;
-  $q.notify({ type: 'positive', message: 'Mesh selected successfully!' });
+  $q.notify({ type: 'positive', message: t('notifications.meshSelected') });
 };
 
 const handleDrawZoneClicked = () => {
   if (!meshesStore.selectedMeshId) {
-    $q.notify({ type: 'warning', message: 'Please select a mesh first.' });
+    $q.notify({ type: 'warning', message: t('notifications.selectMeshFirst') });
     return;
   }
   mapRef.value?.setMode('draw-zone');
@@ -263,14 +265,14 @@ const handleSaveNewZone = (vertices) => {
           meshId: meshesStore.selectedMeshId
         };
         const newZone = await zonesStore.createZone(newZoneData);
-        $q.notify({ type: 'positive', message: `Zone "${name}" created!` });
+        $q.notify({ type: 'positive', message: t('notifications.zoneCreated') });
         if (newZone && newZone.id) {
           zonesStore.setActiveZone(newZone.id);
           mapRef.value?.setMode(null);
         }
       } catch (error) {
         console.error('Failed to create zone:', error);
-        $q.notify({ type: 'negative', message: 'Failed to create zone. Please try again.' });
+        $q.notify({ type: 'negative', message: t('notifications.zoneCreatedError') });
       }
     }
   });

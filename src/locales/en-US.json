@@ -49,5 +49,20 @@
     "profile": "Profile",
     "logout": "Logout",
     "user": "User"
+  },
+  "notifications": {
+    "meshSaved": "Mesh saved successfully",
+    "meshSelected": "Mesh selected",
+    "meshPleaseSelect": "Please select a mesh first",
+    "zoneSaved": "Zone saved successfully",
+    "zoneNoActive": "No active zone to save",
+    "zonePleaseSelect": "Please select a zone first",
+    "zoneSavedError": "Error saving zone",
+    "zoneCreated": "Zone created",
+    "zoneCreatedError": "Error creating zone",
+    "zoneUpdated": "Zone updated",
+    "zoneDeleted": "Zone deleted",
+    "deviceMoved": "Device position updated",
+    "deviceMovedError": "Error updating device position"
   }
 }

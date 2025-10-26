@@ -49,5 +49,20 @@
     "profile": "Perfil",
     "logout": "Sair",
     "user": "Usuário"
-  }
+  },
+  "notifications": {
+    "meshSaved": "Malha salva com sucesso",
+    "meshSelected": "Malha selecionada",
+    "meshPleaseSelect": "Por favor, selecione uma malha primeiro",
+    "zoneSaved": "Zona salva com sucesso",
+    "zoneNoActive": "Nenhuma zona ativa para salvar",
+    "zonePleaseSelect": "Por favor, selecione uma zona primeiro",
+    "zoneSavedError": "Erro ao salvar a zona",
+    "zoneCreated": "Zona criada",
+    "zoneCreatedError": "Erro ao criar a zona",
+    "zoneUpdated": "Zona atualizada",
+    "zoneDeleted": "Zona excluída",
+    "deviceMoved": "Posição do dispositivo atualizada",
+    "deviceMovedError": "Erro ao atualizar a posição do dispositivo"
+}
 }
