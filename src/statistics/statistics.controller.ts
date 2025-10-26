@@ -14,7 +14,7 @@ import {
 export class StatisticsController {
   constructor(private readonly statisticsService: StatisticsService) {}
 
-  @ApiOperation({ summary: 'Get statistics for a device' })
+  @ApiOperation({ summary: 'Busca estatísticas para um dispositivo' })
   @ApiResponse({ status: 200, description: 'Return device statistics.' })
   @UseGuards(AuthGuard)
   @Get('device/:id')
@@ -22,7 +22,7 @@ export class StatisticsController {
     return this.statisticsService.getDeviceStatistics(id);
   }
 
-  @ApiOperation({ summary: 'Get statistics for a zone' })
+  @ApiOperation({ summary: 'Busca estatísticas para uma Zone' })
   @ApiResponse({ status: 200, description: 'Return zone statistics.' })
   @UseGuards(AuthGuard)
   @Get('zone/:id')
@@ -30,7 +30,7 @@ export class StatisticsController {
     return this.statisticsService.getZoneStatistics(id);
   }
 
-  @ApiOperation({ summary: 'Get statistics for a mesh' })
+  @ApiOperation({ summary: 'Busca estatísticas para uma Mesh' })
   @ApiResponse({ status: 200, description: 'Return mesh statistics.' })
   @UseGuards(AuthGuard)
   @Get('mesh/:id')
