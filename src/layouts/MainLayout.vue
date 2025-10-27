@@ -6,8 +6,13 @@
       <router-view />
     </q-page-container>
 
-    <q-page-sticky position="top-left" :offset="[18, 18]" v-if="$q.screen.lt.md && !leftDrawerOpen">
-      <q-btn fab icon="menu" color="primary" @click="toggleLeftDrawer" />
+    <q-page-sticky
+      position="top-left"
+      :offset="[8, 8]"
+      v-if="$q.screen.lt.md && !leftDrawerOpen"
+      class="mobile-fab-container"
+    >
+      <q-btn fab-mini dense="true" glossy="true" icon="menu" color="primary" @click="toggleLeftDrawer" />
     </q-page-sticky>
   </q-layout>
 </template>
@@ -32,3 +37,9 @@ const toggleLeftDrawer = () => {
   leftDrawerOpen.value = !leftDrawerOpen.value;
 };
 </script>
+
+<style scoped>
+.mobile-fab-container {
+  z-index: 2000; /* Ensure it's above map controls */
+}
+</style>
