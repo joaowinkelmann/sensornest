@@ -2,12 +2,12 @@
   <q-dialog :model-value="show" @update:model-value="$emit('close')" persistent>
     <q-card style="min-width: 400px;">
       <q-card-section>
-        <div class="text-h6">Edit Device</div>
+        <div class="text-h6">{{ t('devices.dialogTitleEdit') }}</div>
       </q-card-section>
 
       <q-card-section v-if="localDevice">
-        <q-input v-model="localDevice.name" label="Name" outlined class="q-mb-md" />
-        <q-input v-model="localDevice.deviceColor" label="Device Color" outlined class="q-mb-md">
+        <q-input v-model="localDevice.name" :label="t('devices.deviceNameLabel')" outlined class="q-mb-md" />
+        <q-input v-model="localDevice.deviceColor" :label="t('devices.deviceColorLabel')" outlined class="q-mb-md">
           <template v-slot:append>
             <q-icon name="colorize" class="cursor-pointer">
               <q-popup-proxy cover transition-show="scale" transition-hide="scale">
@@ -18,14 +18,14 @@
         </q-input>
         <q-input
           v-model.number="localDevice.wakeUpInterval"
-          label="Wake Up Interval (seconds)"
+          :label="t('devices.wakeUpIntervalLabel')"
           type="number"
           outlined
           class="q-mb-md"
         />
         <q-input
           v-model.number="localDevice.readingsPerBatch"
-          label="Readings Per Batch"
+          :label="t('devices.readingsPerBatchLabel')"
           type="number"
           outlined
           class="q-mb-md"
@@ -33,8 +33,8 @@
       </q-card-section>
 
       <q-card-actions align="right">
-        <q-btn flat label="Cancel" color="primary" @click="$emit('close')" />
-        <q-btn label="Save" color="primary" @click="saveDevice" />
+        <q-btn flat :label="t('devices.cancelButton')" color="primary" @click="$emit('close')" />
+        <q-btn :label="t('devices.saveButton')" color="primary" @click="saveDevice" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -43,7 +43,9 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { useDevicesStore } from '@/stores/devices';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const props = defineProps({
   show: Boolean,
   deviceToEdit: Object,

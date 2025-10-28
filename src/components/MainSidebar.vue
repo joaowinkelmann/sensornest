@@ -16,12 +16,12 @@
         <q-item class="q-my-md" clickable to="/">
           <q-item-section avatar>
             <q-icon>
-              <img src="/sensornest/logo.webp" alt="SensorNest Logo" />
+              <img src="/sensornest/logo.webp" :alt="t('sidebar.logoAlt')" />
             </q-icon>
           </q-item-section>
           <q-item-section>
             <q-item-label class="text-weight-bold" style="font-size: 1.25rem;">
-              SensorNest
+              {{ t('sidebar.title') }}
             </q-item-label>
           </q-item-section>
         </q-item>

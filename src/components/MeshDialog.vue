@@ -2,16 +2,16 @@
   <q-dialog :model-value="show" @update:model-value="$emit('close')" persistent>
     <q-card style="width: 700px; max-width: 80vw;">
       <q-card-section>
-        <div class="text-h6">{{ isEditing ? 'Edit Mesh' : 'Create New Mesh' }}</div>
+        <div class="text-h6">{{ isEditing ? t('meshDialog.editTitle') : t('meshDialog.createTitle') }}</div>
       </q-card-section>
 
       <q-card-section class="q-pt-none">
-        <q-input v-model="meshData.name" label="Mesh Name" autofocus :rules="[val => !!val || 'Name is required']" />
+        <q-input v-model="meshData.name" :label="t('meshDialog.nameLabel')" autofocus :rules="[val => !!val || t('meshDialog.nameRequired')]" />
 
         <q-tabs v-model="tab" class="text-grey" active-color="primary" indicator-color="primary" align="justify"
           narrow-indicator>
-          <q-tab name="osm" label="OpenStreetMap" />
-          <q-tab name="custom" label="Custom Map" />
+          <q-tab name="osm" :label="t('meshDialog.osmTab')" />
+          <q-tab name="custom" :label="t('meshDialog.customMapTab')" />
         </q-tabs>
 
         <q-separator />
@@ -19,35 +19,35 @@
         <q-tab-panels v-model="tab" animated>
           <q-tab-panel name="osm">
             <div class="q-my-md">
-              <q-btn @click="getUserLocation" label="Get Current Location" icon="my_location" color="secondary" />
+              <q-btn @click="getUserLocation" :label="t('meshDialog.getLocationButton')" icon="my_location" color="secondary" />
             </div>
             <div ref="mapContainer" style="height: 300px; width: 100%;"></div>
             <div class="row q-col-gutter-sm q-mt-sm">
               <div class="col">
-                <q-input v-model.number="meshData.lat" type="number" label="Latitude" />
+                <q-input v-model.number="meshData.lat" type="number" :label="t('meshDialog.latitudeLabel')" />
               </div>
               <div class="col">
-                <q-input v-model.number="meshData.lon" type="number" label="Longitude" />
+                <q-input v-model.number="meshData.lon" type="number" :label="t('meshDialog.longitudeLabel')" />
               </div>
             </div>
           </q-tab-panel>
 
           <q-tab-panel name="custom">
-            <q-file v-model="customMapFile" label="Upload Custom Map Image" accept="image/*" class="q-mt-md">
+            <q-file v-model="customMapFile" :label="t('meshDialog.uploadLabel')" accept="image/*" class="q-mt-md">
               <template v-slot:prepend>
                 <q-icon name="attach_file" />
               </template>
             </q-file>
             <div v-if="meshData.mapUrl" class="q-mt-sm">
-              <p>Current map URL: <code>{{ meshData.mapUrl }}</code></p>
+              <p>{{ t('meshDialog.currentMapUrl') }} <code>{{ meshData.mapUrl }}</code></p>
             </div>
           </q-tab-panel>
         </q-tab-panels>
       </q-card-section>
 
       <q-card-actions align="right">
-        <q-btn flat label="Cancel" color="primary" @click="$emit('close')" />
-        <q-btn :label="isEditing ? 'Save Changes' : 'Create'" color="primary" @click="handleSubmit" />
+        <q-btn flat :label="t('meshDialog.cancelButton')" color="primary" @click="$emit('close')" />
+        <q-btn :label="isEditing ? t('meshDialog.saveButton') : t('meshDialog.createButton')" color="primary" @click="handleSubmit" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -59,7 +59,9 @@ import { useQuasar } from 'quasar';
 import L from 'leaflet';
 import { useMeshesStore } from '@/stores/meshes';
 import 'leaflet/dist/leaflet.css';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const props = defineProps({
   show: Boolean,
   meshToEdit: Object,
@@ -161,17 +163,17 @@ const getUserLocation = () => {
       },
       (error) => {
         console.log(error, "Error getting location");
-        $q.notify({ type: 'negative', message: 'Could not get your location.' });
+        $q.notify({ type: 'negative', message: t('meshDialog.locationError') });
       }
     );
   } else {
-    $q.notify({ type: 'negative', message: 'Geolocation is not supported by your browser.' });
+    $q.notify({ type: 'negative', message: t('meshDialog.geolocationNotSupported') });
   }
 };
 
 const handleSubmit = async () => {
   if (!meshData.value.name) {
-    $q.notify({ type: 'negative', message: 'Please enter a name for the mesh.' });
+    $q.notify({ type: 'negative', message: t('meshDialog.nameMissing') });
     return;
   }
 
@@ -211,7 +213,7 @@ const handleSubmit = async () => {
     }
   } catch (error) {
     console.error('Mesh save/upload failed:', error);
-    $q.notify({ type: 'negative', message: 'An error occurred while saving the mesh.' });
+    $q.notify({ type: 'negative', message: t('meshDialog.saveError') });
   }
 };
 

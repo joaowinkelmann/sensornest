@@ -2,8 +2,8 @@
   <div class="q-pa-md">
     <q-card>
       <q-card-section>
-        <div class="text-h6">Zone Statistics</div>
-        <div class="text-subtitle2">Select a zone to view statistics</div>
+        <div class="text-h6">{{ t('zoneStatistics.title') }}</div>
+        <div class="text-subtitle2">{{ t('zoneStatistics.subtitle') }}</div>
       </q-card-section>
 
       <q-card-section>
@@ -17,7 +17,7 @@
                 flat
                 round
                 icon="bar_chart"
-                aria-label="Show statistics"
+                :aria-label="t('zoneStatistics.showStatistics')"
                 @click="loadStatistics('zone', zone.id)"
               />
             </q-item-section>
@@ -27,7 +27,7 @@
 
       <q-card-section v-if="loading">
         <q-spinner-dots color="primary" size="40px" />
-        <p>Loading statistics...</p>
+        <p>{{ t('zoneStatistics.loading') }}</p>
       </q-card-section>
 
       <q-card-section v-if="error">
@@ -35,7 +35,7 @@
       </q-card-section>
 
       <q-card-section v-if="statistics">
-        <div class="text-h6">Results</div>
+        <div class="text-h6">{{ t('zoneStatistics.results') }}</div>
         <!-- Render your statistics here -->
         <pre>{{ statistics }}</pre>
       </q-card-section>
@@ -47,7 +47,9 @@
 import { onMounted } from 'vue';
 import { useZonesStore } from '@/stores/zones';
 import { useStatistics } from '@/composables/useStatistics';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 defineProps({
   meshId: {
     type: String,
