@@ -2,28 +2,28 @@
   <q-page class="q-pa-md">
     <q-card>
       <q-card-section>
-        <div class="text-h6">Edit Profile</div>
+        <div class="text-h6">{{ t('profile.title') }}</div>
       </q-card-section>
 
       <q-card-section v-if="user">
         <q-form @submit.prevent="updateProfile">
           <q-input
             v-model="name"
-            label="Name"
-            :rules="[(val) => !!val || 'Name is required']"
+            :label="t('profile.nameLabel')"
+            :rules="[(val) => !!val || t('profile.nameRequired')]"
           />
 
-          <q-input v-model="user.email" label="Email" readonly />
+          <q-input v-model="user.email" :label="t('profile.emailLabel')" readonly />
 
           <div class="q-mt-md">
-            <q-btn label="Save" type="submit" color="primary" />
+            <q-btn :label="t('profile.saveButton')" type="submit" color="primary" />
           </div>
         </q-form>
       </q-card-section>
 
       <q-card-section v-else>
         <q-spinner />
-        Loading profile...
+        {{ t('profile.loading') }}
       </q-card-section>
     </q-card>
   </q-page>
@@ -33,7 +33,9 @@
 import { ref, onMounted, watch } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 
+const { t } = useI18n();
 const authStore = useAuthStore();
 const { user } = storeToRefs(authStore);
 

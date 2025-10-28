@@ -4,18 +4,18 @@
       <q-page class="flex flex-center bg-grey-2">
         <q-card style="width: 400px">
           <q-card-section class="q-pa-lg">
-            <div class="text-h5 q-mb-md text-center">Create an Account</div>
+            <div class="text-h5 q-mb-md text-center">{{ t('register.title') }}</div>
             <q-form @submit.prevent="handleRegister" class="q-gutter-md">
-              <q-input filled v-model="name" label="Name" :rules="[val => !!val || 'Name is required']" />
-              <q-input filled v-model="email" label="Email" type="email" :rules="[val => !!val || 'Email is required']" />
-              <q-input filled v-model="password" label="Password" type="password" :rules="[val => !!val || 'Password is required']" />
+              <q-input filled v-model="name" :label="t('register.nameLabel')" :rules="[val => !!val || t('register.nameRequired')]" />
+              <q-input filled v-model="email" :label="t('register.emailLabel')" type="email" :rules="[val => !!val || t('register.emailRequired')]" />
+              <q-input filled v-model="password" :label="t('register.passwordLabel')" type="password" :rules="[val => !!val || t('register.passwordRequired')]" />
 
               <div v-if="error" class="text-negative text-center q-my-sm">{{ error }}</div>
               <div v-if="success" class="text-positive text-center q-my-sm">{{ success }}</div>
 
               <div>
-                <q-btn label="Register" type="submit" color="primary" class="full-width" :loading="loading" />
-                <q-btn label="Back to login" flat color="primary" class="full-width q-mt-sm" @click="goToLogin" />
+                <q-btn :label="t('register.registerButton')" type="submit" color="primary" class="full-width" :loading="loading" />
+                <q-btn :label="t('register.loginButton')" flat color="primary" class="full-width q-mt-sm" @click="goToLogin" />
               </div>
             </q-form>
           </q-card-section>
@@ -29,7 +29,9 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import apiClient from '@/api';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const router = useRouter();
 
 const name = ref('');
@@ -49,13 +51,13 @@ const handleRegister = async () => {
       email: email.value,
       password: password.value,
     });
-    success.value = 'Registration successful! Please log in.';
+    success.value = t('register.successMessage');
     setTimeout(() => {
       router.push('/login');
     }, 1500);
   } catch (e) {
     console.log(e);
-    error.value = 'Registration failed.';
+    error.value = t('register.errorMessage');
   } finally {
     loading.value = false;
   }

@@ -2,6 +2,21 @@ import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Quasar } from 'quasar';
 import ZoneStatistics from '../ZoneStatistics.vue';
+import { createI18n } from 'vue-i18n';
+
+const i18n = createI18n({
+  legacy: false,
+  locale: 'en-US',
+  messages: {
+    'en-US': {
+      zoneStatistics: {
+        title: 'Zone Statistics',
+        subtitle: 'Select a zone to view statistics',
+        showStatistics: 'Show statistics',
+      },
+    },
+  },
+});
 // import { useZonesStore } from '@/stores/zones';
 // import { useStatistics } from '@/composables/useStatistics';
 
@@ -33,7 +48,7 @@ describe('ZoneStatistics.vue', () => {
         meshId: 'mesh1',
       },
       global: {
-        plugins: [Quasar],
+        plugins: [Quasar, i18n],
       },
     });
 

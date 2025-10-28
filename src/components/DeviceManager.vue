@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="row items-center justify-between q-mb-md">
-      <div class="text-h4">Device Manager</div>
+      <div class="text-h4">{{ t('devices.title') }}</div>
     </div>
 
     <!-- Filters -->
@@ -9,7 +9,7 @@
       <q-select
         v-model="selectedMesh"
         :options="meshOptions"
-        label="Filter by Mesh"
+        :label="t('devices.filterByMesh')"
         emit-value
         map-options
         clearable
@@ -19,7 +19,7 @@
       <q-select
         v-model="selectedZone"
         :options="zoneOptions"
-        label="Filter by Zone"
+        :label="t('devices.filterByZone')"
         emit-value
         map-options
         clearable
@@ -53,7 +53,7 @@
     <q-dialog v-model="showStatsDialog">
       <q-card>
         <q-card-section>
-          <div class="text-h6">Statistics for {{ selectedDevice?.name }}</div>
+          <div class="text-h6">{{ t('devices.statisticsTitle', { deviceName: selectedDevice?.name }) }}</div>
         </q-card-section>
 
         <q-card-section v-if="loading">
@@ -61,7 +61,7 @@
         </q-card-section>
 
         <q-card-section v-if="error">
-          <p class="text-negative">Could not load statistics.</p>
+          <p class="text-negative">{{ t('devices.statisticsError') }}</p>
         </q-card-section>
 
         <q-card-section v-if="statistics">
@@ -69,7 +69,7 @@
         </q-card-section>
 
         <q-card-actions align="right">
-          <q-btn flat label="Close" color="primary" v-close-popup />
+          <q-btn flat :label="t('devices.closeButton')" color="primary" v-close-popup />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -84,7 +84,9 @@ import { useZonesStore } from '@/stores/zones';
 import { useStatistics } from '@/composables/useStatistics';
 import DeviceDialog from './DeviceDialog.vue';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const devicesStore = useDevicesStore();
 const meshesStore = useMeshesStore();
 const zonesStore = useZonesStore();
@@ -142,7 +144,7 @@ const handleDeviceUpdated = () => {
   editingDevice.value = null;
   $q.notify({
     type: 'positive',
-    message: 'Device updated successfully!',
+    message: t('devices.updateSuccess'),
   });
   // Refetch devices to show updated data
   if (selectedZone.value) {

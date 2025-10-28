@@ -250,12 +250,12 @@ const handleCancelNewZone = () => {
 
 const handleSaveNewZone = (vertices) => {
   $q.dialog({
-    title: 'Create New Zone',
-    message: 'Enter a name for the new zone:',
+    title: t('mapEditor.createZoneTitle'),
+    message: t('mapEditor.createZoneMessage'),
     prompt: { model: '', type: 'text', isValid: val => val && val.length > 0 },
     persistent: true,
-    ok: { label: 'Create', color: 'primary' },
-    cancel: { label: 'Cancel', color: 'grey-7', flat: true }
+    ok: { label: t('mapEditor.createButton'), color: 'primary' },
+    cancel: { label: t('mapEditor.cancelButton'), color: 'grey-7', flat: true }
   }).onOk(async (name) => {
     if (name.trim()) {
       try {

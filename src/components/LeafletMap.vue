@@ -15,7 +15,7 @@
         push
         color="positive"
         icon="save"
-        label="Save Zone"
+        :label="t('leafletMap.saveZoneButton')"
         :disable="newZoneVertices.length < 3"
         @click="$emit('save-new-zone', newZoneVertices)"
       />
@@ -23,7 +23,7 @@
         push
         color="negative"
         icon="cancel"
-        label="Cancel"
+        :label="t('leafletMap.cancelButton')"
         @click="$emit('cancel-new-zone')"
       />
     </div>
@@ -37,7 +37,9 @@ import MapControls from './MapControls.vue';
 import { useMapManager } from '../composables/useMapManager';
 import { useZoneRenderer } from '../composables/useZoneRenderer';
 import { useDeviceRenderer } from '../composables/useDeviceRenderer';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 // Define props
 const props = defineProps({
   mesh: {

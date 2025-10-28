@@ -40,6 +40,8 @@
     }
   },
   "sidebar": {
+    "logoAlt": "Logo da SensorNest",
+    "title": "SensorNest",
     "home": "Início",
     "meshes": "Malhas",
     "mapEditor": "Editor de Mapas",
@@ -64,5 +66,146 @@
     "zoneDeleted": "Zona excluída",
     "deviceMoved": "Posição do dispositivo atualizada",
     "deviceMovedError": "Erro ao atualizar a posição do dispositivo"
-}
+  },
+  "login": {
+    "title": "Entrar no SensorNest",
+    "emailLabel": "Endereço de e-mail",
+    "emailRequired": "Por favor, digite seu e-mail",
+    "passwordLabel": "Senha",
+    "passwordRequired": "Por favor, digite sua senha",
+    "signInButton": "Entrar",
+    "registerButton": "Criar uma nova conta"
+  },
+  "register": {
+    "title": "Criar uma conta",
+    "nameLabel": "Nome",
+    "nameRequired": "O nome é obrigatório",
+    "emailLabel": "E-mail",
+    "emailRequired": "O e-mail é obrigatório",
+    "passwordLabel": "Senha",
+    "passwordRequired": "A senha é obrigatória",
+    "registerButton": "Registrar",
+    "loginButton": "Voltar para o login",
+    "successMessage": "Registro bem-sucedido! Por favor, faça o login.",
+    "errorMessage": "O registro falhou."
+  },
+  "profile": {
+    "title": "Editar Perfil",
+    "nameLabel": "Nome",
+    "nameRequired": "O nome é obrigatório",
+    "emailLabel": "E-mail",
+    "saveButton": "Salvar",
+    "loading": "Carregando perfil..."
+  },
+  "devices": {
+    "title": "Gerenciador de Dispositivos",
+    "filterByMesh": "Filtrar por Malha",
+    "filterByZone": "Filtrar por Zona",
+    "statisticsTitle": "Estatísticas de {deviceName}",
+    "statisticsError": "Não foi possível carregar as estatísticas.",
+    "closeButton": "Fechar",
+    "updateSuccess": "Dispositivo atualizado com sucesso!",
+    "dialogTitleEdit": "Editar Dispositivo",
+    "dialogTitleAdd": "Adicionar Novo Dispositivo",
+    "deviceNameLabel": "Nome do Dispositivo",
+    "macAddressLabel": "Endereço MAC",
+    "zoneLabel": "Zona",
+    "nameRequired": "O nome do dispositivo é obrigatório.",
+    "macAddressRequired": "O endereço MAC é obrigatório.",
+    "macAddressInvalid": "Formato de endereço MAC inválido.",
+    "zoneRequired": "A zona é obrigatória.",
+    "cancelButton": "Cancelar",
+    "saveButton": "Salvar",
+    "deviceColorLabel": "Cor do Dispositivo",
+    "wakeUpIntervalLabel": "Intervalo de Despertar (segundos)",
+    "readingsPerBatchLabel": "Leituras por Lote"
+  },
+  "meshes": {
+    "title": "Malhas",
+    "createButton": "Criar Malha",
+    "statisticsTitle": "Estatísticas de {meshName}",
+    "statisticsError": "Não foi possível carregar as estatísticas.",
+    "closeButton": "Fechar",
+    "meshCreatedSuccess": "Malha \"{meshName}\" criada com sucesso!",
+    "meshUpdatedSuccess": "Malha \"{meshName}\" atualizada com sucesso!",
+    "dialogTitleEdit": "Editar Malha",
+    "dialogTitleCreate": "Criar Nova Malha",
+    "meshNameLabel": "Nome da Malha",
+    "nameRequired": "O nome da malha é obrigatório.",
+    "cancelButton": "Cancelar",
+    "saveButton": "Salvar",
+    "zoneStatisticsTitle": "Estatísticas da Zona",
+    "zoneStatisticsError": "Não foi possível carregar as estatísticas da zona.",
+    "zoneName": "Nome da Zona",
+    "deviceCount": "Número de Dispositivos"
+  },
+  "meshDialog": {
+    "editTitle": "Editar Malha",
+    "createTitle": "Criar Nova Malha",
+    "nameLabel": "Nome da Malha",
+    "nameRequired": "O nome é obrigatório",
+    "osmTab": "OpenStreetMap",
+    "customMapTab": "Mapa Personalizado",
+    "getLocationButton": "Obter Localização Atual",
+    "latitudeLabel": "Latitude",
+    "longitudeLabel": "Longitude",
+    "uploadLabel": "Carregar Imagem de Mapa Personalizado",
+    "currentMapUrl": "URL do mapa atual:",
+    "cancelButton": "Cancelar",
+    "saveButton": "Salvar Alterações",
+    "createButton": "Criar",
+    "locationError": "Não foi possível obter sua localização.",
+    "geolocationNotSupported": "A geolocalização não é suportada pelo seu navegador.",
+    "nameMissing": "Por favor, insira um nome para a malha.",
+    "saveError": "Ocorreu um erro ao salvar a malha."
+  },
+  "zoneStatistics": {
+    "title": "Estatísticas da Zona",
+    "subtitle": "Selecione uma zona para ver as estatísticas",
+    "showStatistics": "Mostrar estatísticas",
+    "loading": "Carregando estatísticas...",
+    "results": "Resultados"
+  },
+  "mapEditor": {
+    "createZoneTitle": "Criar Nova Zona",
+    "createZoneMessage": "Digite um nome para a nova zona:",
+    "createButton": "Criar",
+    "cancelButton": "Cancelar",
+    "selectMeshFirst": "Por favor, selecione uma malha primeiro"
+  },
+  "floatingSidebar": {
+    "mesh": "Malha",
+    "noMeshSelected": "Nenhuma malha selecionada",
+    "selectMeshButton": "Selecionar Malha",
+    "zones": "Zonas",
+    "noZones": "Nenhuma zona nesta malha.",
+    "createZoneButton": "Criar Zona",
+    "saveButton": "Salvar",
+    "undoButton": "Desfazer",
+    "editMode": "Modo de Edição",
+    "zonesLabel": "Zonas",
+    "devicesLabel": "Dispositivos"
+  },
+  "leafletMap": {
+    "saveZoneButton": "Salvar Zona",
+    "cancelButton": "Cancelar"
+  },
+  "mapsidebar": {
+    "undoTooltip": "Desfazer edições de zona não salvas",
+    "saveTooltip": "Salvar Alterações da Zona",
+    "selectMeshTooltip": "Selecionar Malha",
+    "editZonesTooltip": "Editar Zonas",
+    "createZoneTooltip": "Criar Nova Zona",
+    "confirmTitle": "Confirmar",
+    "unsavedChanges": "Você tem alterações não salvas na zona atual. Tem certeza de que deseja descartá-las e mudar para outra zona?",
+    "discardButton": "Descartar e Mudar"
+  },
+  "reports": {
+    "title": "Meus Relatórios",
+    "description": "Esta página exibirá os relatórios do usuário."
+  },
+  "data": {
+    "title": "Ver Dados",
+    "description": "Esta página será usada para visualizar os dados dos sensores."
+  }
 }
