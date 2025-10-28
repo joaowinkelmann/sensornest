@@ -65,7 +65,8 @@
     "zoneUpdated": "Zona actualizada",
     "zoneDeleted": "Zona eliminada",
     "deviceMoved": "Posición del dispositivo actualizada",
-    "deviceMovedError": "Error al actualizar la posición del dispositivo"
+    "deviceMovedError": "Error al actualizar la posición del dispositivo",
+    "noMeshesAvailable": "No hay mallas disponibles. Por favor, crea una malla primero."
   },
   "login": {
     "title": "Iniciar sesión en SensorNest",
@@ -176,8 +177,10 @@
   "floatingSidebar": {
     "mesh": "Malla",
     "noMeshSelected": "Ninguna malla seleccionada",
+    "selectMesh": "Selecciona una malla",
     "selectMeshButton": "Seleccionar Malla",
     "zones": "Zonas",
+    "selectZone": "Selecciona una zona",
     "noZones": "No hay zonas en esta malla.",
     "createZoneButton": "Crear Zona",
     "saveButton": "Guardar",

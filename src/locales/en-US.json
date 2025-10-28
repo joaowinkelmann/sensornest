@@ -65,7 +65,8 @@
     "zoneUpdated": "Zone updated",
     "zoneDeleted": "Zone deleted",
     "deviceMoved": "Device position updated",
-    "deviceMovedError": "Error updating device position"
+    "deviceMovedError": "Error updating device position",
+    "noMeshesAvailable": "No meshes available. Please create a mesh first."
   },
   "login": {
     "title": "Sign in to SensorNest",
@@ -176,8 +177,10 @@
   "floatingSidebar": {
     "mesh": "Mesh",
     "noMeshSelected": "No mesh selected",
+    "selectMesh": "Select a mesh",
     "selectMeshButton": "Select Mesh",
     "zones": "Zones",
+    "selectZone": "Select a zone",
     "noZones": "No zones in this mesh.",
     "createZoneButton": "Create Zone",
     "saveButton": "Save",

@@ -51,7 +51,7 @@ const props = defineProps({
     required: true
   },
   activeZoneId: {
-    type: String,
+    type: [String, Number],
     default: null
   },
   activeZone: {

@@ -22,10 +22,77 @@
       <transition name="sidebar-actions-fade">
         <div v-if="expanded || showActions" class="sidebar-actions-wrapper" :class="{ visible: expanded }">
           <div class="sidebar-actions">
-            <ActionGroup v-for="(group, index) in actionGroups" :key="index" :actions="group"
-              @action-click="handleActionClick" :show-divider="index < actionGroups.length - 1" />
-            <div v-if="editMode === 'zones' && zones.length > 0" class="zone-selector-wrapper">
-              <ZoneSelector :zones="zones" :active-zone-id="activeZoneId" @zone-selected="handleZoneSelected" />
+            <!-- Mesh Selector -->
+            <div class="selector-container">
+              <div class="selector-header">
+                <q-icon name="grid_on" size="20px" />
+                <span>{{ t('floatingSidebar.mesh') }}</span>
+              </div>
+              <q-select
+                filled
+                dense
+                :model-value="selectedMeshId"
+                :options="meshOptions"
+                @update:model-value="handleMeshSelect"
+                :label="t('floatingSidebar.selectMesh')"
+                class="mesh-select"
+                options-dense
+                emit-value
+                map-options
+              >
+                <template v-slot:option="scope">
+                  <q-item v-bind="scope.itemProps">
+                    <q-item-section>
+                      <q-item-label>{{ scope.opt.label }}</q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+            </div>
+
+            <!-- Divider -->
+            <q-separator class="selector-divider" />
+
+            <!-- Zone Selector (only if mesh is selected) -->
+            <div v-if="selectedMeshId && zones.length > 0" class="selector-container">
+              <div class="selector-header">
+                <q-icon name="layers" size="20px" />
+                <span>{{ t('floatingSidebar.zones') }}</span>
+              </div>
+              <q-select
+                filled
+                dense
+                :model-value="activeZoneId"
+                :options="zoneOptions"
+                @update:model-value="handleZoneSelected"
+                :label="t('floatingSidebar.selectZone')"
+                class="zone-select"
+                options-dense
+                emit-value
+                map-options
+              >
+                <template v-slot:option="scope">
+                  <q-item v-bind="scope.itemProps">
+                    <q-item-section>
+                      <q-item-label>{{ scope.opt.label }}</q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+            </div>
+
+            <!-- Divider -->
+            <q-separator v-if="selectedMeshId" class="selector-divider" />
+
+            <!-- Action Buttons -->
+            <div class="action-buttons-container">
+              <ActionGroup 
+                v-for="(group, index) in actionGroups" 
+                :key="index" 
+                :actions="group"
+                @action-click="handleActionClick" 
+                :show-divider="false" 
+              />
             </div>
           </div>
         </div>
@@ -40,14 +107,13 @@ import { useQuasar } from 'quasar';
 import { useZonesStore } from '@/stores/zones';
 import ActionItem from './ActionItem.vue';
 import ActionGroup from './ActionGroup.vue';
-import ZoneSelector from './ZoneSelector.vue';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
 const props = defineProps({
   meshes: { type: Array, default: () => [] },
   zones: { type: Array, default: () => [] },
-  activeZoneId: { type: String, default: null },
+  activeZoneId: { type: [String, Number], default: null },
   isZoneDirty: { type: Boolean, default: false },
   selectedMeshId: { type: [String, Number], default: null },
   canCreateZone: { type: Boolean, default: false },
@@ -71,15 +137,32 @@ const zonesStore = useZonesStore();
 const expanded = ref(false);
 const showActions = ref(false);
 
+// Mesh options for dropdown
+const meshOptions = computed(() => {
+  return props.meshes.map(mesh => ({
+    label: mesh.name,
+    value: mesh.id
+  }));
+});
+
+// Zone options for dropdown
+const zoneOptions = computed(() => {
+  return props.zones.map(zone => ({
+    label: zone.name,
+    value: zone.id
+  }));
+});
+
+// Action groups (only create zone button now)
 const actionGroups = computed(() => [
   [
-    { id: 'select-mesh', icon: 'grid_on', tooltip: t('mapsidebar.selectMeshTooltip'), action: 'mesh-select-clicked' },
-  ],
-  [
-    { id: 'edit-zones', icon: 'layers', tooltip: t('mapsidebar.editZonesTooltip'), action: () => emit('update:editMode', 'zones'), active: props.editMode === 'zones' },
-  ],
-  [
-    { id: 'create-zone', icon: 'add_location', tooltip: t('mapsidebar.createZoneTooltip'), action: 'zone-create-clicked', disabled: !props.canCreateZone }
+    { 
+      id: 'create-zone', 
+      icon: 'add_location', 
+      tooltip: t('mapsidebar.createZoneTooltip'), 
+      action: 'zone-create-clicked', 
+      disabled: !props.canCreateZone 
+    }
   ]
 ]);
 
@@ -100,6 +183,12 @@ const onTransitionEnd = () => {
 const handleActionClick = (actionId) => {
   const action = actionGroups.value.flat().find(item => item.id === actionId);
   if (action && !action.disabled) emit(action.action);
+};
+
+const handleMeshSelect = (meshId) => {
+  if (meshId) {
+    emit('mesh-select-clicked', meshId);
+  }
 };
 
 const handleZoneSelected = (zoneId) => {
@@ -160,134 +249,96 @@ defineExpose({
 
 .floating-sidebar {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   background: rgba(45, 45, 45, 0.45);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   width: 56px;
   height: 56px;
-  border-radius: 50%;
-  padding: 0;
-  transition:
-    width 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    height 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    border-radius 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    background 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  justify-content: center;
-  /* Center hamburger vertically */
 }
 
 .floating-sidebar.expanded {
-  width: 56px;
-  min-width: 56px;
+  width: auto;
+  max-width: calc(100vw - 100px);
   height: auto;
   border-radius: 28px;
-  background: rgba(45, 45, 45, 0.45);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
-  align-items: center;
+  padding: 8px;
 }
 
 .sidebar-toggle {
-  width: 56px;
-  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  z-index: 2;
-  margin: 0 auto;
-  /* Center horizontally */
-}
-
-.floating-sidebar.expanded .sidebar-toggle {
-  background: rgba(45, 45, 45, 0.65);
-  border-radius: 28px 28px 0 0;
   width: 56px;
+  height: 56px;
   min-width: 56px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-/* 
 .sidebar-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
   transform: scale(1.05);
-} */
-
-.floating-sidebar.expanded .sidebar-toggle:hover {
-  transform: none;
 }
 
 .sidebar-actions-wrapper {
-  width: 100%;
+  max-height: 0;
   opacity: 0;
-  pointer-events: none;
-  transform: translateY(-10px) scaleY(0.95);
-  transition: opacity 0.10s 0.05s, transform 0.10s 0.05s;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-actions-wrapper.visible {
+  max-height: 500px;
   opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0) scaleY(1);
+  overflow: visible;
 }
 
 .sidebar-actions {
-  padding: 8px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.sidebar-actions-fade-enter-active,
-.sidebar-actions-fade-leave-active {
-  transition: opacity 0.05s, transform 0.05s;
-}
-
-.sidebar-actions-fade-enter-from,
-.sidebar-actions-fade-leave-to {
-  opacity: 0;
-  transform: translateY(0) scaleY(0.95);
-}
-
-.sidebar-actions-fade-enter-to,
-.sidebar-actions-fade-leave-from {
-  opacity: 1;
-  transform: translateY(0) scaleY(1);
-}
-
-/* new wrapper for both buttons */
-.floating-action-buttons {
   display: flex;
   flex-direction: row;
-  gap: 8px;
   align-items: center;
-  margin-right: 8px;
+  gap: 16px;
+  padding: 0 8px;
+  flex-wrap: wrap;
 }
 
-/* Undo button style (left of save) */
-.floating-undo-button .undo-button {
-  /* match save-button size and glassmorphism exactly */
-  width: 56px;
-  height: 56px;
-  background: rgba(184, 150, 14, 0.65);
-  /* light yellow (translucent) */
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10);
-  backdrop-filter: blur(8px);
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+.selector-container {
+  min-width: 200px;
+  max-width: 250px;
 }
 
-.floating-undo-button .undo-button:hover {
-  transform: scale(1.05);
-  background: rgba(250, 204, 21, 0.85);
+.selector-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: white;
+  font-size: 14px;
+}
+
+.mesh-select,
+.zone-select {
+  width: 100%;
+}
+
+.selector-divider {
+  height: 40px;
+  width: 1px;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.action-buttons-container {
+  display: flex;
+  gap: 8px;
 }
 
 /* preserve existing save-button styles */
@@ -305,6 +356,20 @@ defineExpose({
   transform: scale(1.05);
 }
 
+.undo-button {
+  width: 56px;
+  height: 56px;
+  background: rgba(161, 98, 12, 0.55);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10);
+  backdrop-filter: blur(8px);
+  border-radius: 50%;
+}
+
+.undo-button:hover {
+  background: rgba(161, 98, 12, 0.85) !important;
+  transform: scale(1.05);
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .sidebar-container {
@@ -319,18 +384,41 @@ defineExpose({
   }
 
   .floating-sidebar.expanded {
-    width: 48px;
-    min-width: 48px;
+    max-width: calc(100vw - 80px);
+    padding: 8px;
   }
 
   .sidebar-toggle {
     width: 48px;
     height: 48px;
+    min-width: 48px;
   }
 
-  .floating-sidebar.expanded .sidebar-toggle {
-    min-width: 48px;
-    width: 48px;
+  .sidebar-actions {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .selector-container {
+    min-width: 180px;
+    max-width: 100%;
+  }
+
+  .selector-divider {
+    width: 100%;
+    height: 1px;
+  }
+
+  .action-buttons-container {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .selector-container {
+    min-width: 160px;
   }
 }
 
@@ -346,8 +434,18 @@ defineExpose({
     background: rgba(45, 45, 45, 0.45);
   }
 
-  .floating-sidebar.expanded .sidebar-toggle {
+  .sidebar-toggle {
     background: rgba(45, 45, 45, 0.65);
   }
+}
+
+.sidebar-actions-fade-enter-active,
+.sidebar-actions-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.sidebar-actions-fade-enter-from,
+.sidebar-actions-fade-leave-to {
+  opacity: 0;
 }
 </style>

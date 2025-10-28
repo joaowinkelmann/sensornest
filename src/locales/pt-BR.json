@@ -65,7 +65,8 @@
     "zoneUpdated": "Zona atualizada",
     "zoneDeleted": "Zona excluída",
     "deviceMoved": "Posição do dispositivo atualizada",
-    "deviceMovedError": "Erro ao atualizar a posição do dispositivo"
+    "deviceMovedError": "Erro ao atualizar a posição do dispositivo",
+    "noMeshesAvailable": "Nenhuma malha disponível. Por favor, crie uma malha primeiro."
   },
   "login": {
     "title": "Entrar no SensorNest",
@@ -176,8 +177,10 @@
   "floatingSidebar": {
     "mesh": "Malha",
     "noMeshSelected": "Nenhuma malha selecionada",
+    "selectMesh": "Selecione uma malha",
     "selectMeshButton": "Selecionar Malha",
     "zones": "Zonas",
+    "selectZone": "Selecione uma zona",
     "noZones": "Nenhuma zona nesta malha.",
     "createZoneButton": "Criar Zona",
     "saveButton": "Salvar",

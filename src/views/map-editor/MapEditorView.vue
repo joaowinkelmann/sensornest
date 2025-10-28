@@ -17,12 +17,9 @@
         :is-zone-dirty="zonesStore.isZoneDirty"
         :can-create-zone="!!meshesStore.selectedMeshId" :show-save-button="zonesStore.isZoneDirty"
         :show-undo-button="zonesStore.backupVertices !== null" v-model:edit-mode="editMode"
-        @mesh-select-clicked="showMeshDialog = true" @zone-create-clicked="handleDrawZoneClicked"
+        @mesh-select-clicked="handleMeshSelected" @zone-create-clicked="handleDrawZoneClicked"
         @save-zone-clicked="saveZone" @undo-zone-clicked="zonesStore.restoreActiveZone()" />
     </div>
-
-    <MeshDialog :show="showMeshDialog" :meshes="meshesStore.meshes" :current-mesh-id="meshesStore.selectedMeshId"
-      @close="showMeshDialog = false" @mesh-selected="onMeshSelected" />
   </q-page>
 </template>
 
@@ -60,12 +57,19 @@ const baseCoords = computed(() => {
   return { lat: -23.5505, lng: -46.6333 }; // Default for OSM
 });
 
-onMounted(() => {
-  meshesStore.fetchMeshes();
-  if (!meshesStore.selectedMeshId) {
+onMounted(async () => {
+  await meshesStore.fetchMeshes();
+  
+  // Auto-select first mesh if none is selected
+  if (!meshesStore.selectedMeshId && meshesStore.meshes.length > 0) {
+    meshesStore.selectMesh(meshesStore.meshes[0].id);
+  }
+  
+  // Only show notification if there are no meshes at all
+  if (meshesStore.meshes.length === 0) {
     $q.notify({
       type: 'info',
-      message: t('notifications.meshPleaseSelect'),
+      message: t('notifications.noMeshesAvailable'),
     });
   }
 });
@@ -230,10 +234,30 @@ const saveZone = async () => {
   }
 };
 
-const onMeshSelected = (meshId) => {
-  meshesStore.selectMesh(meshId);
-  showMeshDialog.value = false;
-  $q.notify({ type: 'positive', message: t('notifications.meshSelected') });
+const handleMeshSelected = (meshId) => {
+  if (meshId === meshesStore.selectedMeshId) return;
+  
+  const switchMesh = () => {
+    if (zonesStore.isZoneDirty) {
+      zonesStore.restoreActiveZone();
+    }
+    meshesStore.selectMesh(meshId);
+    $q.notify({ type: 'positive', message: t('notifications.meshSelected') });
+  };
+
+  if (zonesStore.isZoneDirty) {
+    $q.dialog({
+      title: t('mapsidebar.confirmTitle'),
+      message: t('mapsidebar.unsavedChanges'),
+      cancel: true,
+      persistent: true,
+      ok: { label: t('mapsidebar.discardButton'), color: 'negative' }
+    }).onOk(() => {
+      switchMesh();
+    });
+  } else {
+    switchMesh();
+  }
 };
 
 const handleDrawZoneClicked = () => {
