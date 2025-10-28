@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createI18n } from 'vue-i18n';
 import { Quasar } from 'quasar';
 import ProfileView from '../ProfileView.vue';
-import { useAuthStore } from '@/stores/auth';
+// import { useAuthStore } from '@/stores/auth';
 import { ref } from 'vue';
 import flushPromises from 'flush-promises';
 

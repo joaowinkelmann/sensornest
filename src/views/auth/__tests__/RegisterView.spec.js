@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createI18n } from 'vue-i18n';
 import { Quasar } from 'quasar';
 import RegisterView from '../RegisterView.vue';
-import apiClient from '@/api';
+// import apiClient from '@/api';
 import flushPromises from 'flush-promises';
 
 const i18n = createI18n({
