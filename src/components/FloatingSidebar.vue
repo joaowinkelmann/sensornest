@@ -5,11 +5,11 @@
       <div v-if="showSaveButton || showUndoButton" class="floating-action-buttons">
         <div v-if="showUndoButton" class="floating-undo-button">
           <ActionItem class="undo-button"
-            :action="{ id: 'undo-zone', icon: 'undo', tooltip: t('sidebar.undoTooltip') }"
+            :action="{ id: 'undo-zone', icon: 'undo', tooltip: t('mapsidebar.undoTooltip') }"
             @click="$emit('undo-zone-clicked')" />
         </div>
         <div v-if="showSaveButton" class="floating-save-button">
-          <ActionItem class="save-button" :action="{ id: 'save-zone', icon: 'save', tooltip: t('sidebar.saveTooltip') }"
+          <ActionItem class="save-button" :action="{ id: 'save-zone', icon: 'save', tooltip: t('mapsidebar.saveTooltip') }"
             @click="$emit('save-zone-clicked')" />
         </div>
       </div>
@@ -73,13 +73,13 @@ const showActions = ref(false);
 
 const actionGroups = computed(() => [
   [
-    { id: 'select-mesh', icon: 'grid_on', tooltip: t('sidebar.selectMeshTooltip'), action: 'mesh-select-clicked' },
+    { id: 'select-mesh', icon: 'grid_on', tooltip: t('mapsidebar.selectMeshTooltip'), action: 'mesh-select-clicked' },
   ],
   [
-    { id: 'edit-zones', icon: 'layers', tooltip: t('sidebar.editZonesTooltip'), action: () => emit('update:editMode', 'zones'), active: props.editMode === 'zones' },
+    { id: 'edit-zones', icon: 'layers', tooltip: t('mapsidebar.editZonesTooltip'), action: () => emit('update:editMode', 'zones'), active: props.editMode === 'zones' },
   ],
   [
-    { id: 'create-zone', icon: 'add_location', tooltip: t('sidebar.createZoneTooltip'), action: 'zone-create-clicked', disabled: !props.canCreateZone }
+    { id: 'create-zone', icon: 'add_location', tooltip: t('mapsidebar.createZoneTooltip'), action: 'zone-create-clicked', disabled: !props.canCreateZone }
   ]
 ]);
 
@@ -112,11 +112,11 @@ const handleZoneSelected = (zoneId) => {
 
   if (props.isZoneDirty) {
     $q.dialog({
-      title: t('sidebar.confirmTitle'),
-      message: t('sidebar.unsavedChanges'),
+      title: t('mapsidebar.confirmTitle'),
+      message: t('mapsidebar.unsavedChanges'),
       cancel: true,
       persistent: true,
-      ok: { label: t('sidebar.discardButton'), color: 'negative' }
+      ok: { label: t('mapsidebar.discardButton'), color: 'negative' }
     }).onOk(() => {
       switchZone();
     });

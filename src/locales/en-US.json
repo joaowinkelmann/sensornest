@@ -190,7 +190,7 @@
     "saveZoneButton": "Save Zone",
     "cancelButton": "Cancel"
   },
-  "sidebar": {
+  "mapsidebar": {
     "undoTooltip": "Undo unsaved zone edits",
     "saveTooltip": "Save Zone Changes",
     "selectMeshTooltip": "Select Mesh",

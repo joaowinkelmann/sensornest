@@ -190,7 +190,7 @@
     "saveZoneButton": "Guardar Zona",
     "cancelButton": "Cancelar"
   },
-  "sidebar": {
+  "mapsidebar": {
     "undoTooltip": "Deshacer ediciones de zona no guardadas",
     "saveTooltip": "Guardar Cambios de Zona",
     "selectMeshTooltip": "Seleccionar Malla",
