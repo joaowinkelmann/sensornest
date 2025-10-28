@@ -33,7 +33,7 @@ import { useI18n } from 'vue-i18n';
 
 import LeafletMap from '@/components/LeafletMap.vue';
 import FloatingSidebar from '@/components/FloatingSidebar.vue';
-import MeshDialog from '@/components/MeshDialog.vue';
+// import MeshDialog from '@/components/MeshDialog.vue';
 
 const { t } = useI18n();
 const $q = useQuasar();
@@ -42,7 +42,7 @@ const zonesStore = useZonesStore();
 const devicesStore = useDevicesStore();
 
 const mapRef = ref(null);
-const showMeshDialog = ref(false);
+// const showMeshDialog = ref(false);
 const editMode = ref('zones');
 
 const SCALE = 0.0001; // For OpenStreetMap coordinate conversion
