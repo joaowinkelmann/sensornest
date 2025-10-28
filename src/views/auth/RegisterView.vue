@@ -10,6 +10,18 @@
               <q-input filled v-model="email" :label="t('register.emailLabel')" type="email" :rules="[val => !!val || t('register.emailRequired')]" />
               <q-input filled v-model="password" :label="t('register.passwordLabel')" type="password" :rules="[val => !!val || t('register.passwordRequired')]" />
 
+              <!-- Confirm Password -->
+              <q-input
+                filled
+                v-model="confirmPassword"
+                :label="t('register.confirmPasswordLabel')"
+                type="password"
+                :rules="[
+                  val => !!val || t('register.confirmPasswordRequired'),
+                  val => val === password || t('register.passwordsMustMatch')
+                ]"
+              />
+
               <div v-if="error" class="text-negative text-center q-my-sm">{{ error }}</div>
               <div v-if="success" class="text-positive text-center q-my-sm">{{ success }}</div>
 
@@ -37,6 +49,7 @@ const router = useRouter();
 const name = ref('');
 const email = ref('');
 const password = ref('');
+const confirmPassword = ref('');
 const loading = ref(false);
 const error = ref('');
 const success = ref('');
@@ -45,6 +58,14 @@ const handleRegister = async () => {
   error.value = '';
   success.value = '';
   loading.value = true;
+
+  // Front-end check before calling API
+  if (!password.value || !confirmPassword.value || password.value !== confirmPassword.value) {
+    loading.value = false;
+    error.value = t('register.passwordsMustMatch');
+    return;
+  }
+
   try {
     await apiClient.post('/users/register', {
       name: name.value,
