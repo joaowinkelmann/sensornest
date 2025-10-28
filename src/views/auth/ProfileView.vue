@@ -30,7 +30,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, watch } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { storeToRefs } from "pinia";
 
@@ -39,16 +39,24 @@ const { user } = storeToRefs(authStore);
 
 const name = ref("");
 
-onMounted(() => {
-  if (user.value) {
-    name.value = user.value.name;
-  }
+watch(
+  user,
+  (newUser) => {
+    if (newUser) {
+      name.value = newUser.name || "";
+    }
+  },
+  { immediate: true }
+);
+
+onMounted(async () => {
+  // Ensure profile is loaded
+  await authStore.getProfileIfNeeded({ force: true });
 });
 
 const updateProfile = async () => {
   if (name.value && user.value) {
     await authStore.updateProfile({ id: user.value.id, name: name.value });
-    // Optionally, show a notification on success
   }
 };
 </script>

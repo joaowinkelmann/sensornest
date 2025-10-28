@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import apiClient from '@/api';
 import router from '@/router';
+import { Notify } from 'quasar';
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -34,59 +35,79 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     async getProfile() {
-      if (!this.token) return;
       this.loading = true;
       this.error = null;
       try {
         const response = await apiClient.get('auth/profile');
-        console.log("user fetch", response.data);
-        this.user = response.data.user; // keep current behavior
-        // cache flags
-        this.profileLoaded = true;
-        this.profileLoadedAt = Date.now();
+        // API returns { user: { id, email, name } } according to OpenAPI spec
+        this.user = response.data.user || response.data;
       } catch (e) {
-        console.error('Failed to fetch profile:', e);
-        this.logout(); // Logout if token is invalid
+        this.error = 'Failed to fetch profile.';
+        console.error('Profile fetch failed:', e);
       } finally {
         this.loading = false;
       }
     },
     // New: only fetch if not loaded, or if stale, or if forced
     async getProfileIfNeeded({ force = false, maxAgeMs = 5 * 60 * 1000 } = {}) {
-      if (!this.token) return;
-
-      const isFresh = this.profileLoaded && this.profileLoadedAt && (Date.now() - this.profileLoadedAt) < maxAgeMs;
-      if (!force && isFresh) return;
-
-      // de-duplicate concurrent calls
       if (this._profilePromise) {
-        await this._profilePromise;
-        return;
+        return this._profilePromise;
+      }
+
+      const now = Date.now();
+      const isStale = this.profileLoadedAt && (now - this.profileLoadedAt) > maxAgeMs;
+
+      if (!force && this.profileLoaded && !isStale && this.user) {
+        return Promise.resolve();
       }
 
       this._profilePromise = (async () => {
         try {
-          await this.getProfile();
+          const response = await apiClient.get('auth/profile');
+          // API returns { user: { id, email, name } } according to OpenAPI spec
+          this.user = response.data.user || response.data;
+          this.profileLoaded = true;
+          this.profileLoadedAt = Date.now();
+        } catch (e) {
+          this.error = 'Failed to fetch profile.';
+          console.error('Profile fetch failed:', e);
         } finally {
           this._profilePromise = null;
         }
       })();
 
-      await this._profilePromise;
+      return this._profilePromise;
     },
-    async updateProfile(userData) {
+    async updateProfile({ id, name }) {
       this.loading = true;
       this.error = null;
       try {
-        // The API does not return the updated user object, so we don't expect a body.
-        await apiClient.patch(`users/${userData.id}`, { name: userData.name });
-        // Manually update the user in the store on success.
-        if (this.user) {
-          this.user.name = userData.name;
-        }
+        const response = await apiClient.patch(`users/${id}`, { name });
+        // API returns { message, user: { id, email, name, altDthr, insDthr } }
+        this.user = response.data.user || response.data;
+        
+        // Show success notification
+        Notify.create({
+          type: 'positive',
+          message: response.data.message || 'User updated successfully',
+          position: 'top',
+          timeout: 2000
+        });
+        
+        return response.data;
       } catch (e) {
         this.error = 'Failed to update profile.';
         console.error('Profile update failed:', e);
+        
+        // Show error notification
+        Notify.create({
+          type: 'negative',
+          message: 'Failed to update profile',
+          position: 'top',
+          timeout: 2000
+        });
+        
+        throw e;
       } finally {
         this.loading = false;
       }
