@@ -64,7 +64,12 @@ onMounted(async () => {
   if (!meshesStore.selectedMeshId && meshesStore.meshes.length > 0) {
     meshesStore.selectMesh(meshesStore.meshes[0].id);
   }
-  
+
+  // Always ensure zones are scoped to the currently selected mesh
+  if (meshesStore.selectedMeshId) {
+    await zonesStore.fetchZones(meshesStore.selectedMeshId);
+  }
+
   // Only show notification if there are no meshes at all
   if (meshesStore.meshes.length === 0) {
     $q.notify({

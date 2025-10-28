@@ -6,6 +6,7 @@ import { useMeshesStore } from './meshes'; // added import
 export const useZonesStore = defineStore('zones', {
   state: () => ({
     zones: [],
+    allZones: [], // NEW: holds zones across all meshes
     activeZoneId: null, // To track the currently selected zone
     loading: false,
     error: null,
@@ -53,7 +54,7 @@ export const useZonesStore = defineStore('zones', {
       this.error = null;
       try {
         const response = await apiClient.get('/zones');
-        this.zones = response.data;
+        this.allZones = response.data; // store globally, do not overwrite per-mesh zones
       } catch (e) {
         this.error = 'Failed to fetch all zones.';
         console.error(e);

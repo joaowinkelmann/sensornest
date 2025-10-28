@@ -111,10 +111,18 @@ const meshOptions = computed(() =>
 );
 
 const zoneOptions = computed(() => {
+  // Prefer cross-mesh list, but be defensive for tests/mocks
+  const source =
+    (Array.isArray(zonesStore.allZones) && zonesStore.allZones.length >= 0
+      ? zonesStore.allZones
+      : []) // ensure array
+    .length ? zonesStore.allZones
+    : (Array.isArray(zonesStore.zones) ? zonesStore.zones : []);
+
   if (!selectedMesh.value) {
-    return zonesStore.zones.map(zone => ({ label: zone.name, value: zone.id }));
+    return source.map(zone => ({ label: zone.name, value: zone.id }));
   }
-  return zonesStore.zones
+  return source
     .filter(zone => zone.meshId === selectedMesh.value)
     .map(zone => ({ label: zone.name, value: zone.id }));
 });

@@ -34,6 +34,15 @@ const routes = [
         path: 'map-editor',
         name: 'map-editor',
         component: () => import('@/views/map-editor/MapEditorView.vue'),
+        beforeEnter: async () => {
+          const { useMeshesStore } = await import('@/stores/meshes');
+          const { useZonesStore } = await import('@/stores/zones');
+          const meshesStore = useMeshesStore();
+          const zonesStore = useZonesStore();
+          if (meshesStore.selectedMeshId) {
+            await zonesStore.fetchZones(meshesStore.selectedMeshId);
+          }
+        }
       },
       {
         path: 'profile',

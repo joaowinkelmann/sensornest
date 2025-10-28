@@ -8,7 +8,7 @@
 
       <q-card-section>
         <q-list bordered separator>
-          <q-item v-for="zone in zonesStore.zones" :key="zone.id">
+          <q-item v-for="zone in filteredZones" :key="zone.id">
             <q-item-section>
               <q-item-label>{{ zone.name }}</q-item-label>
             </q-item-section>
@@ -44,13 +44,13 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue';
+import { onMounted, computed } from 'vue';
 import { useZonesStore } from '@/stores/zones';
 import { useStatistics } from '@/composables/useStatistics';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
-defineProps({
+const props = defineProps({
   meshId: {
     type: String,
     required: true,
@@ -62,6 +62,13 @@ const { statistics, loading, error, fetchStatistics } = useStatistics();
 
 onMounted(() => {
   zonesStore.fetchAllZones();
+});
+
+const filteredZones = computed(() => {
+  const source = Array.isArray(zonesStore.allZones)
+    ? zonesStore.allZones
+    : (Array.isArray(zonesStore.zones) ? zonesStore.zones : []);
+  return source.filter(z => z.meshId === props.meshId);
 });
 
 const loadStatistics = (type, id) => {
