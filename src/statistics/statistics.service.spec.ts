@@ -14,10 +14,10 @@ describe('StatisticsService', () => {
         {
           provide: PrismaService,
           useValue: {
-            device: { findUnique: jest.fn() },
+            device: { findUnique: jest.fn(), findMany: jest.fn(), groupBy: jest.fn() },
             zone: { findUnique: jest.fn() },
-            mesh: { findUnique: jest.fn() },
-            reading: { aggregate: jest.fn() },
+            mesh: { findUnique: jest.fn(), findMany: jest.fn() },
+            reading: { aggregate: jest.fn(), count: jest.fn(), groupBy: jest.fn() },
           },
         },
       ],
@@ -70,6 +70,54 @@ describe('StatisticsService', () => {
       jest.spyOn(prisma.reading, 'aggregate').mockResolvedValue({ _max: { temperature: 30 }, _avg: { temperature: 25 } } as any);
       const result = await service.getMeshStatistics('1');
       expect(result).toBeDefined();
+    });
+  });
+
+  describe('getUserOverview', () => {
+    it('should return user overview statistics', async () => {
+      const userId = 'user-1';
+      const mockDevices = [
+        { id: 'device-1', status: 'ACTIVE', userId, meshId: 'mesh-1' },
+        { id: 'device-2', status: 'INACTIVE', userId, meshId: 'mesh-1' },
+        { id: 'device-3', status: 'ACTIVE', userId, meshId: 'mesh-2' },
+      ];
+      const mockMeshes = [
+        { id: 'mesh-1', name: 'Mesh 1' },
+        { id: 'mesh-2', name: 'Mesh 2' },
+      ];
+      const mockReadingsCountAllTime = 100;
+      const mockReadingsCountLastHour = 10;
+      const mockReadingsCountLastDay = 50;
+
+      jest.spyOn(prisma.device, 'findMany').mockResolvedValue(mockDevices as any);
+      jest.spyOn(prisma.mesh, 'findMany').mockResolvedValue(mockMeshes as any);
+      jest.spyOn(prisma.reading, 'count')
+        .mockResolvedValueOnce(mockReadingsCountAllTime)
+        .mockResolvedValueOnce(mockReadingsCountLastHour)
+        .mockResolvedValueOnce(mockReadingsCountLastDay);
+      jest.spyOn(prisma.device, 'groupBy').mockResolvedValue([
+        { meshId: 'mesh-1', _count: { _all: 2 } },
+        { meshId: 'mesh-2', _count: { _all: 1 } },
+      ] as any);
+
+      const result = await service.getUserOverview(userId);
+
+      expect(result).toEqual({
+        devices: {
+          active: 2,
+          inactive: 1,
+          total: 3,
+        },
+        readings: {
+          allTime: mockReadingsCountAllTime,
+          lastHour: mockReadingsCountLastHour,
+          lastDay: mockReadingsCountLastDay,
+        },
+        readingsPerMesh: [
+          { meshId: 'mesh-1', meshName: 'Mesh 1', count: 2 },
+          { meshId: 'mesh-2', meshName: 'Mesh 2', count: 1 },
+        ],
+      });
     });
   });
 });
