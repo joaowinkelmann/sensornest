@@ -79,6 +79,7 @@ jobs:
     name: Deploy over SSH
     runs-on: ubuntu-latest
     needs: test # Somente executa se passou os testes
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
