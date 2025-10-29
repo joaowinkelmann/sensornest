@@ -11,6 +11,7 @@ import {
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { RecoverPasswordDto } from './dto/recover-password.dto';
 import { Public } from '../auth/public.decorator';
 import {
   ApiBearerAuth,
@@ -67,6 +68,22 @@ export class UsersController {
     return {
       message: 'User updated successfully',
       user,
+    };
+  }
+
+  @Public()
+  @Post('recover-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Envia um e-mail de recuperação de senha.' })
+  @ApiBody({ type: RecoverPasswordDto })
+  @ApiResponse({
+    status: 200,
+    description: 'E-mail de recuperação de senha enviado com sucesso.',
+  })
+  async recoverPassword(@Body() recoverPasswordDto: RecoverPasswordDto) {
+    await this.usersService.recoverPassword(recoverPasswordDto.email);
+    return {
+      message: 'Password recovery email sent successfully',
     };
   }
 }
