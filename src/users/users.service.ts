@@ -8,7 +8,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 import { ValidatePasswordDto } from './dto/validate-password.dto';
-import { MailerService } from 'src/mailer/mailer.service';
+import { MailerService } from '../mailer/mailer.service';
 
 @Injectable()
 export class UsersService {
