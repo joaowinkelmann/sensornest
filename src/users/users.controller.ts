@@ -107,7 +107,9 @@ export class UsersController {
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Redefine a senha usando o token recebido por e-mail.' })
+  @ApiOperation({
+    summary: 'Redefine a senha usando o token recebido por e-mail.',
+  })
   @ApiBody({ type: ResetPasswordDto })
   @ApiResponse({ status: 200, description: 'Senha redefinida com sucesso.' })
   async resetPassword(@Body() dto: ResetPasswordDto) {

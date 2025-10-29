@@ -25,7 +25,7 @@ export class MailerService {
     });
   }
 
-  async sendPasswordRecoveryEmail(email: string, token:string) {
+  async sendPasswordRecoveryEmail(email: string, token: string) {
     const baseUrl = this.configService.get<string>('APP_BASE_URL');
     const message = `
       You are receiving this email because you (or someone else) have requested the reset of the password for your account.

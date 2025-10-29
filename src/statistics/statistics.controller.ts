@@ -1,6 +1,14 @@
-import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Request,
+  UseGuards,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { StatisticsService } from './statistics.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { ReqReturnDto } from '../auth/dto/req-return.dto';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -42,8 +50,10 @@ export class StatisticsController {
   @ApiResponse({ status: 200, description: 'Return user overview.' })
   @UseGuards(AuthGuard)
   @Get('overview')
-  async getUserOverview(@Req() request: Request) {
-    const userId = request['user'].sub;
-    return this.statisticsService.getUserOverview(userId);
+  async getUserOverview(@Request() req: ReqReturnDto) {
+    if (!req.user?.id) {
+      throw new UnauthorizedException('User not authenticated');
+    }
+    return this.statisticsService.getUserOverview(req.user.id);
   }
 }

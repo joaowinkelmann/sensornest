@@ -497,6 +497,111 @@ describe('App E2E', () => {
           expect(day.averageHumidity).toBeCloseTo(expectedAvgHum, 5);
         }
       });
+
+      it('retorna overview de estatísticas do usuário', async () => {
+        const res = await request(app.getHttpServer())
+          .get('/statistics/overview')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(200);
+
+        const body = res.body;
+
+        // Verifica estrutura de devices
+        expect(body).toHaveProperty('devices');
+        expect(body.devices).toHaveProperty('active');
+        expect(body.devices).toHaveProperty('inactive');
+        expect(body.devices).toHaveProperty('total');
+        expect(typeof body.devices.active).toBe('number');
+        expect(typeof body.devices.inactive).toBe('number');
+        expect(typeof body.devices.total).toBe('number');
+        expect(body.devices.total).toBe(body.devices.active + body.devices.inactive);
+
+        // Verifica que existem pelo menos 2 dispositivos (controller + worker)
+        expect(body.devices.total).toBeGreaterThanOrEqual(2);
+
+        // Verifica estrutura de readings
+        expect(body).toHaveProperty('readings');
+        expect(body.readings).toHaveProperty('allTime');
+        expect(body.readings).toHaveProperty('lastHour');
+        expect(body.readings).toHaveProperty('lastDay');
+        expect(typeof body.readings.allTime).toBe('number');
+        expect(typeof body.readings.lastHour).toBe('number');
+        expect(typeof body.readings.lastDay).toBe('number');
+
+        // Verifica que existem leituras (das que foram inseridas nos testes)
+        expect(body.readings.allTime).toBeGreaterThanOrEqual(temps.length);
+
+        // Verifica estrutura de readingsPerMesh
+        expect(body).toHaveProperty('readingsPerMesh');
+        expect(Array.isArray(body.readingsPerMesh)).toBe(true);
+        
+        // Verifica que o mesh do seed está presente
+        const meshStats = body.readingsPerMesh.find(
+          (m: any) => m.meshId === meshId
+        );
+        expect(meshStats).toBeDefined();
+        expect(meshStats).toHaveProperty('meshName');
+        expect(meshStats).toHaveProperty('count');
+        expect(typeof meshStats.count).toBe('number');
+      });
+
+      it('retorna overview vazio para usuário sem dispositivos', async () => {
+        // Cria um novo usuário temporário sem dispositivos
+        const tempUserEmail = `temp-${runId}@example.com`;
+        const tempUserPassword = 'TempPass123!';
+
+        await request(app.getHttpServer())
+          .post('/users/register')
+          .send({
+            email: tempUserEmail,
+            password: tempUserPassword,
+            name: 'Temp User',
+          })
+          .expect(201);
+
+        // Faz login com o novo usuário
+        const loginRes = await request(app.getHttpServer())
+          .post('/auth/login')
+          .send({ email: tempUserEmail, password: tempUserPassword })
+          .expect(200);
+
+        const tempAccessToken = loginRes.body.access_token;
+
+        // Busca overview
+        const res = await request(app.getHttpServer())
+          .get('/statistics/overview')
+          .set('Authorization', `Bearer ${tempAccessToken}`)
+          .expect(200);
+
+        const body = res.body;
+
+        // Verifica que não tem dispositivos
+        expect(body.devices.total).toBe(0);
+        expect(body.devices.active).toBe(0);
+        expect(body.devices.inactive).toBe(0);
+
+        // Verifica que não tem leituras
+        expect(body.readings.allTime).toBe(0);
+        expect(body.readings.lastHour).toBe(0);
+        expect(body.readings.lastDay).toBe(0);
+
+        // Verifica que não tem meshes
+        expect(body.readingsPerMesh).toEqual([]);
+
+        // Limpa o usuário temporário
+        const tempUser = await prisma.user.findUnique({
+          where: { email: tempUserEmail },
+        });
+        if (tempUser) {
+          await prisma.user.delete({ where: { id: tempUser.id } });
+        }
+      });
+
+      it('falha ao buscar overview sem autenticação', async () => {
+        await request(app.getHttpServer())
+          .get('/statistics/overview')
+          .expect(401);
+      });
     });
   });
 
