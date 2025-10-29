@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { MailerService as NestMailerService } from '@nestjs-modules/mailer';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class MailerService {
@@ -10,6 +11,7 @@ export class MailerService {
   constructor(
     private readonly nestMailerService: NestMailerService,
     private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
   ) {}
 
   async sendTestEmail() {
@@ -19,6 +21,22 @@ export class MailerService {
       from: 'Test <noreply@winkels.com.br>',
       to: 'hmaster.studio@gmail.com',
       subject: `Test Email`,
+      text: message,
+    });
+  }
+
+  async sendPasswordRecoveryEmail(email: string, token:string) {
+    const baseUrl = this.configService.get<string>('APP_BASE_URL');
+    const message = `
+      You are receiving this email because you (or someone else) have requested the reset of the password for your account.
+      Please click on the following link, or paste this into your browser to complete the process:
+      ${baseUrl}/reset-password?token=${token}
+      If you did not request this, please ignore this email and your password will remain unchanged.
+    `;
+
+    await this.nestMailerService.sendMail({
+      to: email,
+      subject: 'Password Reset',
       text: message,
     });
   }

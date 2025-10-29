@@ -21,6 +21,9 @@ model User {
   altDthr      DateTime @updatedAt @map("alt_dthr")
   passwordHash String   @map("password_hash")
 
+  passwordResetToken   String?  @unique @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
+
   meshes Mesh[]
   devices Device[]
 

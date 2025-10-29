@@ -6,11 +6,16 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as argon2 from 'argon2';
+import * as crypto from 'crypto';
 import { ValidatePasswordDto } from './dto/validate-password.dto';
+import { MailerService } from '../mailer/mailer.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly mailerService: MailerService,
+  ) {}
 
   async findOne(username: string) {
     return await this.prismaService.user.findUnique({
@@ -92,5 +97,26 @@ export class UsersService {
         insDthr: true,
       },
     });
+  }
+
+  async recoverPassword(email: string) {
+    const user = await this.findByEmail(email);
+    if (!user) {
+      return;
+    }
+
+    const token = crypto.randomBytes(20).toString('hex');
+    const now = new Date();
+    now.setHours(now.getHours() + 1);
+
+    await this.prismaService.user.update({
+      where: { email },
+      data: {
+        passwordResetToken: token,
+        passwordResetExpires: now,
+      },
+    });
+
+    await this.mailerService.sendPasswordRecoveryEmail(email, token);
   }
 }
