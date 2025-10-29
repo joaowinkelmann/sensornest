@@ -1,24 +1,26 @@
 {
   "home": {
-    "meshes": {
-      "title": "Meshes",
-      "caption": "Manage your device networks",
-      "actionLabel": "Go to Meshes"
+    "overview": {
+      "title": "Overview",
+      "totalDevices": "Total Devices",
+      "active": "Active",
+      "inactive": "Inactive",
+      "allTimeReadings": "All Time Readings",
+      "lastHour": "Last Hour",
+      "lastDay": "Last 24h",
+      "activeMeshes": "Active Meshes",
+      "error": "Failed to load statistics"
     },
-    "reports": {
-      "title": "Reports",
-      "caption": "View and generate reports",
-      "actionLabel": "View Reports"
-    },
-    "data": {
-      "title": "Data",
-      "caption": "Explore collected data",
-      "actionLabel": "Explore Data"
-    },
-    "mapEditor": {
-      "title": "Map Editor",
-      "caption": "Create and edit zone maps",
-      "actionLabel": "Open Editor"
+    "quickActions": {
+      "title": "Quick Actions",
+      "meshes": "Meshes",
+      "meshesSubtitle": "Manage your mesh networks",
+      "devices": "Devices",
+      "devicesSubtitle": "View and configure devices",
+      "mapEditor": "Map Editor",
+      "mapEditorSubtitle": "Edit zones and positions",
+      "reports": "Reports",
+      "reportsSubtitle": "View detailed reports"
     }
   },
   "mapControls": {
@@ -42,7 +44,7 @@
   "sidebar": {
     "logoAlt": "SensorNest Logo",
     "title": "SensorNest",
-    "home": "Home",
+    "home": "Overview",
     "meshes": "Meshes",
     "mapEditor": "Map Editor",
     "devices": "Devices",

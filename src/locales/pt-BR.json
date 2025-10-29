@@ -1,24 +1,26 @@
 {
   "home": {
-    "meshes": {
-      "title": "Malhas",
-      "caption": "Gerencie suas redes de dispositivos",
-      "actionLabel": "Ir para Malhas"
+    "overview": {
+      "title": "Visão Geral",
+      "totalDevices": "Total de Dispositivos",
+      "active": "Ativos",
+      "inactive": "Inativos",
+      "allTimeReadings": "Leituras Totais",
+      "lastHour": "Última Hora",
+      "lastDay": "Últimas 24h",
+      "activeMeshes": "Malhas Ativas",
+      "error": "Falha ao carregar estatísticas"
     },
-    "reports": {
-      "title": "Relatórios",
-      "caption": "Visualize e gere relatórios",
-      "actionLabel": "Ver Relatórios"
-    },
-    "data": {
-      "title": "Dados",
-      "caption": "Explore os dados coletados",
-      "actionLabel": "Explorar Dados"
-    },
-    "mapEditor": {
-      "title": "Editor de Mapas",
-      "caption": "Crie e edite mapas de zonas",
-      "actionLabel": "Abrir Editor"
+    "quickActions": {
+      "title": "Ações Rápidas",
+      "meshes": "Malhas",
+      "meshesSubtitle": "Gerenciar suas redes mesh",
+      "devices": "Dispositivos",
+      "devicesSubtitle": "Visualizar e configurar dispositivos",
+      "mapEditor": "Editor de Mapas",
+      "mapEditorSubtitle": "Editar zonas e posições",
+      "reports": "Relatórios",
+      "reportsSubtitle": "Visualizar relatórios detalhados"
     }
   },
   "mapControls": {
@@ -42,7 +44,7 @@
   "sidebar": {
     "logoAlt": "Logo da SensorNest",
     "title": "SensorNest",
-    "home": "Início",
+    "home": "Visão Geral",
     "meshes": "Malhas",
     "mapEditor": "Editor de Mapas",
     "devices": "Dispositivos",
