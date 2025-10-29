@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
 import { StatisticsService } from './statistics.service';
 import { AuthGuard } from '../auth/auth.guard';
 import {
@@ -36,5 +36,14 @@ export class StatisticsController {
   @Get('mesh/:id')
   async getMeshStatistics(@Param('id') id: string) {
     return this.statisticsService.getMeshStatistics(id);
+  }
+
+  @ApiOperation({ summary: 'Busca um overview de estatísticas para o usuário' })
+  @ApiResponse({ status: 200, description: 'Return user overview.' })
+  @UseGuards(AuthGuard)
+  @Get('overview')
+  async getUserOverview(@Req() request: Request) {
+    const userId = request['user'].sub;
+    return this.statisticsService.getUserOverview(userId);
   }
 }

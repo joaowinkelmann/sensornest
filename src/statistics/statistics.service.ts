@@ -89,4 +89,81 @@ export class StatisticsService {
     }
     return this.getStatistics('mesh', meshId);
   }
+
+  async getUserOverview(userId: string) {
+    const now = new Date();
+    const lastHour = new Date(now.getTime() - 60 * 60 * 1000);
+    const lastDay = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const devices = await this.prisma.device.findMany({
+      where: { userId },
+    });
+
+    const activeDevices = devices.filter((d) => d.status === 'ACTIVE').length;
+    const inactiveDevices = devices.filter(
+      (d) => d.status === 'INACTIVE',
+    ).length;
+    const totalDevices = devices.length;
+
+    const allTimeReadings = await this.prisma.reading.count({
+      where: { device: { userId } },
+    });
+
+    const readingsLastHour = await this.prisma.reading.count({
+      where: {
+        device: { userId },
+        readingTime: {
+          gte: lastHour,
+        },
+      },
+    });
+
+    const readingsLastDay = await this.prisma.reading.count({
+      where: {
+        device: { userId },
+        readingTime: {
+          gte: lastDay,
+        },
+      },
+    });
+
+    const readingsPerMesh = await this.prisma.device.groupBy({
+      by: ['meshId'],
+      where: { userId },
+      _count: {
+        _all: true,
+      },
+    });
+
+    const meshes = await this.prisma.mesh.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    const readingsPerMeshWithName = readingsPerMesh.map((item) => {
+      const mesh = meshes.find((m) => m.id === item.meshId);
+      return {
+        meshId: item.meshId,
+        meshName: mesh ? mesh.name : 'Unknown',
+        count: item._count._all,
+      };
+    });
+
+    return {
+      devices: {
+        active: activeDevices,
+        inactive: inactiveDevices,
+        total: totalDevices,
+      },
+      readings: {
+        allTime: allTimeReadings,
+        lastHour: readingsLastHour,
+        lastDay: readingsLastDay,
+      },
+      readingsPerMesh: readingsPerMeshWithName,
+    };
+  }
 }
