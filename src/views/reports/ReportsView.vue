@@ -1,8 +1,8 @@
 <template>
-  <div class="q-pa-md">
+  <q-page class="flex column q-pa-md">
     <h1 class="text-h4">{{ t('reports.title') }}</h1>
     <p>{{ t('reports.description') }}</p>
-  </div>
+  </q-page>
 </template>
 
 <script setup>
