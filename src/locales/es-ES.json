@@ -216,5 +216,16 @@
   "data": {
     "title": "Ver Datos",
     "description": "Esta página se utilizará para ver los datos de los sensores."
+  },
+  "resetPassword": {
+    "title": "Restablecer contraseña",
+    "newPasswordLabel": "Nueva contraseña",
+    "confirmPasswordLabel": "Confirmar nueva contraseña",
+    "submitButton": "Restablecer contraseña",
+    "tokenChecking": "Validando token...",
+    "tokenInvalid": "El enlace de restablecimiento no es válido o ha expirado.",
+    "success": "¡Contraseña restablecida con éxito! Ahora puedes iniciar sesión.",
+    "error": "No se pudo restablecer la contraseña.",
+    "backToLogin": "Volver al inicio de sesión"
   }
 }

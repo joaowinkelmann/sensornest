@@ -69,6 +69,11 @@ const routes = [
         name: 'data',
         component: () => import('@/views/data/DataView.vue'),
       },
+      {
+        path: 'reset-password',
+        name: 'reset-password',
+        component: () => import('@/views/auth/ResetPasswordView.vue'),
+      },
     ],
   },
   // Catch-all redirect

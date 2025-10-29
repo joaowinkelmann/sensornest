@@ -216,5 +216,16 @@
   "data": {
     "title": "Ver Dados",
     "description": "Esta página será usada para visualizar os dados dos sensores."
+  },
+  "resetPassword": {
+    "title": "Redefinir Senha",
+    "newPasswordLabel": "Nova Senha",
+    "confirmPasswordLabel": "Confirmar Nova Senha",
+    "submitButton": "Redefinir Senha",
+    "tokenChecking": "Validando token...",
+    "tokenInvalid": "O link de redefinição é inválido ou expirou.",
+    "success": "Senha redefinida com sucesso! Agora você pode fazer login.",
+    "error": "Falha ao redefinir a senha.",
+    "backToLogin": "Voltar para o login"
   }
 }
