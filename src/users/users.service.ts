@@ -119,4 +119,52 @@ export class UsersService {
 
     await this.mailerService.sendPasswordRecoveryEmail(email, token);
   }
+
+  // Verifica se o token é válido e não expirou
+  async verifyResetToken(token: string): Promise<boolean> {
+    if (!token) return false;
+
+    const user = await this.prismaService.user.findFirst({
+      where: {
+        passwordResetToken: token,
+        passwordResetExpires: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+
+    return !!user;
+  }
+
+  // Redefine a senha usando o token e limpa o token no banco
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    if (!token) {
+      throw new BadRequestException('Token is required');
+    }
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters');
+    }
+
+    const user = await this.prismaService.user.findFirst({
+      where: {
+        passwordResetToken: token,
+        passwordResetExpires: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired token');
+    }
+
+    const passwordHash = await argon2.hash(newPassword);
+
+    await this.prismaService.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    });
+  }
 }

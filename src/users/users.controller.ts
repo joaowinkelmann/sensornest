@@ -7,12 +7,15 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Get,
+  Query,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { RecoverPasswordDto } from './dto/recover-password.dto';
 import { Public } from '../auth/public.decorator';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import {
   ApiBearerAuth,
   ApiTags,
@@ -85,5 +88,30 @@ export class UsersController {
     return {
       message: 'Password recovery email sent successfully',
     };
+  }
+
+  @Public()
+  @Get('reset-password/check')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Valida o token de recuperação de senha.' })
+  @ApiResponse({ status: 200, description: 'Token válido.' })
+  @ApiResponse({ status: 400, description: 'Token inválido ou expirado.' })
+  async checkResetToken(@Query('token') token: string) {
+    const valid = await this.usersService.verifyResetToken(token);
+    if (!valid) {
+      throw new BadRequestException('Invalid or expired token');
+    }
+    return { valid: true };
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Redefine a senha usando o token recebido por e-mail.' })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiResponse({ status: 200, description: 'Senha redefinida com sucesso.' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.usersService.resetPassword(dto.token, dto.newPassword);
+    return { message: 'Password updated successfully' };
   }
 }
