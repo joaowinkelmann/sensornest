@@ -32,9 +32,25 @@
     <!-- Device List -->
     <q-list bordered separator>
       <q-item v-for="device in devicesStore.devices" :key="device.id">
-        <q-item-section>
-          <q-item-label>{{ device.name }}</q-item-label>
-          <q-item-label caption>{{ device.macAddress }}</q-item-label>
+        <q-item-section style="width: 100%;">
+          <div class="device-row">
+            <div class="device-info">
+              <div class="device-name">{{ device.name }}</div>
+              <div class="device-mac caption">{{ device.macAddress }}</div>
+            </div>
+
+            <div
+              class="color-preview"
+              :title="device.deviceColor ? device.deviceColor : t('devices.noColor')"
+            >
+              <div
+                v-if="device.deviceColor"
+                class="color-dot"
+                :style="{ backgroundColor: device.deviceColor }"
+              />
+              <q-icon v-else name="help_outline" size="18px" />
+            </div>
+          </div>
         </q-item-section>
         <q-item-section side>
           <q-btn flat round icon="edit" @click="openEditDialog(device)" />
@@ -164,3 +180,47 @@ const handleDeviceUpdated = () => {
   }
 };
 </script>
+
+<style scoped>
+.device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.device-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.device-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-mac.caption {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.color-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: 12px;
+}
+
+.color-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+</style>
