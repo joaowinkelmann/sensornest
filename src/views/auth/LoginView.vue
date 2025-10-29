@@ -32,9 +32,17 @@
                 <q-btn :label="t('login.signInButton')" type="submit" color="primary" class="full-width" :loading="authStore.loading" />
                 <q-btn :label="t('login.registerButton')" flat color="primary" class="full-width q-mt-sm" @click="goToRegister" />
               </div>
+
+              <!-- Forgot password -->
+              <div class="text-center q-mt-sm">
+                <q-btn flat color="primary" @click="showRecovery = true" :label="t('login.forgotPassword')" />
+              </div>
             </q-form>
           </q-card-section>
         </q-card>
+
+        <!-- Recovery dialog -->
+        <PasswordRecoveryDialog :show="showRecovery" :initial-email="email" @close="showRecovery = false" />
       </q-page>
     </q-page-container>
   </q-layout>
@@ -45,6 +53,7 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useI18n } from 'vue-i18n';
+import PasswordRecoveryDialog from '@/components/PasswordRecoveryDialog.vue';
 
 const { t } = useI18n();
 const authStore = useAuthStore();
@@ -52,6 +61,8 @@ const router = useRouter();
 
 const email = ref('test@example.com');
 const password = ref('password123');
+
+const showRecovery = ref(false);
 
 const handleLogin = () => {
   authStore.login({ email: email.value, password: password.value });

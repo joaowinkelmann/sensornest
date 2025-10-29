@@ -75,7 +75,13 @@
     "passwordLabel": "Senha",
     "passwordRequired": "Por favor, digite sua senha",
     "signInButton": "Entrar",
-    "registerButton": "Criar uma nova conta"
+    "registerButton": "Criar uma nova conta",
+    "forgotPassword": "Esqueceu sua senha?",
+    "recoverPasswordTitle": "Recuperar Senha",
+    "recoverPasswordInstructions": "Digite seu e-mail para receber instruções de recuperação de senha.",
+    "recoverPasswordError": "Erro ao enviar o e-mail de recuperação.",
+    "recoverPasswordSent": "Instruções de recuperação enviadas para o seu e-mail.",
+    "recoverButton": "Enviar e-mail"
   },
   "register": {
     "title": "Criar uma conta",
