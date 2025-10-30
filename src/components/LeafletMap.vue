@@ -103,7 +103,6 @@ const {
   map,
   initializeMap,
   destroyMap,
-  setMapDragging
 } = useMapManager(mapContainer);
 
 const {
