@@ -17,7 +17,12 @@ describe('StatisticsService', () => {
             device: { findUnique: jest.fn(), findMany: jest.fn(), groupBy: jest.fn() },
             zone: { findUnique: jest.fn() },
             mesh: { findUnique: jest.fn(), findMany: jest.fn() },
-            reading: { aggregate: jest.fn(), count: jest.fn(), groupBy: jest.fn() },
+            reading: {
+              aggregate: jest.fn(),
+              count: jest.fn(),
+              groupBy: jest.fn(),
+              findMany: jest.fn(),
+            },
           },
         },
       ],
@@ -117,6 +122,49 @@ describe('StatisticsService', () => {
           { meshId: 'mesh-1', meshName: 'Mesh 1', count: 2 },
           { meshId: 'mesh-2', meshName: 'Mesh 2', count: 1 },
         ],
+      });
+    });
+  });
+
+  describe('getDeviceGraph', () => {
+    it('should return graphed statistics grouped by hour/day', async () => {
+      const deviceId = 'device-1';
+      const now = new Date();
+      const readings = [
+        // Last hour (for 'day')
+        { deviceId, readingTime: new Date(now.getTime() - 1 * 60 * 60 * 1000), temperature: 20, humidity: 40 },
+        // Last 2 hours (for 'day')
+        { deviceId, readingTime: new Date(now.getTime() - 2 * 60 * 60 * 1000), temperature: 22, humidity: 42 },
+        // Last 3 days (for 'week' and 'month')
+        { deviceId, readingTime: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000), temperature: 18, humidity: 38 },
+        // Last 20 days (for 'month')
+        { deviceId, readingTime: new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000), temperature: 25, humidity: 50 },
+      ];
+      jest.spyOn(prisma.reading, 'findMany').mockResolvedValue(readings as any);
+
+      const result = await service.getDeviceGraph(deviceId);
+
+      expect(Array.isArray(result.day)).toBe(true);
+      expect(Array.isArray(result.week)).toBe(true);
+      expect(Array.isArray(result.month)).toBe(true);
+
+      // Each array should have at least one bucket
+      expect(result.day.length).toBeGreaterThan(0);
+      expect(result.week.length).toBeGreaterThan(0);
+      expect(result.month.length).toBeGreaterThan(0);
+
+      // All buckets should have avgTemperature and avgHumidity
+      result.day.forEach((bucket) => {
+        expect(bucket).toHaveProperty('avgTemperature');
+        expect(bucket).toHaveProperty('avgHumidity');
+      });
+      result.week.forEach((bucket) => {
+        expect(bucket).toHaveProperty('avgTemperature');
+        expect(bucket).toHaveProperty('avgHumidity');
+      });
+      result.month.forEach((bucket) => {
+        expect(bucket).toHaveProperty('avgTemperature');
+        expect(bucket).toHaveProperty('avgHumidity');
       });
     });
   });

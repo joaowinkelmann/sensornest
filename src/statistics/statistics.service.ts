@@ -166,4 +166,61 @@ export class StatisticsService {
       readingsPerMesh: readingsPerMeshWithName,
     };
   }
+
+  async getDeviceGraph(deviceId: string) {
+    // Helper to group readings by hour/day
+    const groupByPeriod = async (period: 'hour' | 'day', since: Date) => {
+      const readings = await this.prisma.reading.findMany({
+        where: {
+          deviceId,
+          readingTime: { gte: since },
+        },
+        orderBy: { readingTime: 'asc' },
+      });
+
+      const buckets: Record<
+        string,
+        { temperature: number[]; humidity: number[] }
+      > = {};
+
+      readings.forEach((r) => {
+        const date = new Date(r.readingTime);
+        let key: string;
+        if (period === 'hour') {
+          key = date.toISOString().slice(0, 13); // YYYY-MM-DDTHH
+        } else {
+          key = date.toISOString().slice(0, 10); // YYYY-MM-DD
+        }
+        if (!buckets[key]) buckets[key] = { temperature: [], humidity: [] };
+        if (r.temperature !== null && r.temperature !== undefined)
+          buckets[key].temperature.push(r.temperature);
+        if (r.humidity !== null && r.humidity !== undefined)
+          buckets[key].humidity.push(r.humidity);
+      });
+
+      return Object.entries(buckets).map(([bucket, vals]) => ({
+        bucket,
+        avgTemperature:
+          vals.temperature.length > 0
+            ? vals.temperature.reduce((a, b) => a + b, 0) /
+              vals.temperature.length
+            : null,
+        avgHumidity:
+          vals.humidity.length > 0
+            ? vals.humidity.reduce((a, b) => a + b, 0) / vals.humidity.length
+            : null,
+      }));
+    };
+
+    const now = new Date();
+    const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    return {
+      day: await groupByPeriod('hour', dayAgo),
+      week: await groupByPeriod('day', weekAgo),
+      month: await groupByPeriod('day', monthAgo),
+    };
+  }
 }

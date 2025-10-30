@@ -119,18 +119,31 @@ async function main() {
 
   // 6. Cria leituras de exemplo para o worker ativo
   const readings: any[] = [];
-  for (let i = 0; i < 5; i++) {
-    const reading = await prisma.reading.create({
-      data: {
-        temperature: 20 + Math.random() * 5,
-        humidity: 45 + Math.random() * 10,
-        readingTime: new Date(Date.now() - i * 60 * 60 * 1000),
-        deviceId: activeWorker.id,
-      },
-    });
-    readings.push(reading);
+  const now = Date.now();
+  const daysToSeed = 14; // Seed 14 days
+  const readingsPerDay = 4; // 4 readings per day (e.g., 00h, 06h, 12h, 18h)
+  for (let day = 0; day < daysToSeed; day++) {
+    for (let hourIdx = 0; hourIdx < readingsPerDay; hourIdx++) {
+      const hour = hourIdx * 6; // 0, 6, 12, 18
+      const readingTime = new Date(
+        now - day * 24 * 60 * 60 * 1000 - hour * 60 * 60 * 1000
+      );
+      const temperature = 20 + Math.random() * 10; // 20-30°C
+      const humidity = 40 + Math.random() * 30; // 40-70%
+      const reading = await prisma.reading.create({
+        data: {
+          temperature,
+          humidity,
+          readingTime,
+          deviceId: activeWorker.id,
+        },
+      });
+      readings.push(reading);
+    }
   }
-  console.log(`✅ Criado ${readings.length} leituras de exemplo para o dispositivo ${activeWorker.name}.`);
+  console.log(
+    `✅ Criado ${readings.length} leituras distribuídas em ${daysToSeed} dias para o dispositivo ${activeWorker.name}.`
+  );
 
   console.log('\n🎉 Seed completado com sucesso!');
   console.log('📧 Credenciais do usuário de teste:');

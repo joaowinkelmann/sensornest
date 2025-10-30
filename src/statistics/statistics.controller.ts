@@ -56,4 +56,18 @@ export class StatisticsController {
     }
     return this.statisticsService.getUserOverview(req.user.id);
   }
+
+  @ApiOperation({
+    summary:
+      'Retorna dados para gráficos de temperatura e umidade do dispositivo',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Return graphed device statistics.',
+  })
+  @UseGuards(AuthGuard)
+  @Get('device/:id/graph')
+  async getDeviceGraph(@Param('id') id: string) {
+    return this.statisticsService.getDeviceGraph(id);
+  }
 }

@@ -35,9 +35,12 @@ describe('App E2E', () => {
   const userName = 'E2E Test Runner';
   const meshId = `mesh-${runId}`;
   const zoneId = `zone-${runId}`;
+  const statsTestMeshId = `stats-mesh-${runId}`; // New mesh for stats tests
+  const statsTestZoneId = `stats-zone-${runId}`; // New zone for stats tests
   const meshUploadId = `mesh-upload-${runId}`;
   const controllerMac = buildMac(runId.slice(0, 12));
   const knownWorkerMac = buildMac(runId.slice(12, 24));
+  const statsTestMac = buildMac(runId.slice(24, 36)); // New device for stats tests
 
   const newUserEmail = `e2e+new-${runId}@example.com`;
   const newUserPassword = `newtestsuitepassword189!${runId.slice(0, 6)}`;
@@ -124,6 +127,82 @@ describe('App E2E', () => {
       },
     });
 
+    // Seed rich readings for the worker device
+    const workerDevice = await prisma.device.findUnique({
+      where: { macAddress: knownWorkerMac },
+    });
+    const daysToSeed = 14;
+    const readingsPerDay = 4;
+    const now = Date.now();
+    for (let day = 0; day < daysToSeed; day++) {
+      for (let hourIdx = 0; hourIdx < readingsPerDay; hourIdx++) {
+        const hour = hourIdx * 6; // 0, 6, 12, 18
+        const readingTime = new Date(
+          now - day * 24 * 60 * 60 * 1000 - hour * 60 * 60 * 1000
+        );
+        const temperature = 20 + Math.random() * 10; // 20-30°C
+        const humidity = 40 + Math.random() * 30; // 40-70%
+        await prisma.reading.create({
+          data: {
+            temperature,
+            humidity,
+            readingTime,
+            deviceId: workerDevice!.id,
+          },
+        });
+      }
+    }
+
+    // Create separate mesh and zone for stats tests
+    const statsMesh = await prisma.mesh.upsert({
+      where: { id: statsTestMeshId },
+      update: {},
+      create: {
+        id: statsTestMeshId,
+        name: 'Stats Test Mesh',
+        userId: user.id,
+        lat: -23.552,
+        lon: -46.635,
+      },
+    });
+
+    const statsZone = await prisma.zone.upsert({
+      where: { id: statsTestZoneId },
+      update: {},
+      create: {
+        id: statsTestZoneId,
+        name: 'Stats Test Zone',
+        meshId: statsMesh.id,
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 50, y: 0 },
+          { x: 50, y: 50 },
+          { x: 0, y: 50 },
+        ],
+      },
+    });
+
+    // Create a separate device for statistics tests with NO initial readings
+    await prisma.device.upsert({
+      where: { macAddress: statsTestMac },
+      update: {},
+      create: {
+        macAddress: statsTestMac,
+        name: 'Stats Test Device',
+        description: 'Device used for statistics E2E tests',
+        x: 25,
+        y: 25,
+        meshId: statsMesh.id,
+        zoneId: statsZone.id,
+        status: DeviceStatus.ACTIVE,
+        role: DeviceRole.WORKER,
+        userId: user.id,
+        deviceColor: '#0000FF',
+        readingsPerBatch: 1,
+        wakeUpInterval: 1800,
+      },
+    });
+
     await prisma.mesh.create({
       data: {
         id: meshUploadId,
@@ -170,16 +249,16 @@ describe('App E2E', () => {
   }, 60000); // Timeout de 60s (do arquivo 1)
 
   afterAll(async () => {
-    // Teardown (do arquivo 1)
+    // Teardown
     const user = await prisma.user.findUnique({ where: { email: userEmail } });
     if (user) {
       await prisma.reading.deleteMany({ where: { device: { userId: user.id } } });
       await prisma.device.deleteMany({ where: { userId: user.id } });
       await prisma.zone.deleteMany({
-        where: { meshId: { in: [meshId, meshUploadId] } },
+        where: { meshId: { in: [meshId, statsTestMeshId, meshUploadId] } },
       });
       await prisma.mesh.deleteMany({
-        where: { id: { in: [meshId, meshUploadId] } },
+        where: { id: { in: [meshId, statsTestMeshId, meshUploadId] } },
       });
       await prisma.user.delete({ where: { id: user.id } });
     }
@@ -400,6 +479,8 @@ describe('App E2E', () => {
 
     describe('E2E Estatísticas', () => {
       let deviceId: string;
+      let statsZoneIdForTest: string;
+      let statsMeshIdForTest: string;
 
       // Define alguns valores para realizar os testes
       const temps = [20.0, 26.0, 34.2];
@@ -414,12 +495,13 @@ describe('App E2E', () => {
         hums.reduce((a, b) => a + b, 0) / hums.length;
 
       beforeAll(async () => {
+        // Use the dedicated stats test device instead of knownWorkerMac
         await request(app.getHttpServer())
           .post('/readings/add')
           .set('Authorization', `Bearer ${accessToken}`)
           .send({
             data: temps.map((t, i) => ({
-              mac: knownWorkerMac,
+              mac: statsTestMac,
               temp: t,
               hum: hums[i],
             })),
@@ -427,12 +509,14 @@ describe('App E2E', () => {
           .expect(201);
 
         const res = await request(app.getHttpServer())
-          .get(`/devices/mac/${knownWorkerMac}`)
+          .get(`/devices/mac/${statsTestMac}`)
           .set('Authorization', `Bearer ${accessToken}`)
           .expect(200);
 
         expect(res.body).toHaveProperty('id');
         deviceId = res.body.id;
+        statsZoneIdForTest = res.body.zoneId;
+        statsMeshIdForTest = res.body.meshId;
       });
 
       it('calcula estatísticas do Dispositivo (max/avg)', async () => {
@@ -458,7 +542,7 @@ describe('App E2E', () => {
 
       it('calcula estatísticas da Zone (max/avg)', async () => {
         const res = await request(app.getHttpServer())
-          .get(`/statistics/zone/${zoneId}`)
+          .get(`/statistics/zone/${statsZoneIdForTest}`) // Use statsZoneIdForTest
           .set('Authorization', `Bearer ${accessToken}`)
           .expect(200);
 
@@ -479,7 +563,7 @@ describe('App E2E', () => {
 
       it('calcula estatísticas da Mesh (max/avg)', async () => {
         const res = await request(app.getHttpServer())
-          .get(`/statistics/mesh/${meshId}`)
+          .get(`/statistics/mesh/${statsMeshIdForTest}`) // Use statsMeshIdForTest
           .set('Authorization', `Bearer ${accessToken}`)
           .expect(200);
 
@@ -601,6 +685,55 @@ describe('App E2E', () => {
         await request(app.getHttpServer())
           .get('/statistics/overview')
           .expect(401);
+      });
+
+      it('retorna dados para gráficos do dispositivo', async () => {
+        // Use knownWorkerMac which has 56 readings over 14 days
+        const workerRes = await request(app.getHttpServer())
+          .get(`/devices/mac/${knownWorkerMac}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(200);
+
+        const workerDeviceId = workerRes.body.id;
+
+        const res = await request(app.getHttpServer())
+          .get(`/statistics/device/${workerDeviceId}/graph`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(200);
+
+        expect(res.body).toHaveProperty('day');
+        expect(Array.isArray(res.body.day)).toBe(true);
+        expect(res.body).toHaveProperty('week');
+        expect(Array.isArray(res.body.week)).toBe(true);
+        expect(res.body).toHaveProperty('month');
+        expect(Array.isArray(res.body.month)).toBe(true);
+
+        // Verify day has multiple buckets (4 readings per day, grouped by hour)
+        expect(res.body.day.length).toBeGreaterThan(0);
+        res.body.day.forEach((bucket: any) => {
+          expect(bucket).toHaveProperty('bucket');
+          expect(bucket).toHaveProperty('avgTemperature');
+          expect(bucket).toHaveProperty('avgHumidity');
+          expect(typeof bucket.avgTemperature).toBe('number');
+          expect(typeof bucket.avgHumidity).toBe('number');
+        });
+
+        // Verify week has multiple buckets (14 days of data, grouped by day)
+        expect(res.body.week.length).toBeGreaterThan(0);
+        res.body.week.forEach((bucket: any) => {
+          expect(bucket).toHaveProperty('bucket');
+          expect(bucket).toHaveProperty('avgTemperature');
+          expect(bucket).toHaveProperty('avgHumidity');
+        });
+
+        // Verify month has multiple buckets (14 days of data, grouped by day)
+        expect(res.body.month.length).toBeGreaterThan(0);
+        expect(res.body.month.length).toBeLessThanOrEqual(15); // Allow 14-15 days due to partial day boundaries
+        res.body.month.forEach((bucket: any) => {
+          expect(bucket).toHaveProperty('bucket');
+          expect(bucket).toHaveProperty('avgTemperature');
+          expect(bucket).toHaveProperty('avgHumidity');
+        });
       });
     });
   });
