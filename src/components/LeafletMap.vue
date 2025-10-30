@@ -248,14 +248,7 @@ defineExpose({
   setMode: (newMode) => {
     mode.value = newMode;
   },
-  getCurrentMode: () => mode.value,
-  focusOnZone: (zoneId) => {
-    const zone = props.zones.find(z => z.id === zoneId);
-    if (zone && zone.vertices?.length > 0) {
-      const bounds = L.latLngBounds(zone.vertices.map(v => [v.lat, v.lng]));
-      map.value?.fitBounds(bounds.pad(0.2));
-    }
-  }
+  getCurrentMode: () => mode.value
 });
 </script>
 

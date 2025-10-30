@@ -236,83 +236,6 @@ export function useZoneRenderer(map, props, emit) {
       const isActive = zone.id === activeZoneId;
       updateZoneLayer(zone, isActive, mode);
     });
-
-    // Auto-fit bounds if there are zones (pass current mode so fitting can be skipped during edit modes)
-    setTimeout(() => {
-      fitToZones(zones, mode);
-    }, 100);
-  };
-
-  /**
-   * Fit map view to show all zones
-   */
-  const fitToZones = (zones, mode) => {
-    if (!map.value || !zones || zones.length === 0) return;
-
-    // Skip auto-fitting while in interactive edit modes to avoid jumping when the user is moving/removing vertices
-    if (mode === 'move' || mode === 'remove') {
-      return;
-    }
-
-    // If a recent vertex move requested suppression, skip fitting to avoid map jumps.
-    if (map.value && map.value._suppressAutoFit) {
-      return;
-    }
-
-    const validLayers = Object.values(zoneLayers.value)
-      .filter(layer => layer instanceof L.Polygon && layer.getLatLngs()[0].length > 0);
-
-    if (validLayers.length > 0) {
-      try {
-        const group = new L.featureGroup(validLayers);
-        const bounds = group.getBounds();
-
-        if (bounds.isValid()) {
-          map.value.fitBounds(bounds.pad(0.1), {
-            maxZoom: 16,
-            animate: true,
-            duration: 0.5
-          });
-        }
-      } catch (error) {
-        console.warn('Error fitting bounds to zones:', error);
-      }
-    }
-  };
-
-  /**
-   * Focus on a specific zone
-   */
-  const focusOnZone = (zoneId) => {
-    const layer = zoneLayers.value[zoneId];
-    if (layer && map.value) {
-      try {
-        const bounds = layer.getBounds();
-        if (bounds.isValid()) {
-          map.value.fitBounds(bounds.pad(0.2), {
-            maxZoom: 18,
-            animate: true,
-            duration: 0.8
-          });
-        }
-      } catch (error) {
-        console.warn('Error focusing on zone:', error);
-      }
-    }
-  };
-
-  /**
-   * Clear all zone layers
-   */
-  const clearZoneLayers = () => {
-    Object.keys(zoneLayers.value).forEach(zoneId => {
-      clearVertexMarkers(zoneId);
-      const layer = zoneLayers.value[zoneId];
-      if (layer && map.value && map.value.hasLayer(layer)) {
-        map.value.removeLayer(layer);
-      }
-    });
-    zoneLayers.value = {};
   };
 
   /**
@@ -347,10 +270,7 @@ export function useZoneRenderer(map, props, emit) {
   return {
     zoneLayers,
     drawZones,
-    clearZoneLayers,
-    focusOnZone,
     getZoneLayer,
-    highlightZone,
-    fitToZones
+    highlightZone
   };
 }
