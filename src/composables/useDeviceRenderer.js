@@ -105,29 +105,64 @@ export function useDeviceRenderer(map, props, emit) {
     return marker
   }
 
-  const drawDevices = (devices, conversionFn, mode) => {
-    if (!map.value || !devices) return
-    clearDeviceMarkers()
+  const getModeKey = (mode) => (mode ?? '__default');
 
-    const newLayers = {}
+  const cleanupMarker = (marker) => {
+    if (!marker) return;
+    marker.off();
+    if (marker.closePopup) {
+      marker.closePopup();
+    }
+    if (map.value && map.value.hasLayer(marker)) {
+      map.value.removeLayer(marker);
+    }
+  };
+
+  const drawDevices = (devices, conversionFn, mode) => {
+    if (!map.value || !devices) return;
+
+    const modeKey = getModeKey(mode);
+    const existingLayers = deviceLayers.value;
+    const nextLayers = {};
+
     devices.forEach((device) => {
-      const latlng = conversionFn(device)
-      if (latlng) {
-        const marker = createDeviceMarker(device, latlng, mode)
-        marker.addTo(map.value)
-        newLayers[device.id] = marker
+      const rawLatLng = conversionFn(device);
+      if (!rawLatLng) return;
+
+      const latlng = L.latLng(rawLatLng);
+      const currentMarker = existingLayers[device.id];
+
+      if (currentMarker && currentMarker.__modeKey === modeKey) {
+        const currentLatLng = currentMarker.getLatLng();
+        if (!currentLatLng.equals(latlng)) {
+          currentMarker.setLatLng(latlng);
+        }
+        nextLayers[device.id] = currentMarker;
+        return;
       }
-    })
-    deviceLayers.value = newLayers
-  }
+
+      if (currentMarker) {
+        cleanupMarker(currentMarker);
+      }
+
+      const marker = createDeviceMarker(device, latlng, mode);
+      marker.__modeKey = modeKey;
+      marker.addTo(map.value);
+      nextLayers[device.id] = marker;
+    });
+
+    Object.entries(existingLayers).forEach(([deviceId, marker]) => {
+      if (!nextLayers[deviceId]) {
+        cleanupMarker(marker);
+      }
+    });
+
+    deviceLayers.value = nextLayers;
+  };
 
   const clearDeviceMarkers = () => {
-    Object.values(deviceLayers.value).forEach((layer) => {
-      if (map.value && map.value.hasLayer(layer)) {
-        map.value.removeLayer(layer)
-      }
-    })
-    deviceLayers.value = {}
+    Object.values(deviceLayers.value).forEach(cleanupMarker);
+    deviceLayers.value = {};
   }
 
   return {
