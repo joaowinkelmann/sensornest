@@ -47,12 +47,12 @@
           <q-item-section>{{t('sidebar.devices')}}</q-item-section>
         </q-item>
 
-        <q-item clickable v-ripple to="/reports">
+        <!-- <q-item clickable v-ripple to="/reports">
           <q-item-section avatar>
             <q-icon name="assessment" />
           </q-item-section>
           <q-item-section>{{t('sidebar.reports')}}</q-item-section>
-        </q-item>
+        </q-item> -->
 
         <q-item clickable v-ripple to="/data">
           <q-item-section avatar>

@@ -20,7 +20,9 @@
       "mapEditor": "Map Editor",
       "mapEditorSubtitle": "Edit zones and positions",
       "reports": "Reports",
-      "reportsSubtitle": "View detailed reports"
+      "reportsSubtitle": "View detailed reports",
+      "data": "Data",
+      "dataSubtitle": "Export sensor data for analysis"
     }
   },
   "mapControls": {
@@ -222,8 +224,19 @@
     "description": "This page will display user reports."
   },
   "data": {
-    "title": "View Data",
-    "description": "This page will be used to view sensor data."
+    "title": "Data Export",
+    "description": "Export sensor data for analysis",
+    "entityType": "Entity Type",
+    "selectEntity": "Select Entity",
+    "noResults": "No results found",
+    "fromDate": "From Date",
+    "toDate": "To Date",
+    "exportButton": "Export Data",
+    "mesh": "Mesh",
+    "zone": "Zone",
+    "device": "Device",
+    "downloadingChunks": "Downloading {count} files...",
+    "exportNoFiles": "No files were generated for export"
   },
   "resetPassword": {
     "title": "Reset Password",

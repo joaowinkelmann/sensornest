@@ -25,14 +25,15 @@ describe('MainSidebar.vue', () => {
     });
 
     const links = wrapper.findAllComponents({ name: 'QItem' });
-    expect(links).toHaveLength(9);
+    // expect(links).toHaveLength(9);
+    expect(links).toHaveLength(8);
     expect(links[1].text()).toContain('sidebar.home');
     expect(links[2].text()).toContain('sidebar.meshes');
     expect(links[3].text()).toContain('sidebar.devices');
-    expect(links[4].text()).toContain('sidebar.reports');
-    expect(links[5].text()).toContain('sidebar.data');
-    expect(links[6].text()).toContain('sidebar.mapEditor');
-    expect(links[7].text()).toContain('Test User');
-    expect(links[8].text()).toContain('Logout');
+    // expect(links[4].text()).toContain('sidebar.reports');
+    expect(links[4].text()).toContain('sidebar.data');
+    expect(links[5].text()).toContain('sidebar.mapEditor');
+    expect(links[6].text()).toContain('Test User');
+    expect(links[7].text()).toContain('Logout');
   });
 });

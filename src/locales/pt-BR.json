@@ -20,7 +20,9 @@
       "mapEditor": "Editor de Mapas",
       "mapEditorSubtitle": "Editar zonas e posições",
       "reports": "Relatórios",
-      "reportsSubtitle": "Visualizar relatórios detalhados"
+      "reportsSubtitle": "Visualizar relatórios detalhados",
+      "data": "Dados",
+      "dataSubtitle": "Exportar dados de sensores para análise"
     }
   },
   "mapControls": {
@@ -222,8 +224,19 @@
     "description": "Esta página exibirá os relatórios do usuário."
   },
   "data": {
-    "title": "Ver Dados",
-    "description": "Esta página será usada para visualizar os dados dos sensores."
+    "title": "Exportação de Dados",
+    "description": "Exporte dados dos sensores para análise",
+    "entityType": "Tipo de Exportação",
+    "selectEntity": "Selecionar",
+    "noResults": "Nenhum resultado encontrado",
+    "fromDate": "Data Inicial",
+    "toDate": "Data Final",
+    "exportButton": "Exportar Dados",
+    "mesh": "Malha",
+    "zone": "Zona",
+    "device": "Dispositivo",
+    "downloadingChunks": "Baixando {count} arquivos...",
+    "exportNoFiles": "Nenhum arquivo foi gerado para exportação"
   },
   "resetPassword": {
     "title": "Redefinir Senha",

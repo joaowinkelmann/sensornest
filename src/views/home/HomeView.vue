@@ -188,11 +188,11 @@ const quickActions = [
     route: '/map-editor'
   },
   {
-    titleKey: 'home.quickActions.reports',
-    subtitleKey: 'home.quickActions.reportsSubtitle',
-    icon: 'assessment',
-    color: 'info',
-    route: '/reports'
+    titleKey: 'home.quickActions.data',
+    subtitleKey: 'home.quickActions.dataSubtitle',
+    icon: 'analytics',
+    color: 'teal',
+    route: '/data'
   }
 ];
 
