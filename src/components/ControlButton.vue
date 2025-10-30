@@ -21,6 +21,9 @@
 
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
   label: {
@@ -73,12 +76,12 @@ const showLabel = computed(() => !isMobile.value);
 const tooltip = computed(() => {
   if (props.tooltip) return props.tooltip;
   if (props.disabled) {
-    return `${props.label} (disabled)`;
+    return t('controlButton.disabled', { label: props.label });
   }
   if (props.active) {
-    return `${props.label} mode active`;
+    return t('controlButton.modeActive', { label: props.label });
   }
-  return `Switch to ${props.label.toLowerCase()} mode`;
+  return t('controlButton.switchTo', { label: props.label.toLowerCase() });
 });
 
 const handleClick = () => {

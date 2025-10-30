@@ -29,11 +29,26 @@ export function useDeviceRenderer(map, props, emit) {
       marker.on('dragstart', () => {
         marker.getElement().style.transform = 'scale(1.3)';
         marker.getElement().style.zIndex = '2000';
+
+        // Temporarily disable map interactions only while dragging a device
+        if (map.value) {
+          map.value.dragging.disable();
+          map.value.touchZoom.disable();
+          map.value.scrollWheelZoom.disable();
+        }
       });
 
       marker.on('dragend', (event) => {
         marker.getElement().style.transform = 'scale(1)';
         marker.getElement().style.zIndex = 'auto';
+
+        // Re-enable map interactions after dragging
+        if (map.value) {
+          map.value.dragging.enable();
+          map.value.touchZoom.enable();
+          map.value.scrollWheelZoom.enable();
+        }
+
         emit('device-moved', {
           id: device.id,
           latlng: event.target.getLatLng()

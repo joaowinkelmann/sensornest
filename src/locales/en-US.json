@@ -127,7 +127,8 @@
     "saveButton": "Save",
     "deviceColorLabel": "Device Color",
     "wakeUpIntervalLabel": "Wake Up Interval (seconds)",
-    "readingsPerBatchLabel": "Readings Per Batch"
+    "readingsPerBatchLabel": "Readings Per Batch",
+    "noColor": "No color"
   },
   "meshes": {
     "title": "Meshes",
@@ -229,5 +230,10 @@
     "success": "Password reset successfully! You can now log in.",
     "error": "Failed to reset password.",
     "backToLogin": "Back to login"
+  },
+  "controlButton": {
+    "modeActive": "{label} mode active",
+    "switchTo": "Switch to {label} mode",
+    "disabled": "{label} (disabled)"
   }
 }

@@ -127,7 +127,8 @@
     "saveButton": "Guardar",
     "deviceColorLabel": "Color del Dispositivo",
     "wakeUpIntervalLabel": "Intervalo de Despertar (segundos)",
-    "readingsPerBatchLabel": "Lecturas por Lote"
+    "readingsPerBatchLabel": "Lecturas por Lote",
+    "noColor": "Sin color"
   },
   "meshes": {
     "title": "Mallas",
@@ -229,5 +230,10 @@
     "success": "¡Contraseña restablecida con éxito! Ahora puedes iniciar sesión.",
     "error": "No se pudo restablecer la contraseña.",
     "backToLogin": "Volver al inicio de sesión"
+  },
+  "controlButton": {
+    "modeActive": "Modo {label} activo",
+    "switchTo": "Cambiar a modo {label}",
+    "disabled": "{label} (deshabilitado)"
   }
 }

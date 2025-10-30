@@ -127,7 +127,8 @@
     "saveButton": "Salvar",
     "deviceColorLabel": "Cor do Dispositivo",
     "wakeUpIntervalLabel": "Intervalo de Despertar (segundos)",
-    "readingsPerBatchLabel": "Leituras por Lote"
+    "readingsPerBatchLabel": "Leituras por Lote",
+    "noColor": "Sem cor"
   },
   "meshes": {
     "title": "Malhas",
@@ -229,5 +230,10 @@
     "success": "Senha redefinida com sucesso! Agora você pode fazer login.",
     "error": "Falha ao redefinir a senha.",
     "backToLogin": "Voltar para o login"
+  },
+  "controlButton": {
+    "modeActive": "Modo {label} ativo",
+    "switchTo": "Mudar para modo {label}",
+    "disabled": "{label} (desabilitado)"
   }
 }
