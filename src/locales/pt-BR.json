@@ -54,7 +54,8 @@
     "data": "Dados",
     "profile": "Perfil",
     "logout": "Sair",
-    "user": "Usuário"
+    "user": "Usuário",
+    "language": "Idioma"
   },
   "notifications": {
     "meshSaved": "Malha salva com sucesso",

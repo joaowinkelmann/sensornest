@@ -54,7 +54,8 @@
     "data": "Data",
     "profile": "Profile",
     "logout": "Logout",
-    "user": "User"
+    "user": "User",
+    "language": "Language"
   },
   "notifications": {
     "meshSaved": "Mesh saved successfully",

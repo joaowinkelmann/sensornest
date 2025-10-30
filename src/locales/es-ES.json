@@ -54,7 +54,8 @@
     "data": "Datos",
     "reports": "Informes",
     "logout": "Cerrar Sesión",
-    "user": "Usuario"
+    "user": "Usuario",
+    "language": "Idioma"
   },
   "notifications": {
     "meshSaved": "Malla guardada correctamente",
