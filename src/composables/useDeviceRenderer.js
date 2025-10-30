@@ -54,6 +54,10 @@ export function useDeviceRenderer(map, props, emit) {
           latlng: event.target.getLatLng()
         });
       });
+    } else {
+      marker.on('click', () => {
+        emit('device-clicked', device);
+      });
     }
 
     marker.bindPopup(`

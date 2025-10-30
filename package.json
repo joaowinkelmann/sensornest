@@ -18,11 +18,13 @@
   "dependencies": {
     "@quasar/extras": "^1.17.0",
     "axios": "^1.13.1",
+    "echarts": "^6.0.0",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "pinia": "^3.0.3",
     "quasar": "^2.18.5",
     "vue": "^3.5.22",
+    "vue-echarts": "^8.0.1",
     "vue-i18n": "^11.1.12",
     "vue-router": "^4.6.3"
   },

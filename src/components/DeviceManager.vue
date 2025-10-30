@@ -81,7 +81,15 @@
         </q-card-section>
 
         <q-card-section v-if="statistics">
-          <pre>{{ statistics }}</pre>
+          <q-btn-toggle
+            v-model="chartPeriod"
+            :options="[
+              { label: t('devices.timeframes.day'), value: 'day' },
+              { label: t('devices.timeframes.week'), value: 'week' },
+              { label: t('devices.timeframes.month'), value: 'month' },
+            ]"
+          />
+          <StatisticsChart :chart-data="statistics" :period="chartPeriod" />
         </q-card-section>
 
         <q-card-actions align="right">
@@ -99,6 +107,7 @@ import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
 import { useStatistics } from '@/composables/useStatistics';
 import DeviceDialog from './DeviceDialog.vue';
+import StatisticsChart from './StatisticsChart.vue';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 
@@ -106,7 +115,7 @@ const { t } = useI18n();
 const devicesStore = useDevicesStore();
 const meshesStore = useMeshesStore();
 const zonesStore = useZonesStore();
-const { statistics, loading, error, fetchStatistics } = useStatistics();
+const { statistics, loading, error, fetchDeviceGraph } = useStatistics();
 const $q = useQuasar();
 
 const selectedMesh = ref(null);
@@ -115,6 +124,7 @@ const showDialog = ref(false);
 const editingDevice = ref(null);
 const showStatsDialog = ref(false);
 const selectedDevice = ref(null);
+const chartPeriod = ref('day');
 
 onMounted(async () => {
   await meshesStore.fetchMeshes();
@@ -159,7 +169,7 @@ const openEditDialog = (device) => {
 
 const showStatistics = async (device) => {
   selectedDevice.value = device;
-  await fetchStatistics('device', device.id);
+  await fetchDeviceGraph(device.id);
   showStatsDialog.value = true;
 };
 
