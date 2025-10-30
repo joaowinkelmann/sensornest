@@ -52,6 +52,43 @@
   font-size: 14px;
 }
 
+.device-popup-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.device-popup-button {
+  background: #1976d2;
+  border: none;
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.device-popup-button .material-icons {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.device-popup-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+
+.device-popup-button:focus-visible {
+  outline: 2px solid #90caf9;
+  outline-offset: 2px;
+}
+
 /* Custom Leaflet Zoom Controls */
 .leaflet-control-zoom {
   position: absolute;

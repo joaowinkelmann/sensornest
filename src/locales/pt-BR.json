@@ -128,7 +128,12 @@
     "deviceColorLabel": "Cor do Dispositivo",
     "wakeUpIntervalLabel": "Intervalo de Despertar (segundos)",
     "readingsPerBatchLabel": "Leituras por Lote",
-    "noColor": "Sem cor"
+    "noColor": "Sem cor",
+    "timeframes": {
+      "day": "Dia",
+      "week": "Semana",
+      "month": "Mês"
+    }
   },
   "meshes": {
     "title": "Malhas",

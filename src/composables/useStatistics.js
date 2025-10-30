@@ -21,10 +21,26 @@ export function useStatistics() {
     }
   };
 
+  const fetchDeviceGraph = async (deviceId) => {
+    loading.value = true;
+    error.value = null;
+    statistics.value = null;
+
+    try {
+      const response = await api.get(`/statistics/device/${deviceId}/graph`);
+      statistics.value = response.data;
+    } catch (err) {
+      error.value = err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   return {
     statistics,
     loading,
     error,
     fetchStatistics,
+    fetchDeviceGraph,
   };
 }

@@ -89,7 +89,8 @@ const emit = defineEmits([
   'zone-clicked',
   'draw-zone-clicked',
   'save-new-zone',
-  'cancel-new-zone'
+  'cancel-new-zone',
+  'device-clicked'
 ]);
 
 // Reactive references
