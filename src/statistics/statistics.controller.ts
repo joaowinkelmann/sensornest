@@ -15,6 +15,9 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { GraphReturnDto } from './dto/graph-return.dto';
+import { StatisticsReturnDto } from './dto/statistics-return.dto';
+import { OverviewReturnDto } from './dto/overview-return.dto';
 
 @ApiBearerAuth()
 @ApiTags('Statistics')
@@ -23,7 +26,11 @@ export class StatisticsController {
   constructor(private readonly statisticsService: StatisticsService) {}
 
   @ApiOperation({ summary: 'Busca estatísticas para um dispositivo' })
-  @ApiResponse({ status: 200, description: 'Return device statistics.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Return device statistics.',
+    type: StatisticsReturnDto,
+  })
   @UseGuards(AuthGuard)
   @Get('device/:id')
   async getDeviceStatistics(@Param('id') id: string) {
@@ -31,7 +38,11 @@ export class StatisticsController {
   }
 
   @ApiOperation({ summary: 'Busca estatísticas para uma Zone' })
-  @ApiResponse({ status: 200, description: 'Return zone statistics.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Return zone statistics.',
+    type: StatisticsReturnDto,
+  })
   @UseGuards(AuthGuard)
   @Get('zone/:id')
   async getZoneStatistics(@Param('id') id: string) {
@@ -39,7 +50,11 @@ export class StatisticsController {
   }
 
   @ApiOperation({ summary: 'Busca estatísticas para uma Mesh' })
-  @ApiResponse({ status: 200, description: 'Return mesh statistics.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Return mesh statistics.',
+    type: StatisticsReturnDto,
+  })
   @UseGuards(AuthGuard)
   @Get('mesh/:id')
   async getMeshStatistics(@Param('id') id: string) {
@@ -47,7 +62,11 @@ export class StatisticsController {
   }
 
   @ApiOperation({ summary: 'Busca um overview de estatísticas para o usuário' })
-  @ApiResponse({ status: 200, description: 'Return user overview.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Return user overview.',
+    type: OverviewReturnDto,
+  })
   @UseGuards(AuthGuard)
   @Get('overview')
   async getUserOverview(@Request() req: ReqReturnDto) {
@@ -64,6 +83,7 @@ export class StatisticsController {
   @ApiResponse({
     status: 200,
     description: 'Return graphed device statistics.',
+    type: GraphReturnDto,
   })
   @UseGuards(AuthGuard)
   @Get('device/:id/graph')
