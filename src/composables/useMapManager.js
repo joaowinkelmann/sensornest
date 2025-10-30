@@ -56,11 +56,14 @@ export function useMapManager(mapContainer) {
         const finalMapUrl = ociToken ? `${baseUrl}/p/${ociToken}/n/${mesh.mapUrl.split('/n/')[1]}` : mesh.mapUrl;
 
         const tileLayerOptions = {
-          minZoom: mesh.minZoom ?? 0,
-          maxZoom: mesh.maxZoom ?? 3,
+          minZoom: mesh.mapMinZoom ?? mesh.minZoom ?? 0,
+          maxZoom: mesh.mapMaxZoom ?? mesh.maxZoom ?? 3,
           attribution: 'Custom Map',
           noWrap: true,
         };
+
+        mapOptions.minZoom = tileLayerOptions.minZoom;
+        mapOptions.maxZoom = tileLayerOptions.maxZoom;
 
         map.value = L.map(mapContainer.value, mapOptions);
         tileLayer = L.tileLayer.custom(finalMapUrl, tileLayerOptions);
@@ -74,6 +77,10 @@ export function useMapManager(mapContainer) {
           map.value.fitBounds(bounds);
           tileLayer.options.bounds = bounds;
         }
+
+        map.value.addLayer(tileLayer);
+        map.value.setMinZoom(tileLayerOptions.minZoom);
+        map.value.setMaxZoom(tileLayerOptions.maxZoom);
 
       } else {
         mapOptions.center = [lat, lon];
