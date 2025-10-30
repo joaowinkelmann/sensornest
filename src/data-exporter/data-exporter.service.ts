@@ -111,12 +111,12 @@ export class DataExporterService {
       for (const r of page) {
         // map to flat CSV row
         rowsInCurrentChunk.push({
-          meshId: r.device.mesh?.id ?? null,
-          meshName: r.device.mesh?.name ?? null,
-          zoneId: r.device.zone?.id ?? null,
-          zoneName: r.device.zone?.name ?? null,
-          deviceId: r.device.id,
-          deviceName: r.device.name,
+          meshId: r.device?.mesh?.id ?? null,
+          meshName: r.device?.mesh?.name ?? null,
+          zoneId: r.device?.zone?.id ?? null,
+          zoneName: r.device?.zone?.name ?? null,
+          deviceId: r.device?.id ?? null,
+          deviceName: r.device?.name ?? null,
           readingId: r.id,
           temperature: r.temperature,
           humidity: r.humidity,
