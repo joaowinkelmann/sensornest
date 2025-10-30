@@ -74,4 +74,15 @@ export class ExportDataDto {
   @IsOptional()
   @IsBoolean()
   includeHeadersPerFile?: boolean;
+
+  @ApiProperty({
+    description:
+      'Max CSV size per file in bytes. Default 15728640 (15 MiB). Can also be set via EXPORT_MAX_BYTES env.',
+    required: false,
+    example: 15728640,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1024 * 1024)
+  maxBytesPerFile?: number;
 }

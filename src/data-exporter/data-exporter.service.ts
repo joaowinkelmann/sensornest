@@ -31,6 +31,7 @@ export class DataExporterService {
       from,
       to,
       includeHeadersPerFile = true,
+      maxBytesPerFile, // NEW: optional cap in bytes
     } = dto;
 
     this.logger.log(
@@ -65,6 +66,59 @@ export class DataExporterService {
     let partIndex = 0;
     const files: string[] = [];
     const startedAt = new Date().toISOString();
+
+    // NEW: determine byte cap (prefer DTO, then ENV, then default 15 MiB)
+    const envMaxBytes = Number(process.env.EXPORT_MAX_BYTES);
+    const byteCap =
+      (Number.isFinite(envMaxBytes) ? envMaxBytes : undefined) ??
+      maxBytesPerFile ??
+      15 * 1024 * 1024; // 15 MiB
+
+    // NEW: fixed CSV column order used for estimates
+    const csvFields = [
+      'meshId',
+      'meshName',
+      'zoneId',
+      'zoneName',
+      'deviceId',
+      'deviceName',
+      'readingId',
+      'temperature',
+      'humidity',
+      'readingTime',
+    ] as const;
+
+    // NEW: estimate bytes for a single CSV cell (approximate, conservative)
+    const estimateCsvCellBytes = (val: unknown) => {
+      const s =
+        val === null || val === undefined
+          ? ''
+          : typeof val === 'number'
+            ? String(val)
+            : String(val);
+      const quoteCount = (s.match(/"/g) || []).length;
+      const needsQuotes = /[",\n]/.test(s);
+      // Double quotes within value + wrap quotes if needed
+      return s.length + quoteCount + (needsQuotes ? 2 : 0);
+    };
+
+    // NEW: estimate bytes for the header row (if emitted)
+    const headerBytes =
+      csvFields.reduce(
+        (acc, key, i) =>
+          acc + estimateCsvCellBytes(String(key)) + (i < csvFields.length - 1 ? 1 : 0),
+        0,
+      ) + 1; // newline
+
+    // NEW: current estimated bytes in the chunk (start with header if we’ll include per file)
+    let currentChunkEstimatedBytes = includeHeadersPerFile ? headerBytes : 0;
+
+    const estimateRowBytes = (row: Record<string, unknown>) =>
+      csvFields.reduce(
+        (acc, key, i) =>
+          acc + estimateCsvCellBytes(row[key]) + (i < csvFields.length - 1 ? 1 : 0),
+        0,
+      ) + 1; // newline
 
     const uploadChunk = async (rows: any[], index: number) => {
       if (rows.length === 0) return;
@@ -110,7 +164,7 @@ export class DataExporterService {
 
       for (const r of page) {
         // map to flat CSV row
-        rowsInCurrentChunk.push({
+        const flatRow = {
           meshId: r.device?.mesh?.id ?? null,
           meshName: r.device?.mesh?.name ?? null,
           zoneId: r.device?.zone?.id ?? null,
@@ -121,7 +175,22 @@ export class DataExporterService {
           temperature: r.temperature,
           humidity: r.humidity,
           readingTime: r.readingTime.toISOString(),
-        });
+        };
+
+        // NEW: split by byte cap before pushing the row (exact upload still via Papa for the chunk)
+        const rowBytes = estimateRowBytes(flatRow);
+        if (
+          rowsInCurrentChunk.length > 0 &&
+          currentChunkEstimatedBytes + rowBytes > byteCap
+        ) {
+          await uploadChunk(rowsInCurrentChunk, partIndex);
+          partIndex++;
+          rowsInCurrentChunk = [];
+          currentChunkEstimatedBytes = includeHeadersPerFile ? headerBytes : 0;
+        }
+
+        rowsInCurrentChunk.push(flatRow);
+        currentChunkEstimatedBytes += rowBytes;
 
         totalRows++;
 
@@ -129,6 +198,7 @@ export class DataExporterService {
           await uploadChunk(rowsInCurrentChunk, partIndex);
           partIndex++;
           rowsInCurrentChunk = [];
+          currentChunkEstimatedBytes = includeHeadersPerFile ? headerBytes : 0;
         }
       }
 
@@ -140,6 +210,7 @@ export class DataExporterService {
       await uploadChunk(rowsInCurrentChunk, partIndex);
       partIndex++;
       rowsInCurrentChunk = [];
+      currentChunkEstimatedBytes = includeHeadersPerFile ? headerBytes : 0;
     }
 
     this.logger.log(
