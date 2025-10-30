@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import apiClient from '@/api';
 import { useZonesStore } from './zones'; // We'll need this to trigger zone fetching
+import { useDevicesStore } from './devices';
 
 export const useMeshesStore = defineStore('meshes', {
   state: () => ({
@@ -34,8 +35,9 @@ export const useMeshesStore = defineStore('meshes', {
     },
     selectMesh(meshId) {
       this.selectedMeshId = meshId;
-      // When a new mesh is selected, tell the zones store to fetch its zones
       const zonesStore = useZonesStore();
+      const devicesStore = useDevicesStore();
+      devicesStore.clearDevices();
       zonesStore.fetchZones(meshId);
     },
 
