@@ -17,6 +17,7 @@ import {
   ApiResponse,
   ApiBody,
 } from '@nestjs/swagger';
+import { ExportResultDto } from './dto/export-result.dto';
 
 @UseGuards(AuthGuard)
 @ApiBearerAuth()
@@ -28,12 +29,14 @@ export class DataExporterController {
   constructor(private readonly dataExporterService: DataExporterService) {}
 
   @Post('export')
-  @ApiOperation({ summary: 'Export data for a given entity to a CSV file.' })
+  @ApiOperation({
+    summary: 'Export data for a given entity to CSV files (chunked).',
+  })
   @ApiBody({ type: ExportDataDto })
   @ApiResponse({
     status: 201,
-    description: 'The URL of the exported data file.',
-    type: String,
+    description: 'Manifest of the exported files.',
+    type: ExportResultDto,
   })
   exportData(
     @Body() exportDataDto: ExportDataDto,

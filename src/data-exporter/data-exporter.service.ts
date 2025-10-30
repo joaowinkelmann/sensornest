@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UploaderService } from '../uploader/uploader.service';
 import { ExportDataDto } from './dto/export-data.dto';
 import * as Papa from 'papaparse';
+import { ExportResultDto } from './dto/export-result.dto';
 
 @Injectable()
 export class DataExporterService {
@@ -19,144 +20,177 @@ export class DataExporterService {
   ) {}
 
   async exportData(
-    { entityType, entityId }: ExportDataDto,
+    dto: ExportDataDto,
     userId: string,
-  ): Promise<string> {
+  ): Promise<ExportResultDto> {
+    const {
+      entityType,
+      entityId,
+      chunkSize = 100_000,
+      pageSize = 10_000,
+      from,
+      to,
+      includeHeadersPerFile = true,
+    } = dto;
+
     this.logger.log(
-      `Starting data export for entity type: ${entityType}, ID: ${entityId}`,
+      `Starting data export for ${entityType}:${entityId} (chunk=${chunkSize}, page=${pageSize})`,
     );
 
-    const readings = await this.fetchReadings(entityType, entityId, userId);
+    // Validate ownership without loading readings
+    await this.assertOwnership(entityType, entityId, userId);
 
-    if (readings.length === 0) {
-      this.logger.warn(
-        `No readings found for ${entityType} ${entityId}, returning empty CSV URL.`,
+    // Build reading where clause
+    const timeFilter =
+      from || to
+        ? {
+            readingTime: {
+              ...(from ? { gte: new Date(from) } : {}),
+              ...(to ? { lte: new Date(to) } : {}),
+            },
+          }
+        : {};
+
+    const baseWhere =
+      entityType === 'device'
+        ? { deviceId: entityId }
+        : entityType === 'zone'
+          ? { device: { zoneId: entityId } }
+          : { device: { meshId: entityId } };
+
+    // Iterate readings in pages
+    let cursor: { id: string } | undefined;
+    let rowsInCurrentChunk: any[] = [];
+    let totalRows = 0;
+    let partIndex = 0;
+    const files: string[] = [];
+    const startedAt = new Date().toISOString();
+
+    const uploadChunk = async (rows: any[], index: number) => {
+      if (rows.length === 0) return;
+      const csv = Papa.unparse(rows, {
+        header: includeHeadersPerFile || index === 0,
+      });
+      const csvBuffer = Buffer.from(csv, 'utf-8');
+      const fileName = `export-${entityType}-${entityId}-${startedAt}-part-${String(
+        index + 1,
+      ).padStart(3, '0')}.csv`;
+      this.logger.log(
+        `Uploading CSV part ${index + 1}: ${fileName} (${csvBuffer.length} bytes)`,
       );
+      const url = await this.uploader.uploadObject(
+        fileName,
+        csvBuffer,
+        'text/csv',
+      );
+      files.push(url);
+    };
+
+    // Paged loop
+    // Order by id asc to use cursor pagination
+    for (;;) {
+      const page = await this.prisma.reading.findMany({
+        where: { ...baseWhere, ...timeFilter },
+        include: {
+          device: {
+            select: {
+              id: true,
+              name: true,
+              zone: { select: { id: true, name: true } },
+              mesh: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { id: 'asc' },
+        take: pageSize,
+        ...(cursor ? { cursor, skip: 1 } : {}),
+      });
+
+      if (page.length === 0) break;
+
+      for (const r of page) {
+        // map to flat CSV row
+        rowsInCurrentChunk.push({
+          meshId: r.device.mesh?.id ?? null,
+          meshName: r.device.mesh?.name ?? null,
+          zoneId: r.device.zone?.id ?? null,
+          zoneName: r.device.zone?.name ?? null,
+          deviceId: r.device.id,
+          deviceName: r.device.name,
+          readingId: r.id,
+          temperature: r.temperature,
+          humidity: r.humidity,
+          readingTime: r.readingTime.toISOString(),
+        });
+
+        totalRows++;
+
+        if (rowsInCurrentChunk.length >= chunkSize) {
+          await uploadChunk(rowsInCurrentChunk, partIndex);
+          partIndex++;
+          rowsInCurrentChunk = [];
+        }
+      }
+
+      cursor = { id: page[page.length - 1].id };
     }
 
-    const csv = Papa.unparse(readings);
-    const csvBuffer = Buffer.from(csv, 'utf-8');
+    // Flush remaining rows
+    if (rowsInCurrentChunk.length > 0) {
+      await uploadChunk(rowsInCurrentChunk, partIndex);
+      partIndex++;
+      rowsInCurrentChunk = [];
+    }
 
-    const fileName = `export-${entityType}-${entityId}-${new Date().toISOString()}.csv`;
-
-    this.logger.log(`Uploading CSV file: ${fileName}`);
-    const url = await this.uploader.uploadObject(
-      fileName,
-      csvBuffer,
-      'text/csv',
+    this.logger.log(
+      `Export completed for ${entityType}:${entityId} -> ${files.length} file(s), ${totalRows} row(s).`,
     );
-    this.logger.log(`CSV file uploaded to: ${url}`);
-    return url;
+
+    return {
+      entityType,
+      entityId,
+      totalRows,
+      chunkSize,
+      fileCount: files.length,
+      files,
+      from: from ?? null,
+      to: to ?? null,
+    };
   }
 
-  private async fetchReadings(
+  // Validates entity exists and belongs to user (keeps existing behavior of throwing 404).
+  private async assertOwnership(
     entityType: string,
     entityId: string,
     userId: string,
   ) {
-    switch (entityType) {
-      case 'mesh':
-        return this.fetchReadingsForMesh(entityId, userId);
-      case 'zone':
-        return this.fetchReadingsForZone(entityId, userId);
-      case 'device':
-        return this.fetchReadingsForDevice(entityId, userId);
-      default:
-        throw new BadRequestException('Invalid entity type');
+    if (entityType === 'mesh') {
+      const mesh = await this.prisma.mesh.findFirst({
+        where: { id: entityId, userId },
+        select: { id: true },
+      });
+      if (!mesh)
+        throw new NotFoundException(`Mesh with ID ${entityId} not found.`);
+      return;
     }
-  }
-
-  private async fetchReadingsForMesh(meshId: string, userId: string) {
-    const mesh = await this.prisma.mesh.findFirst({
-      where: { id: meshId, userId },
-      include: {
-        devices: {
-          include: {
-            readings: true,
-            zone: true,
-          },
-        },
-      },
-    });
-
-    if (!mesh) {
-      throw new NotFoundException(`Mesh with ID ${meshId} not found.`);
+    if (entityType === 'zone') {
+      const zone = await this.prisma.zone.findFirst({
+        where: { id: entityId, mesh: { userId } },
+        select: { id: true },
+      });
+      if (!zone)
+        throw new NotFoundException(`Zone with ID ${entityId} not found.`);
+      return;
     }
-
-    return mesh.devices.flatMap((device) =>
-      device.readings.map((reading) => ({
-        meshId: mesh.id,
-        meshName: mesh.name,
-        zoneId: device.zone?.id || null,
-        zoneName: device.zone?.name || null,
-        deviceId: device.id,
-        deviceName: device.name,
-        readingId: reading.id,
-        temperature: reading.temperature,
-        humidity: reading.humidity,
-        readingTime: reading.readingTime.toISOString(),
-      })),
-    );
-  }
-
-  private async fetchReadingsForZone(zoneId: string, userId: string) {
-    const zone = await this.prisma.zone.findFirst({
-      where: { id: zoneId, mesh: { userId } },
-      include: {
-        mesh: true,
-        devices: {
-          include: {
-            readings: true,
-          },
-        },
-      },
-    });
-
-    if (!zone) {
-      throw new NotFoundException(`Zone with ID ${zoneId} not found.`);
+    if (entityType === 'device') {
+      const device = await this.prisma.device.findFirst({
+        where: { id: entityId, userId },
+        select: { id: true },
+      });
+      if (!device)
+        throw new NotFoundException(`Device with ID ${entityId} not found.`);
+      return;
     }
-
-    return zone.devices.flatMap((device) =>
-      device.readings.map((reading) => ({
-        meshId: zone.mesh.id,
-        meshName: zone.mesh.name,
-        zoneId: zone.id,
-        zoneName: zone.name,
-        deviceId: device.id,
-        deviceName: device.name,
-        readingId: reading.id,
-        temperature: reading.temperature,
-        humidity: reading.humidity,
-        readingTime: reading.readingTime.toISOString(),
-      })),
-    );
-  }
-
-  private async fetchReadingsForDevice(deviceId: string, userId: string) {
-    const device = await this.prisma.device.findFirst({
-      where: { id: deviceId, userId },
-      include: {
-        mesh: true,
-        zone: true,
-        readings: true,
-      },
-    });
-
-    if (!device) {
-      throw new NotFoundException(`Device with ID ${deviceId} not found.`);
-    }
-
-    return device.readings.map((reading) => ({
-      meshId: device.mesh.id,
-      meshName: device.mesh.name,
-      zoneId: device.zone?.id || null,
-      zoneName: device.zone?.name || null,
-      deviceId: device.id,
-      deviceName: device.name,
-      readingId: reading.id,
-      temperature: reading.temperature,
-      humidity: reading.humidity,
-      readingTime: reading.readingTime.toISOString(),
-    }));
+    throw new BadRequestException('Invalid entity type');
   }
 }
