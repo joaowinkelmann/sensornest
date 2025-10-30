@@ -21,6 +21,7 @@ describe('dataExporter store', () => {
     expect(apiClient.post).toHaveBeenCalledWith('/data-exporter/export', {
       entityType: 'mesh',
       entityId: 'mesh1',
+      maxBytesPerFile: 5 * 1024 * 1024, // 5 MiB
     });
   });
 

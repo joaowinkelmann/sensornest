@@ -34,6 +34,24 @@
         </template>
       </q-select>
 
+      <!-- Date filters -->
+      <q-input
+        v-model="from"
+        type="datetime-local"
+        :label="t('data.fromDate')"
+        outlined
+        clearable
+        data-testid="from-input"
+      />
+      <q-input
+        v-model="to"
+        type="datetime-local"
+        :label="t('data.toDate')"
+        outlined
+        clearable
+        data-testid="to-input"
+      />
+
       <q-btn
         @click="handleExport"
         :loading="exporterStore.loading"
@@ -53,12 +71,14 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
 import { useDataExporterStore } from '@/stores/dataExporter';
 import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
 import { useDevicesStore } from '@/stores/devices';
 
 const { t } = useI18n();
+const $q = useQuasar();
 const exporterStore = useDataExporterStore();
 const meshesStore = useMeshesStore();
 const zonesStore = useZonesStore();
@@ -68,6 +88,10 @@ const entityType = ref(null);
 const selectedEntity = ref(null);
 const allEntities = ref([]);
 const entityOptions = ref([]);
+
+// New date filters
+const from = ref('');
+const to = ref('');
 
 const entityTypeOptions = [
   { label: t('data.mesh'), value: 'mesh' },
@@ -125,14 +149,57 @@ const filterFn = (val, update) => {
 const handleExport = async () => {
   if (!selectedEntity.value) return;
 
+  // Build optional filters according to OpenAPI: ExportDataDto.from/to (ISO)
+  const options = {};
+  if (from.value) options.from = new Date(from.value).toISOString();
+  if (to.value) options.to = new Date(to.value).toISOString();
+
   try {
-    const url = await exporterStore.exportData(entityType.value, selectedEntity.value.value);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `${entityType.value}-${selectedEntity.value.value}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    // Keep backward compatibility: pass options as 3rd arg
+    const result = await exporterStore.exportData(
+      entityType.value,
+      selectedEntity.value.value,
+      options
+    );
+
+    // Handle new chunked manifest: ExportResultDto.files (array of URLs)
+    if (result && typeof result === 'object' && Array.isArray(result.files) && result.files.length) {
+      $q.notify({
+        type: 'info',
+        message: t('data.downloadingChunks', { count: result.fileCount || result.files.length }),
+        timeout: 2000
+      });
+
+      // Trigger one download per file (stagger to avoid pop-up blockers)
+      result.files.forEach((fileUrl, idx) => {
+        setTimeout(() => {
+          const a = document.createElement('a');
+          a.href = fileUrl;
+          a.setAttribute(
+            'download',
+            `${entityType.value}-${selectedEntity.value.value}-part-${idx + 1}.csv`
+          );
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }, idx * 200);
+      });
+      return;
+    }
+
+    // Fallback: previous behavior (single URL string)
+    if (typeof result === 'string') {
+      const link = document.createElement('a');
+      link.href = result;
+      link.setAttribute('download', `${entityType.value}-${selectedEntity.value.value}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      return;
+    }
+
+    // If store returns nothing usable
+    $q.notify({ type: 'warning', message: t('data.exportNoFiles') });
   } catch (error) {
     console.error('Export failed', error);
   }
