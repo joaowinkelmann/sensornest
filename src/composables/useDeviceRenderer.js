@@ -55,9 +55,32 @@ export function useDeviceRenderer(map, props, emit) {
         });
       });
     } else {
-      marker.on('click', () => {
+      let statsButtonEl = null;
+
+      const handleStatsClick = (event) => {
+        event.stopPropagation();
+        marker.closePopup();
         emit('device-clicked', device);
-      });
+      };
+
+      const registerStatsButton = (popupEvent) => {
+        const popupEl = popupEvent?.popup?.getElement();
+        if (!popupEl) return;
+        statsButtonEl = popupEl.querySelector('.device-popup-stats');
+        if (statsButtonEl) {
+          statsButtonEl.addEventListener('click', handleStatsClick);
+        }
+      };
+
+      const unregisterStatsButton = () => {
+        if (statsButtonEl) {
+          statsButtonEl.removeEventListener('click', handleStatsClick);
+          statsButtonEl = null;
+        }
+      };
+
+      marker.on('popupopen', registerStatsButton);
+      marker.on('popupclose', unregisterStatsButton);
     }
 
     marker.bindPopup(`
@@ -66,6 +89,16 @@ export function useDeviceRenderer(map, props, emit) {
         <p><strong>MAC:</strong> ${device.macAddress}</p>
         <p><strong>Status:</strong> ${device.status}</p>
         <p><strong>Role:</strong> ${device.role}</p>
+        <div class="device-popup-actions">
+          <button
+            type="button"
+            class="device-popup-button device-popup-stats"
+            title="View statistics"
+            aria-label="View statistics"
+          >
+            <span class="material-icons">bar_chart</span>
+          </button>
+        </div>
       </div>
     `)
 

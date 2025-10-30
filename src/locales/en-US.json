@@ -128,7 +128,12 @@
     "deviceColorLabel": "Device Color",
     "wakeUpIntervalLabel": "Wake Up Interval (seconds)",
     "readingsPerBatchLabel": "Readings Per Batch",
-    "noColor": "No color"
+    "noColor": "No color",
+    "timeframes": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month"
+    }
   },
   "meshes": {
     "title": "Meshes",
