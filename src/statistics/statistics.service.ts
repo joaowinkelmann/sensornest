@@ -168,7 +168,10 @@ export class StatisticsService {
 
   async getDeviceGraph(deviceId: string): Promise<GraphReturnDto> {
     // Helper to group readings by hour/day
-    const groupByPeriod = async (period: 'hour' | 'day', since: Date) => {
+    const groupByPeriod = async (
+      period: 'hour' | 'day',
+      since: Date,
+    ): Promise<GraphReturnDto['day']> => {
       const readings = await this.prisma.reading.findMany({
         where: {
           deviceId,
@@ -203,11 +206,12 @@ export class StatisticsService {
           vals.temperature.length > 0
             ? vals.temperature.reduce((a, b) => a + b, 0) /
               vals.temperature.length
-            : null,
+            : 0, // ensure number
         avgHumidity:
           vals.humidity.length > 0
-            ? vals.humidity.reduce((a, b) => a + b, 0) / vals.humidity.length
-            : null,
+            ? vals.humidity.reduce((a, b) => a + b, 0) /
+              vals.humidity.length
+            : 0, // ensure number
       }));
     };
 
