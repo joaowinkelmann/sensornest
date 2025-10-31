@@ -6,16 +6,24 @@
     </div>
 
     <q-list bordered separator>
-      <q-item v-for="mesh in meshesStore.meshes" :key="mesh.id">
-        <q-item-section clickable v-ripple @click="selectMesh(mesh.id)">
-          <q-item-label>{{ mesh.name }}</q-item-label>
-          <q-item-label caption>{{ mesh.id }}</q-item-label>
-        </q-item-section>
-        <q-item-section side>
-          <q-btn flat round icon="edit" @click.stop="showEditDialog(mesh)" />
-          <q-btn flat round icon="bar_chart" @click.stop="showStatistics(mesh)" />
-        </q-item-section>
-      </q-item>
+      <div v-for="mesh in meshesStore.meshes" :key="mesh.id">
+        <q-item>
+          <q-item-section clickable v-ripple @click="selectMesh(mesh.id)">
+            <q-item-label>{{ mesh.name }}</q-item-label>
+            <q-item-label caption>{{ mesh.id }}</q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-btn flat round icon="edit" @click.stop="showEditDialog(mesh)" />
+            <q-btn flat round icon="bar_chart" @click.stop="toggleStatistics(mesh)" />
+          </q-item-section>
+        </q-item>
+        <q-slide-transition>
+          <div v-show="isStatisticsVisible(mesh.id)">
+            <q-separator />
+            <MeshStatistics :mesh="mesh" :expanded="isStatisticsVisible(mesh.id)" />
+          </div>
+        </q-slide-transition>
+      </div>
     </q-list>
 
     <MeshDialog
@@ -25,31 +33,6 @@
       @mesh-created="handleMeshCreated"
       @mesh-updated="handleMeshUpdated"
     />
-
-    <q-dialog v-model="showStatsDialog">
-      <q-card>
-        <q-card-section>
-          <div class="text-h6">{{ t('meshes.statisticsTitle', { meshName: selectedMesh?.name }) }}</div>
-        </q-card-section>
-
-        <q-card-section v-if="loading">
-          <q-spinner-dots size="50px" />
-        </q-card-section>
-
-        <q-card-section v-if="error">
-          <p class="text-negative">{{ t('meshes.statisticsError') }}</p>
-        </q-card-section>
-
-        <q-card-section v-if="statistics">
-          <pre>{{ statistics }}</pre>
-          <ZoneStatistics :meshId="selectedMesh.id" />
-        </q-card-section>
-
-        <q-card-actions align="right">
-          <q-btn flat :label="t('meshes.closeButton')" color="primary" v-close-popup />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
   </q-page>
 </template>
 
@@ -58,21 +41,18 @@ import { ref, onMounted } from 'vue';
 import { useMeshesStore } from '@/stores/meshes';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
-import { useStatistics } from '@/composables/useStatistics';
 import MeshDialog from '@/components/MeshDialog.vue';
-import ZoneStatistics from '@/components/ZoneStatistics.vue';
+import MeshStatistics from '@/components/MeshStatistics.vue';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
 const meshesStore = useMeshesStore();
 const router = useRouter();
 const $q = useQuasar();
-const { statistics, loading, error, fetchStatistics } = useStatistics();
 
 const showCreateDialog = ref(false);
 const editingMesh = ref(null);
-const showStatsDialog = ref(false);
-const selectedMesh = ref(null);
+const expandedMeshId = ref(null);
 
 onMounted(() => {
   meshesStore.fetchMeshes();
@@ -87,10 +67,16 @@ const showEditDialog = (mesh) => {
   editingMesh.value = mesh;
 };
 
-const showStatistics = async (mesh) => {
-  selectedMesh.value = mesh;
-  await fetchStatistics('mesh', mesh.id);
-  showStatsDialog.value = true;
+const toggleStatistics = (mesh) => {
+  if (expandedMeshId.value === mesh.id) {
+    expandedMeshId.value = null;
+  } else {
+    expandedMeshId.value = mesh.id;
+  }
+};
+
+const isStatisticsVisible = (meshId) => {
+  return expandedMeshId.value === meshId;
 };
 
 const closeDialogs = () => {
