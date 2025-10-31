@@ -136,6 +136,17 @@
       "day": "Day",
       "week": "Week",
       "month": "Month"
+    },
+    "changeZone": {
+      "title": "Change Device Zone",
+      "selectZone": "Select a new zone",
+      "success": "Device zone updated successfully!",
+      "error": "Failed to update device zone."
+    },
+    "contextDialog": {
+      "title": "Device: {deviceName}",
+      "statisticsTab": "Statistics",
+      "zoneTab": "Change Zone"
     }
   },
   "meshes": {

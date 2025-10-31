@@ -55,6 +55,7 @@
         <q-item-section side>
           <q-btn flat round icon="edit" @click="openEditDialog(device)" />
           <q-btn flat round icon="bar_chart" @click="showStatistics(device)" />
+          <q-btn flat round icon="place" @click="openZoneDialog(device)" />
         </q-item-section>
       </q-item>
     </q-list>
@@ -64,6 +65,13 @@
       :device-to-edit="editingDevice"
       @close="showDialog = false"
       @device-updated="handleDeviceUpdated"
+    />
+
+    <DeviceZoneDialog
+      :show="showZoneDialog"
+      :device="zoneChangeDevice"
+      @close="showZoneDialog = false"
+      @zone-changed="handleZoneChanged"
     />
 
     <q-dialog v-model="showStatsDialog">
@@ -107,6 +115,7 @@ import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
 import { useStatistics } from '@/composables/useStatistics';
 import DeviceDialog from './DeviceDialog.vue';
+import DeviceZoneDialog from './DeviceZoneDialog.vue';
 import StatisticsChart from './StatisticsChart.vue';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
@@ -125,6 +134,8 @@ const editingDevice = ref(null);
 const showStatsDialog = ref(false);
 const selectedDevice = ref(null);
 const chartPeriod = ref('day');
+const showZoneDialog = ref(false);
+const zoneChangeDevice = ref(null);
 
 onMounted(async () => {
   await meshesStore.fetchMeshes();
@@ -165,6 +176,31 @@ const onZoneChange = (zoneId) => {
 const openEditDialog = (device) => {
   editingDevice.value = { ...device };
   showDialog.value = true;
+};
+
+const openZoneDialog = (device) => {
+  zoneChangeDevice.value = device;
+  showZoneDialog.value = true;
+};
+
+const handleZoneChanged = async ({ deviceId, zoneId }) => {
+  try {
+    await devicesStore.updateDevice(deviceId, { zoneId });
+    $q.notify({
+      type: 'positive',
+      message: t('devices.changeZone.success'),
+    });
+    // Refetch to reflect the change
+    devicesStore.fetchDevices({ meshId: selectedMesh.value });
+  } catch (error) {
+    console.error('Failed to update zone:', error);
+    $q.notify({
+      type: 'negative',
+      message: t('devices.changeZone.error'),
+    });
+  } finally {
+    showZoneDialog.value = false;
+  }
 };
 
 const showStatistics = async (device) => {

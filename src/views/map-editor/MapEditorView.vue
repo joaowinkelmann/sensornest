@@ -22,37 +22,12 @@
         @save-zone-clicked="saveZone" @undo-zone-clicked="zonesStore.restoreActiveZone()" />
     </div>
 
-    <q-dialog v-model="showStatsDialog">
-      <q-card>
-        <q-card-section>
-          <div class="text-h6">{{ t('devices.statisticsTitle', { deviceName: selectedDevice?.name }) }}</div>
-        </q-card-section>
-
-        <q-card-section v-if="loading">
-          <q-spinner-dots size="50px" />
-        </q-card-section>
-
-        <q-card-section v-if="error">
-          <p class="text-negative">{{ t('devices.statisticsError') }}</p>
-        </q-card-section>
-
-        <q-card-section v-if="statistics">
-          <q-btn-toggle
-            v-model="chartPeriod"
-            :options="[
-              { label: t('devices.timeframes.day'), value: 'day' },
-              { label: t('devices.timeframes.week'), value: 'week' },
-              { label: t('devices.timeframes.month'), value: 'month' },
-            ]"
-          />
-          <StatisticsChart :chart-data="statistics" :period="chartPeriod" />
-        </q-card-section>
-
-        <q-card-actions align="right">
-          <q-btn flat :label="t('devices.closeButton')" color="primary" v-close-popup />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <DeviceContextDialog
+      :show="showDeviceContextDialog"
+      :device="selectedDevice"
+      @close="showDeviceContextDialog = false"
+      @zone-changed="handleZoneChanged"
+    />
   </q-page>
 </template>
 
@@ -65,6 +40,7 @@ import { useDevicesStore } from '@/stores/devices';
 import { useI18n } from 'vue-i18n';
 import { useStatistics } from '@/composables/useStatistics';
 import StatisticsChart from '@/components/StatisticsChart.vue';
+import DeviceContextDialog from '@/components/DeviceContextDialog.vue';
 
 import LeafletMap from '@/components/LeafletMap.vue';
 import FloatingSidebar from '@/components/FloatingSidebar.vue';
@@ -80,7 +56,7 @@ const { statistics, loading, error, fetchDeviceGraph } = useStatistics();
 const mapRef = ref(null);
 // const showMeshDialog = ref(false);
 const editMode = ref('zones');
-const showStatsDialog = ref(false);
+const showDeviceContextDialog = ref(false);
 const selectedDevice = ref(null);
 const chartPeriod = ref('day');
 
@@ -346,10 +322,27 @@ const handleSaveNewZone = (vertices) => {
   });
 };
 
-const handleDeviceClicked = async (device) => {
+const handleDeviceClicked = (device) => {
   selectedDevice.value = device;
-  await fetchDeviceGraph(device.id);
-  showStatsDialog.value = true;
+  showDeviceContextDialog.value = true;
+};
+
+const handleZoneChanged = async ({ deviceId, zoneId }) => {
+  try {
+    await devicesStore.updateDevice(deviceId, { zoneId });
+    $q.notify({
+      type: 'positive',
+      message: t('devices.changeZone.success'),
+    });
+    // Refetch to reflect the change
+    devicesStore.fetchDevices(meshesStore.selectedMeshId);
+  } catch (error) {
+    console.error('Failed to update zone:', error);
+    $q.notify({
+      type: 'negative',
+      message: t('devices.changeZone.error'),
+    });
+  }
 };
 </script>
 
