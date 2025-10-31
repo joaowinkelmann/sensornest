@@ -39,21 +39,21 @@
 // Padrão "Discovery Pulse" (Respiração Rápida Vermelha)
 #define DISCOVERY_PULSE_PERIOD_MS 1000   // Ciclo completo de respiração
 #define DISCOVERY_PULSE_STEP_MS   50     // Intervalo de atualização do brilho
-#define DISCOVERY_PULSE_COLOR_R   127
+#define DISCOVERY_PULSE_COLOR_R   96
 #define DISCOVERY_PULSE_COLOR_G   0
 #define DISCOVERY_PULSE_COLOR_B   0
 
 // Padrão "Worker Flash" (Flash Rápido de Debug)
 #define WORKER_FLASH_MS         50
-#define WORKER_FLASH_COLOR_R    80
-#define WORKER_FLASH_COLOR_G    36
+#define WORKER_FLASH_COLOR_R    54
+#define WORKER_FLASH_COLOR_G    20
 #define WORKER_FLASH_COLOR_B    0
 
 // Flash de Sucesso
 #define SUCCESS_FLASH_MS        200
 #define SUCCESS_FLASH_PAUSE_MS  150
 #define SUCCESS_FLASH_COLOR_R   0
-#define SUCCESS_FLASH_COLOR_G   127
+#define SUCCESS_FLASH_COLOR_G   72
 #define SUCCESS_FLASH_COLOR_B   0
 
 
