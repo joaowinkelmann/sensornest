@@ -254,5 +254,19 @@
     "modeActive": "{label} mode active",
     "switchTo": "Switch to {label} mode",
     "disabled": "{label} (disabled)"
+  },
+  "statistics": {
+    "loading": "Loading statistics...",
+    "error": "Error loading statistics",
+    "periods": {
+      "day": "Last 24 Hours",
+      "week": "Last 7 Days",
+      "month": "Last 30 Days",
+      "year": "Last 12 Months"
+    },
+    "temperature": "Temperature",
+    "humidity": "Humidity",
+    "average": "Average",
+    "highest": "Highest"
   }
 }

@@ -254,5 +254,19 @@
     "modeActive": "Modo {label} activo",
     "switchTo": "Cambiar a modo {label}",
     "disabled": "{label} (deshabilitado)"
+  },
+  "statistics": {
+    "loading": "Cargando estadísticas...",
+    "error": "Error al cargar estadísticas",
+    "periods": {
+      "day": "Últimas 24 Horas",
+      "week": "Últimos 7 Días",
+      "month": "Últimos 30 Días",
+      "year": "Últimos 12 Meses"
+    },
+    "temperature": "Temperatura",
+    "humidity": "Humedad",
+    "average": "Promedio",
+    "highest": "Máximo"
   }
 }
