@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils';
 import MeshStatistics from '../MeshStatistics.vue';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
-import { useI18n } from 'vue-i18n';
+// import { useI18n } from 'vue-i18n';
 import * as useStatistics from '@/composables/useStatistics';
 import flushPromises from 'flush-promises';
 

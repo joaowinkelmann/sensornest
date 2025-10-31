@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue';
+import { watch } from 'vue';
 import { useStatistics } from '@/composables/useStatistics';
 import { useI18n } from 'vue-i18n';
 import { use } from 'echarts/core';
@@ -36,7 +36,7 @@ import {
   LegendComponent,
   GridComponent,
 } from 'echarts/components';
-import VChart, { THEME_KEY } from 'vue-echarts';
+import VChart from 'vue-echarts';
 
 use([
   CanvasRenderer,
