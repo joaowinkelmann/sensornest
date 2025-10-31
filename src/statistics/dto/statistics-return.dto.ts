@@ -1,17 +1,17 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-class Stats {
-  @ApiProperty()
-  highestTemperature: number;
+export class Stats {
+  @ApiProperty({ nullable: true })
+  highestTemperature: number | null;
 
-  @ApiProperty()
-  highestHumidity: number;
+  @ApiProperty({ nullable: true })
+  highestHumidity: number | null;
 
-  @ApiProperty()
-  averageTemperature: number;
+  @ApiProperty({ nullable: true })
+  averageTemperature: number | null;
 
-  @ApiProperty()
-  averageHumidity: number;
+  @ApiProperty({ nullable: true })
+  averageHumidity: number | null;
 }
 
 export class StatisticsReturnDto {
