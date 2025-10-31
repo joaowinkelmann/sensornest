@@ -3,10 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { subDays, subWeeks, subMonths, subYears } from 'date-fns';
 import { GraphReturnDto } from './dto/graph-return.dto';
 import { OverviewReturnDto } from './dto/overview-return.dto';
-import {
-  StatisticsReturnDto,
-  Stats,
-} from './dto/statistics-return.dto';
+import { StatisticsReturnDto, Stats } from './dto/statistics-return.dto';
 
 type PeriodKey = 'day' | 'week' | 'month' | 'year';
 

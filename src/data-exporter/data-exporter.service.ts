@@ -106,7 +106,9 @@ export class DataExporterService {
     const headerBytes =
       csvFields.reduce(
         (acc, key, i) =>
-          acc + estimateCsvCellBytes(String(key)) + (i < csvFields.length - 1 ? 1 : 0),
+          acc +
+          estimateCsvCellBytes(String(key)) +
+          (i < csvFields.length - 1 ? 1 : 0),
         0,
       ) + 1; // newline
 
@@ -116,7 +118,9 @@ export class DataExporterService {
     const estimateRowBytes = (row: Record<string, unknown>) =>
       csvFields.reduce(
         (acc, key, i) =>
-          acc + estimateCsvCellBytes(row[key]) + (i < csvFields.length - 1 ? 1 : 0),
+          acc +
+          estimateCsvCellBytes(row[key]) +
+          (i < csvFields.length - 1 ? 1 : 0),
         0,
       ) + 1; // newline
 
