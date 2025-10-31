@@ -272,6 +272,18 @@ static esp_err_t rs_device_role_clear_post_handler(httpd_req_t *req) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs open failed");
         return ESP_FAIL;
     }
+
+    // Prevent clearing if setup is already complete
+    char stage[32] = {0};
+    size_t len = sizeof(stage);
+    nvs_get_str(nvs, "setup", stage, &len);
+    if (strcmp(stage, "complete") == 0) {
+        nvs_close(nvs);
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_sendstr(req, "{\"error\":\"setup_complete_cannot_clear_role\"}");
+        return ESP_OK;
+    }
+
     // Erase role and setup stage to go back to the beginning
     nvs_erase_key(nvs, "role");
     nvs_erase_key(nvs, "setup");

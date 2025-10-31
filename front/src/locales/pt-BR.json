@@ -54,5 +54,21 @@
   "workerName": "Nome desse Dispositivo",
   "availableControllers": "Controladores Disponíveis",
   "bindWorker": "Vincular Dispositivo",
-  "workerBound": "Dispositivo Vinculado com Sucesso"
+  "workerBound": "Dispositivo Vinculado com Sucesso",
+  "needNewMesh": "Não tem uma malha?",
+  "createMeshBtn": "Criar Nova Malha",
+  "meshCreated": "Malha criada com sucesso",
+  "createNewMesh": "Criar Nova Malha",
+  "meshName": "Nome da Malha",
+  "meshNameHint": "ex., Rede Doméstica, Prédio Comercial",
+  "latitude": "Latitude",
+  "longitude": "Longitude",
+  "latHint": "ex., -23.5505",
+  "lonHint": "ex., -46.6333",
+  "cancel": "Cancelar",
+  "create": "Criar",
+  "failedToCreateMesh": "Falha ao criar malha",
+  "wakeUpIntervalHint": "Segundos entre leituras",
+  "wakeUpInterval": "Intervalo de Ativação (s)",
+  "deviceRegistered": "Dispositivo Registrado com Sucesso"
 }
