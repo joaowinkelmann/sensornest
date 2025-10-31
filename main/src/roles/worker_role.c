@@ -20,6 +20,7 @@ extern void simulate_or_sleep(uint64_t secs);
 
 #define TIME_SYNC_PREFIX "TIME:"
 #define ACK_PREFIX "ACK:"
+#define BIND_PREFIX "BIND:"   // NEW: Worker -> Controller bind announcement
 
 static const char *TAG_WR = "WORKER_ROLE";
 
@@ -164,6 +165,28 @@ esp_err_t worker_role_start(void) {
     ESP_LOGI(TAG_WR, "ESP-NOW started with power set to %d (0.25 dBm).", power);
 
     load_controller_binding();
+
+    // NEW: announce binding to Controller so it can register this Worker in cloud
+    do {
+        nvs_handle_t nvs;
+        if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
+            char name[33] = {0};
+            size_t l = sizeof(name);
+            if (nvs_get_str(nvs, "name", name, &l) == ESP_OK && name[0]) {
+                char payload[64];
+                int len = snprintf(payload, sizeof(payload), BIND_PREFIX "%s", name);
+                if (len > 0) {
+                    // send a few times to increase chance of reception
+                    for (int i = 0; i < 3; ++i) {
+                        esp_err_t se = espnow_manager_send_to_controller(payload, len);
+                        ESP_LOGI(TAG_WR, "Sent BIND announcement (%d/3): %s (res=%s)", i+1, name, esp_err_to_name(se));
+                        vTaskDelay(pdMS_TO_TICKS(200));
+                    }
+                }
+            }
+            nvs_close(nvs);
+        }
+    } while (0);
 
     /* Debug identification flash */
     if (s_debug) {

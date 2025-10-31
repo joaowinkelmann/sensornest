@@ -21,10 +21,14 @@
 
 #define TIME_SYNC_PREFIX "TIME:" // For sending time back to worker
 #define ACK_PREFIX "ACK:"       // For sending ACK with config back to worker
+#define BIND_PREFIX "BIND:"     // NEW: Worker -> Controller bind announcement
 
 static const char *TAG_CR = "CTRL_ROLE";
 static bool s_debug = false;
 static bool s_controller_sensor_disabled = true;
+
+// NEW: cache controller meshId for registering workers
+static char s_controller_mesh_id[64] = {0};
 
 void controller_role_set_debug(bool enabled) {
     s_debug = enabled;
@@ -218,9 +222,79 @@ static void controller_send_cb(const uint8_t *mac_addr, esp_now_send_status_t st
     }
 }
 
+// NEW: helper to ensure we know the Controller's meshId from cloud
+static bool ensure_controller_mesh_id(void) {
+    if (s_controller_mesh_id[0]) return true;
+
+    char *device_json = NULL;
+    if (rc_get_device_by_mac(NULL, &device_json) != ESP_OK || !device_json) {
+        ESP_LOGW(TAG_CR, "ensure_controller_mesh_id: failed to fetch controller device.");
+        return false;
+    }
+    bool ok = false;
+    cJSON *root = cJSON_Parse(device_json);
+    free(device_json);
+    if (root) {
+        cJSON *mid = cJSON_GetObjectItem(root, "meshId");
+        if (cJSON_IsString(mid) && mid->valuestring[0]) {
+            strlcpy(s_controller_mesh_id, mid->valuestring, sizeof(s_controller_mesh_id));
+            ok = true;
+            ESP_LOGI(TAG_CR, "Controller meshId=%s", s_controller_mesh_id);
+        } else {
+            ESP_LOGW(TAG_CR, "ensure_controller_mesh_id: meshId missing in device JSON.");
+        }
+        cJSON_Delete(root);
+    }
+    return ok;
+}
+
 static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
     ESP_LOGI(TAG_CR, "EVENT: ESPNOW RX %dB from " MACSTR " on if %d",
              recv_info->data_len, MAC2STR(recv_info->mac_addr), recv_info->ifidx);
+
+    // NEW: Handle Worker bind announcement: "BIND:<name>"
+    if (recv_info->data_len > (int)strlen(BIND_PREFIX) &&
+        strncmp((const char*)recv_info->data, BIND_PREFIX, strlen(BIND_PREFIX)) == 0) {
+
+        const char *name = (const char*)recv_info->data + strlen(BIND_PREFIX);
+        if (!name || !name[0]) {
+            ESP_LOGW(TAG_CR, "BIND received with empty name. Ignoring.");
+            return;
+        }
+
+        // Ensure we have controller meshId
+        if (!ensure_controller_mesh_id()) {
+            ESP_LOGW(TAG_CR, "Cannot register worker; controller meshId unknown.");
+            return;
+        }
+
+        // Format worker MAC
+        char mac_str[18];
+        snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+                 recv_info->mac_addr[0], recv_info->mac_addr[1], recv_info->mac_addr[2],
+                 recv_info->mac_addr[3], recv_info->mac_addr[4], recv_info->mac_addr[5]);
+
+        // Register Worker device in cloud
+        esp_err_t r = rc_register_device_for_mac(
+            name,
+            "WORKER",
+            s_controller_mesh_id,
+            mac_str,
+            device_readingsPerBatch,
+            device_wakeUpInterval,
+            0, 0
+        );
+
+        if (r == ESP_OK) {
+            ESP_LOGI(TAG_CR, "Worker device '%s' (MAC=%s) registered/bound to mesh=%s.", name, mac_str, s_controller_mesh_id);
+            // Optional: notify worker (not strictly required). Example:
+            // const char *ok = "REGOK";
+            // espnow_manager_send_to_mac(recv_info->mac_addr, (const uint8_t*)ok, strlen(ok));
+        } else {
+            ESP_LOGW(TAG_CR, "Failed to register worker '%s' (MAC=%s): %s", name, mac_str, esp_err_to_name(r));
+        }
+        return;
+    }
 
     // Stash the batch. The main loop will handle posting.
     stash_worker_batch((const char*)recv_info->data, recv_info->data_len);

@@ -690,6 +690,93 @@ retry_once:
     return ESP_FAIL;
 }
 
+/* --- NEW: Register device for arbitrary MAC (Controller registers Worker) --- */
+esp_err_t rc_register_device_for_mac(const char *name,
+                                     const char *role,
+                                     const char *mesh_id,
+                                     const char *mac_address,
+                                     int readingsPerBatch,
+                                     int wakeUpInterval,
+                                     int x,
+                                     int y)
+{
+    if (!name || !name[0] || !role || !role[0] || !mesh_id || !mesh_id[0] || !mac_address || !mac_address[0]) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char token[512];
+    if (!rc_get_token(token, sizeof(token))) {
+        return ESP_ERR_INVALID_STATE; // Not logged in
+    }
+
+    esp_err_t err = ESP_FAIL;
+
+retry_send:
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return ESP_ERR_NO_MEM;
+
+    cJSON_AddStringToObject(root, "name", name);
+    cJSON_AddStringToObject(root, "role", role);
+    cJSON_AddStringToObject(root, "meshId", mesh_id);
+    cJSON_AddStringToObject(root, "macAddress", mac_address);
+    cJSON_AddStringToObject(root, "status", "ACTIVE");
+    if (readingsPerBatch > 0) cJSON_AddNumberToObject(root, "readingsPerBatch", readingsPerBatch);
+    if (wakeUpInterval > 0)   cJSON_AddNumberToObject(root, "wakeUpInterval", wakeUpInterval);
+    cJSON_AddNumberToObject(root, "x", x);
+    cJSON_AddNumberToObject(root, "y", y);
+
+    char *body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!body) return ESP_ERR_NO_MEM;
+
+    esp_http_client_config_t cfg = {
+        .url = CLOUD_DEVICE_REGISTER_URL,
+        .cert_pem = cloud_ca_pem,
+        .method = HTTP_METHOD_POST,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&cfg);
+    if (!client) {
+        free(body);
+        return ESP_ERR_NO_MEM;
+    }
+    char auth[640];
+    snprintf(auth, sizeof(auth), "Bearer %s", token);
+    esp_http_client_set_header(client, "Authorization", auth);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, body, strlen(body));
+
+    err = esp_http_client_perform(client);
+    int status = (err == ESP_OK) ? esp_http_client_get_status_code(client) : 0;
+    esp_http_client_cleanup(client);
+    free(body);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(RC_TAG, "register_device_for_mac: HTTP POST error: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    if (status == 201) {
+        ESP_LOGI(RC_TAG, "register_device_for_mac: success (MAC=%s)", mac_address);
+        return ESP_OK;
+    }
+
+    if (status == 409) {
+        // Already exists; treat as success for idempotency
+        ESP_LOGW(RC_TAG, "register_device_for_mac: device already exists for MAC=%s (409).", mac_address);
+        return ESP_OK;
+    }
+
+    if (status == 401) {
+        ESP_LOGW(RC_TAG, "register_device_for_mac: 401 -> re-auth & retry");
+        if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
+            goto retry_send;
+        }
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    ESP_LOGE(RC_TAG, "register_device_for_mac: failed with HTTP status %d", status);
+    return ESP_FAIL;
+}
 
 /* OPTIONAL: convenience to extract selected config fields (not required yet) */
 esp_err_t rc_extract_device_config(const char *device_json,

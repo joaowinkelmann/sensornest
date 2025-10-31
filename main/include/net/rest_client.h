@@ -11,3 +11,10 @@ esp_err_t rc_register_device(const char *name, const char *role, const char *mes
 /* Register a new user in the cloud, then perform login to store token on success */
 esp_err_t rc_register_user(const char *email, const char *password, const char *name);
 esp_err_t rc_create_mesh(const char *name, double lat, double lon);
+esp_err_t rc_register_device_for_mac(const char *name,
+                                     const char *role,
+                                     const char *mesh_id,
+                                     const char *mac_address,
+                                     int readingsPerBatch,
+                                     int wakeUpInterval,
+                                     int x, int y);
