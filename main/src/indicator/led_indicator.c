@@ -32,28 +32,28 @@
 #define PROV_BLINK_ON_MS       60
 #define PROV_BLINK_OFF_MS      100
 #define PROV_BLINK_BREAK_MS    1500
-#define PROV_BLINK_COLOR_R     24
-#define PROV_BLINK_COLOR_G     24
-#define PROV_BLINK_COLOR_B     24
+#define PROV_BLINK_COLOR_R     18
+#define PROV_BLINK_COLOR_G     18
+#define PROV_BLINK_COLOR_B     18
 
 // Padrão "Discovery Pulse" (Respiração Rápida Vermelha)
 #define DISCOVERY_PULSE_PERIOD_MS 1000   // Ciclo completo de respiração
 #define DISCOVERY_PULSE_STEP_MS   50     // Intervalo de atualização do brilho
-#define DISCOVERY_PULSE_COLOR_R   96
+#define DISCOVERY_PULSE_COLOR_R   72
 #define DISCOVERY_PULSE_COLOR_G   0
 #define DISCOVERY_PULSE_COLOR_B   0
 
 // Padrão "Worker Flash" (Flash Rápido de Debug)
 #define WORKER_FLASH_MS         50
-#define WORKER_FLASH_COLOR_R    54
-#define WORKER_FLASH_COLOR_G    20
+#define WORKER_FLASH_COLOR_R    42
+#define WORKER_FLASH_COLOR_G    12
 #define WORKER_FLASH_COLOR_B    0
 
 // Flash de Sucesso
 #define SUCCESS_FLASH_MS        200
 #define SUCCESS_FLASH_PAUSE_MS  150
 #define SUCCESS_FLASH_COLOR_R   0
-#define SUCCESS_FLASH_COLOR_G   72
+#define SUCCESS_FLASH_COLOR_G   63
 #define SUCCESS_FLASH_COLOR_B   0
 
 
@@ -228,7 +228,9 @@ static void pulse_task(void *arg) {
     while (true) {
         float phase = (float)(t % PULSE_PERIOD_MS) / (float)PULSE_PERIOD_MS; // Fase de 0.0 a 1.0
         float mag = 0.5f - 0.5f * cosf(2.0f * (float)M_PI * phase); // Magnitude de 0.0 a 1.0
-        uint8_t brightness = (uint8_t)(255.0f * mag);
+        // uint8_t brightness = (uint8_t)(255.0f * mag);
+        // brightness só até 96
+        uint8_t brightness = (uint8_t)(96.0f * mag);
 
         _hw_set_brightness(brightness);
 
