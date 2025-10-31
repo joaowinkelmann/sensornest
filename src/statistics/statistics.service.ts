@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { subDays, subWeeks, subMonths, subYears } from 'date-fns';
+import { GraphReturnDto } from './dto/graph-return.dto';
+import { OverviewReturnDto } from './dto/overview-return.dto';
+import { StatisticsReturnDto, Stats } from './dto/statistics-return.dto';
 
 type PeriodKey = 'day' | 'week' | 'month' | 'year';
 
@@ -9,18 +12,14 @@ type ReadingAgg = {
   _avg: { temperature: number | null; humidity: number | null };
 };
 
-type Stats = {
-  highestTemperature: number | null;
-  highestHumidity: number | null;
-  averageTemperature: number | null;
-  averageHumidity: number | null;
-};
-
 @Injectable()
 export class StatisticsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async getStatistics(model: 'device' | 'zone' | 'mesh', id: string) {
+  private async getStatistics(
+    model: 'device' | 'zone' | 'mesh',
+    id: string,
+  ): Promise<StatisticsReturnDto> {
     const now = new Date();
     const periods: Record<PeriodKey, Date> = {
       day: subDays(now, 1),
@@ -64,7 +63,7 @@ export class StatisticsService {
     return acc;
   }
 
-  async getDeviceStatistics(deviceId: string) {
+  async getDeviceStatistics(deviceId: string): Promise<StatisticsReturnDto> {
     const device = await this.prisma.device.findUnique({
       where: { id: deviceId },
     });
@@ -74,7 +73,7 @@ export class StatisticsService {
     return this.getStatistics('device', deviceId);
   }
 
-  async getZoneStatistics(zoneId: string) {
+  async getZoneStatistics(zoneId: string): Promise<StatisticsReturnDto> {
     const zone = await this.prisma.zone.findUnique({ where: { id: zoneId } });
     if (!zone) {
       throw new NotFoundException('Zone not found');
@@ -82,7 +81,7 @@ export class StatisticsService {
     return this.getStatistics('zone', zoneId);
   }
 
-  async getMeshStatistics(meshId: string) {
+  async getMeshStatistics(meshId: string): Promise<StatisticsReturnDto> {
     const mesh = await this.prisma.mesh.findUnique({ where: { id: meshId } });
     if (!mesh) {
       throw new NotFoundException('Mesh not found');
@@ -90,7 +89,7 @@ export class StatisticsService {
     return this.getStatistics('mesh', meshId);
   }
 
-  async getUserOverview(userId: string) {
+  async getUserOverview(userId: string): Promise<OverviewReturnDto> {
     const now = new Date();
     const lastHour = new Date(now.getTime() - 60 * 60 * 1000);
     const lastDay = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -167,9 +166,12 @@ export class StatisticsService {
     };
   }
 
-  async getDeviceGraph(deviceId: string) {
+  async getDeviceGraph(deviceId: string): Promise<GraphReturnDto> {
     // Helper to group readings by hour/day
-    const groupByPeriod = async (period: 'hour' | 'day', since: Date) => {
+    const groupByPeriod = async (
+      period: 'hour' | 'day',
+      since: Date,
+    ): Promise<GraphReturnDto['day']> => {
       const readings = await this.prisma.reading.findMany({
         where: {
           deviceId,
@@ -204,11 +206,12 @@ export class StatisticsService {
           vals.temperature.length > 0
             ? vals.temperature.reduce((a, b) => a + b, 0) /
               vals.temperature.length
-            : null,
+            : 0, // ensure number
         avgHumidity:
           vals.humidity.length > 0
-            ? vals.humidity.reduce((a, b) => a + b, 0) / vals.humidity.length
-            : null,
+            ? vals.humidity.reduce((a, b) => a + b, 0) /
+              vals.humidity.length
+            : 0, // ensure number
       }));
     };
 
