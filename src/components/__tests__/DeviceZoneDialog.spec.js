@@ -5,7 +5,7 @@ import flushPromises from 'flush-promises';
 import { createTestingPinia } from '@pinia/testing';
 import { Quasar } from 'quasar';
 import DeviceZoneDialog from '../DeviceZoneDialog.vue';
-import { useZonesStore } from '@/stores/zones';
+// import { useZonesStore } from '@/stores/zones';
 
 const i18n = createI18n({
   legacy: false,
