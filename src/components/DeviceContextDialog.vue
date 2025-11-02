@@ -1,19 +1,19 @@
 <template>
   <q-dialog :model-value="show" @update:model-value="$emit('close')">
     <q-card style="min-width: 500px">
-      <q-card-section>
-        <div class="text-h6">{{ t('devices.contextDialog.title', { deviceName: device?.name }) }}</div>
+      <q-card-section class="text-h6">
+        {{ t('devices.contextDialog.title') }}
       </q-card-section>
 
-      <q-tabs v-model="tab" dense class="text-grey" active-color="primary" indicator-color="primary" align="justify">
-        <q-tab name="statistics" :label="t('devices.contextDialog.statisticsTab')" />
+      <q-tabs v-model="tab" class="text-grey" active-color="primary" indicator-color="primary" align="justify" narrow-indicator>
+        <q-tab name="stats" :label="t('devices.contextDialog.statisticsTab')" />
         <q-tab name="zone" :label="t('devices.contextDialog.zoneTab')" />
       </q-tabs>
 
       <q-separator />
 
       <q-tab-panels v-model="tab" animated>
-        <q-tab-panel name="statistics">
+        <q-tab-panel name="stats">
           <div v-if="loading" class="text-center">
             <q-spinner-dots size="50px" />
           </div>
@@ -34,7 +34,11 @@
         </q-tab-panel>
 
         <q-tab-panel name="zone">
-          <DeviceZoneDialog :device="device" @zone-changed="handleZoneChanged" />
+          <DeviceZoneDialog
+            :show="show && tab === 'zone'"
+            :device="device"
+            @zone-changed="handleZoneChanged"
+          />
         </q-tab-panel>
       </q-tab-panels>
 
@@ -51,24 +55,22 @@ import { useI18n } from 'vue-i18n';
 import { useStatistics } from '@/composables/useStatistics';
 import StatisticsChart from './StatisticsChart.vue';
 import DeviceZoneDialog from './DeviceZoneDialog.vue';
+import { useQuasar } from 'quasar';
+import { useDevicesStore } from '@/stores/devices';
 
 const props = defineProps({
-  show: {
-    type: Boolean,
-    required: true,
-  },
-  device: {
-    type: Object,
-    default: null,
-  },
+  show: { type: Boolean, required: true },
+  device: { type: Object, required: true }
 });
 
-const emit = defineEmits(['close', 'zone-changed']);
+const emit = defineEmits(['close']);
+const $q = useQuasar();
+const devicesStore = useDevicesStore();
 
 const { t } = useI18n();
 const { statistics, loading, error, fetchDeviceGraph } = useStatistics();
 
-const tab = ref('statistics');
+const tab = ref('stats');
 const chartPeriod = ref('day');
 
 watch(() => props.show, (newVal) => {
@@ -77,8 +79,14 @@ watch(() => props.show, (newVal) => {
   }
 });
 
-const handleZoneChanged = (payload) => {
-  emit('zone-changed', payload);
-  emit('close');
+const handleZoneChanged = async (newZoneId) => {
+  try {
+    await devicesStore.updateDevice(props.device.id, { zoneId: newZoneId });
+    $q.notify({ type: 'positive', message: 'Device zone updated' });
+    emit('close');
+  } catch (e) {
+    console.warn('Failed to update device zone.', e);
+    $q.notify({ type: 'negative', message: 'Failed to update device zone' });
+  }
 };
 </script>

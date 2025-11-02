@@ -141,12 +141,13 @@
       "title": "Change Device Zone",
       "selectZone": "Select a new zone",
       "success": "Device zone updated successfully!",
-      "error": "Failed to update device zone."
+      "error": "Failed to update device zone.",
+      "noZones": "No zones in this mesh."
     },
     "contextDialog": {
-      "title": "Device: {deviceName}",
+      "title": "Device",
       "statisticsTab": "Statistics",
-      "zoneTab": "Change Zone"
+      "zoneTab": "Zone"
     }
   },
   "meshes": {

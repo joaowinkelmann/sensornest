@@ -39,12 +39,22 @@ export const useZonesStore = defineStore('zones', {
           this.setActiveZone(this.zones[0].id);
         } else {
           this.activeZoneId = null;
+          // NEW: still fetch devices for the current mesh even if there are no zones
+          const devicesStore = useDevicesStore();
+          devicesStore.fetchDevices({ meshId });
         }
       } catch (e) {
         this.error = 'Failed to fetch zones.';
         this.zones = [];
         this.activeZoneId = null;
         console.error(e);
+        // NEW: fallback — attempt to fetch devices for the mesh even if zones failed
+        try {
+          const devicesStore = useDevicesStore();
+          await devicesStore.fetchDevices({ meshId });
+        } catch (e) {
+          console.log(e);
+        }
       } finally {
         this.loading = false;
       }
