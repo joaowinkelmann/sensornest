@@ -14,6 +14,7 @@ const i18n = createI18n({
         title: 'Device Manager',
         filterByMesh: 'Filter by Mesh',
         filterByZone: 'Filter by Zone',
+        noColor: 'No color',
       },
     },
   },
@@ -49,6 +50,7 @@ vi.mock('@/stores/zones', () => ({
       { id: 'zone1', name: 'Zone 1', meshId: 'mesh1' },
       { id: 'zone2', name: 'Zone 2', meshId: 'mesh1' },
     ],
+    allZones: [],
     fetchAllZones: mockFetchAllZones,
   })),
 }));
@@ -76,5 +78,21 @@ describe('DeviceManager.vue', () => {
     expect(mockFetchMeshes).toHaveBeenCalled();
     expect(mockFetchDevices).toHaveBeenCalled();
     expect(wrapper.findAll('.q-item')).toHaveLength(2);
+  });
+
+  it('opens the change zone dialog when the button is clicked', async () => {
+    const wrapper = mount(DeviceManager, {
+      global: {
+        plugins: [Quasar, i18n],
+      },
+    });
+
+    await flushPromises();
+
+    const changeZoneButton = wrapper.findAllComponents({ name: 'QBtn' }).find(b => b.props('icon') === 'place');
+    await changeZoneButton.trigger('click');
+
+    const dialog = wrapper.findComponent({ name: 'DeviceZoneDialog' });
+    expect(dialog.props('show')).toBe(true);
   });
 });

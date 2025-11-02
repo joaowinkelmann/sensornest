@@ -71,7 +71,8 @@
     "zoneDeleted": "Zona excluída",
     "deviceMoved": "Posição do dispositivo atualizada",
     "deviceMovedError": "Erro ao atualizar a posição do dispositivo",
-    "noMeshesAvailable": "Nenhuma malha disponível. Por favor, crie uma malha primeiro."
+    "noMeshesAvailable": "Nenhuma malha disponível. Por favor, crie uma malha primeiro.",
+    "deviceZoneUpdated": "Zona do dispositivo atualizada"
   },
   "login": {
     "title": "Entrar no SensorNest",
@@ -136,6 +137,18 @@
       "day": "Dia",
       "week": "Semana",
       "month": "Mês"
+    },
+    "contextDialog": {
+      "title": "Dispositivo",
+      "statisticsTab": "Estatísticas",
+      "zoneTab": "Zona"
+    },
+    "changeZone": {
+      "title": "Alterar Zona do Dispositivo",
+      "selectZone": "Selecione uma nova zona",
+      "success": "Zona do dispositivo atualizada com sucesso!",
+      "error": "Falha ao atualizar a zona do dispositivo.",
+      "noZones": "Nenhuma zona nesta malha."
     }
   },
   "meshes": {
@@ -268,5 +281,10 @@
     "humidity": "Umidade",
     "average": "Média",
     "highest": "Maior"
+  },
+  "buttons": {
+    "close": "Fechar",
+    "cancel": "Cancelar",
+    "save": "Salvar"
   }
 }

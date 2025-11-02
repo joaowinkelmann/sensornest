@@ -1,16 +1,29 @@
 <template>
   <q-page class="flex column no-wrap">
     <div class="col relative-position">
-      <LeafletMap ref="mapRef" class="map-container" :zones="convertedZones" :active-zone-id="zonesStore.activeZoneId"
-        :active-zone="zonesStore.activeZone" :center-lat="baseCoords.lat" :center-lng="baseCoords.lng"
+      <LeafletMap 
+        ref="mapRef" 
+        class="map-container" 
+        :zones="convertedZones" 
+        :active-zone-id="zonesStore.activeZoneId"
+        :active-zone="zonesStore.activeZone" 
+        :center-lat="baseCoords.lat" 
+        :center-lng="baseCoords.lng"
         :mesh="meshesStore.selectedMesh"
-        :devices="devicesStore.devices" :conversion-fn="convertDeviceToLatLng" :edit-mode="editMode"
-        @vertex-added="handleVertexAdded" @vertex-removed="handleVertexRemoved" @vertex-moved="handleVertexMoved"
-        @zone-updated="saveZone" @device-moved="handleDeviceMoved"
+        :devices="devicesStore.devices" 
+        :conversion-fn="convertDeviceToLatLng" 
+        :edit-mode="editMode"
+        @vertex-added="handleVertexAdded" 
+        @vertex-removed="handleVertexRemoved" 
+        @vertex-moved="handleVertexMoved"
+        @zone-updated="saveZone" 
+        @device-moved="handleDeviceMoved"
         @device-clicked="handleDeviceClicked"
+        @device-zone-clicked="handleDeviceZoneClicked"
         @draw-zone-clicked="handleDrawZoneClicked"
         @save-new-zone="handleSaveNewZone"
-        @cancel-new-zone="handleCancelNewZone" />
+        @cancel-new-zone="handleCancelNewZone" 
+      />
 
       <FloatingSidebar ref="sidebarRef" class="floating-sidebar-position" :meshes="meshesStore.meshes"
         :zones="zonesStore.zones" :selected-mesh-id="meshesStore.selectedMeshId"
@@ -22,6 +35,7 @@
         @save-zone-clicked="saveZone" @undo-zone-clicked="zonesStore.restoreActiveZone()" />
     </div>
 
+    <!-- Device Statistics Dialog -->
     <q-dialog v-model="showStatsDialog">
       <q-card>
         <q-card-section>
@@ -53,6 +67,14 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Device Zone Change Dialog -->
+    <DeviceZoneDialog
+      :show="showZoneDialog"
+      :device="selectedDeviceForZone"
+      @close="showZoneDialog = false"
+      @zone-changed="handleDeviceZoneChanged"
+    />
   </q-page>
 </template>
 
@@ -65,10 +87,10 @@ import { useDevicesStore } from '@/stores/devices';
 import { useI18n } from 'vue-i18n';
 import { useStatistics } from '@/composables/useStatistics';
 import StatisticsChart from '@/components/StatisticsChart.vue';
+import DeviceZoneDialog from '@/components/DeviceZoneDialog.vue';
 
 import LeafletMap from '@/components/LeafletMap.vue';
 import FloatingSidebar from '@/components/FloatingSidebar.vue';
-// import MeshDialog from '@/components/MeshDialog.vue';
 
 const { t } = useI18n();
 const $q = useQuasar();
@@ -78,10 +100,11 @@ const devicesStore = useDevicesStore();
 const { statistics, loading, error, fetchDeviceGraph } = useStatistics();
 
 const mapRef = ref(null);
-// const showMeshDialog = ref(false);
 const editMode = ref('zones');
 const showStatsDialog = ref(false);
+const showZoneDialog = ref(false);
 const selectedDevice = ref(null);
+const selectedDeviceForZone = ref(null);
 const chartPeriod = ref('day');
 
 const SCALE = 0.0001; // For OpenStreetMap coordinate conversion
@@ -107,6 +130,11 @@ onMounted(async () => {
   // Always ensure zones are scoped to the currently selected mesh
   if (meshesStore.selectedMeshId) {
     await zonesStore.fetchZones(meshesStore.selectedMeshId);
+    // NEW: safety fallback — if devices didn't load (e.g., no zones),
+    // fetch them for the current mesh so the map renders devices.
+    if (devicesStore.devices.length === 0) {
+      await devicesStore.fetchDevices({ meshId: meshesStore.selectedMeshId });
+    }
   }
 
   // Only show notification if there are no meshes at all
@@ -312,6 +340,11 @@ const handleDrawZoneClicked = () => {
   mapRef.value?.setMode('draw-zone');
 };
 
+const handleDeviceZoneClicked = (device) => {
+  selectedDeviceForZone.value = device;
+  showZoneDialog.value = true;
+};
+
 const handleCancelNewZone = () => {
   mapRef.value?.setMode(null);
 };
@@ -350,6 +383,31 @@ const handleDeviceClicked = async (device) => {
   selectedDevice.value = device;
   await fetchDeviceGraph(device.id);
   showStatsDialog.value = true;
+};
+
+const handleDeviceZoneChanged = async ({ deviceId, zoneId }) => {
+  try {
+    await devicesStore.updateDevice(deviceId, { zoneId });
+    
+    $q.notify({
+      type: 'positive',
+      message: t('notifications.deviceZoneUpdated'),
+      timeout: 2000
+    });
+    
+    // Refresh devices to show the updated zone assignment
+    if (meshesStore.selectedMeshId) {
+      await devicesStore.fetchDevices({ meshId: meshesStore.selectedMeshId });
+    }
+    
+    showZoneDialog.value = false;
+  } catch (error) {
+    console.error('Failed to update device zone:', error);
+    $q.notify({
+      type: 'negative',
+      message: t('notifications.deviceZoneUpdateError'),
+    });
+  }
 };
 </script>
 

@@ -63,12 +63,24 @@ export function useDeviceRenderer(map, props, emit) {
         emit('device-clicked', device);
       };
 
+      const handleZoneClick = (event) => {
+        event.stopPropagation();
+        marker.closePopup();
+        emit('device-zone-clicked', device);
+      };
+
       const registerStatsButton = (popupEvent) => {
         const popupEl = popupEvent?.popup?.getElement();
         if (!popupEl) return;
+        
         statsButtonEl = popupEl.querySelector('.device-popup-stats');
         if (statsButtonEl) {
           statsButtonEl.addEventListener('click', handleStatsClick);
+        }
+        
+        const zoneButtonEl = popupEl.querySelector('.device-popup-zone');
+        if (zoneButtonEl) {
+          zoneButtonEl.addEventListener('click', handleZoneClick);
         }
       };
 
@@ -97,6 +109,14 @@ export function useDeviceRenderer(map, props, emit) {
             aria-label="View statistics"
           >
             <span class="material-icons">bar_chart</span>
+          </button>
+          <button
+            type="button"
+            class="device-popup-button device-popup-zone"
+            title="Change zone"
+            aria-label="Change zone"
+          >
+            <span class="material-icons">layers</span>
           </button>
         </div>
       </div>
