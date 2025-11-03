@@ -158,7 +158,7 @@ TEMP_BODY_FILE=$(mktemp)
 echo "$READINGS_JSON" > "$TEMP_BODY_FILE"
 
 # Roda o teste
-echo "Starting Bombardier test on $READINGS_URL..."
+echo "Iniciando o Bombardier usando $READINGS_URL..."
 bombardier \
   -c "$CONNECTIONS" \
   -n "$REQUESTS" \
