@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Exit on error
+# Sai do script em caso de erro
 set -e
 
-# Configuration
+# Parâmetros
 LOGIN_URL="http://localhost:7771/sensornest/api/auth/login"
 DEVICES_URL="http://localhost:7771/sensornest/api/devices"
 READINGS_URL="http://localhost:7771/sensornest/api/readings/add"
@@ -13,9 +13,9 @@ CONNECTIONS=1000
 REQUESTS=1000
 TIMEOUT="5s"
 DURATION="30s"
-NUM_READINGS=100  # Number of readings per JSON body (adjust as needed)
+NUM_READINGS=100  # Número de leituras a serem utilizadas no corpo JSON da requisição
 
-# Function to check and install jq
+# Verifica e instala o jq se necessário
 install_jq() {
   if ! command -v jq &>/dev/null; then
     echo "jq not found. Attempting to install..."
@@ -44,7 +44,7 @@ install_jq() {
   fi
 }
 
-# Function to check and install Go
+# Verifica e instala o Go
 install_go() {
   if ! command -v go &>/dev/null; then
     echo "Go not found. Attempting to install..."
@@ -71,7 +71,7 @@ install_go() {
   fi
 }
 
-# Function to check and install Bombardier
+# Instala o Bombardier
 install_bombardier() {
   if ! command -v bombardier &>/dev/null; then
     echo "Bombardier not found. Attempting to install..."
@@ -94,18 +94,18 @@ install_bombardier() {
   fi
 }
 
-# Check and install dependencies
+# Checa dependências
 install_jq
 install_bombardier
 
-# Login to get JWT token
+# Faz login e obtém o token JWT
 echo "Logging in to $LOGIN_URL..."
 LOGIN_RESPONSE=$(curl -s -X POST "$LOGIN_URL" \
   -H "Accept: application/json" \
   -H "Content-Type: application/json" \
   -d "{\"email\": \"$EMAIL\", \"password\": \"$PASSWORD\"}")
 
-# Extract JWT token (assuming response is { "access_token": "..." })
+# EExtrai o token JWT
 JWT_TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.access_token')
 
 if [ -z "$JWT_TOKEN" ] || [ "$JWT_TOKEN" = "null" ]; then
@@ -114,8 +114,8 @@ if [ -z "$JWT_TOKEN" ] || [ "$JWT_TOKEN" = "null" ]; then
 fi
 echo "JWT token obtained successfully."
 
-# Fetch seeded devices and extract MACs (prefer WORKER+ACTIVE; fallback to all)
-echo "Fetching devices from $DEVICES_URL..."
+# Pega os dispositivos e extrai os MACs
+echo "Buscando dispositivos usando $DEVICES_URL..."
 DEVICES_JSON=$(curl -s -X GET "$DEVICES_URL" \
   -H "Accept: application/json" \
   -H "Authorization: Bearer $JWT_TOKEN")
@@ -130,9 +130,9 @@ if [ "$MAC_COUNT" -eq 0 ]; then
   echo "Error: No devices found. Seed the database first (see prisma/seed.ts)."
   exit 1
 fi
-echo "Using $MAC_COUNT device MAC(s) from seed."
+echo "Usando $MAC_COUNT dispositivos da seed."
 
-# Build JSON body with NUM_READINGS entries using seeded MACs
+# Monta o corpo JSON com leituras aleatórias
 READINGS_JSON=$(jq -c -n \
   --argjson num_readings "$NUM_READINGS" \
   --argjson macs "$MACS_JSON" \
@@ -154,17 +154,11 @@ READINGS_JSON=$(jq -c -n \
     ]
   }')
 
-# Debug: Print the generated JSON
-# echo "Generated JSON body:"
-# echo "$READINGS_JSON"
-# echo ""
-
-# Save JSON body to a temporary file (Bombardier reads body from file or string)
 TEMP_BODY_FILE=$(mktemp)
 echo "$READINGS_JSON" > "$TEMP_BODY_FILE"
 
-# Run Bombardier
-echo "Starting Bombardier stress test on $READINGS_URL..."
+# Roda o teste
+echo "Starting Bombardier test on $READINGS_URL..."
 bombardier \
   -c "$CONNECTIONS" \
   -n "$REQUESTS" \
@@ -177,6 +171,5 @@ bombardier \
   -b "@$TEMP_BODY_FILE" \
   "$READINGS_URL"
 
-# Clean up
 rm "$TEMP_BODY_FILE"
 echo "Stress test completed."
