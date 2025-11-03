@@ -27,7 +27,7 @@ async function main() {
     update: {},
     create: {
       id: 'mesh-1',
-      name: 'Mesh dos Guris',
+      name: 'Mesh Seed',
       userId: user.id,
       lat: -23.5505, // Latitude do centro da Mesh
       lon: -46.6333, // Longitude do centro da Mesh
@@ -41,7 +41,7 @@ async function main() {
     update: {},
     create: {
       id: 'zone-1',
-      name: 'Planalto Central',
+      name: 'Zona Inicial',
       meshId: mesh.id,
       vertices: [
         { x: 0, y: 0 },
@@ -59,7 +59,7 @@ async function main() {
     update: {},
     create: {
       macAddress: '24:58:7C:CC:E5:B4',
-      name: 'Luzes de Natal',
+      name: 'Dispositivo Controlador Seed',
       description: 'Controlador principal com acesso à rede AP',
       x: 5,
       y: 5,

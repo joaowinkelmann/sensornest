@@ -20,7 +20,7 @@ export class Device {
   @IsString()
   macAddress: string;
 
-  @ApiProperty({ example: 'Luzes de Natal' })
+  @ApiProperty({ example: 'Dispositivo Controlador Seed' })
   @IsString()
   name: string;
 

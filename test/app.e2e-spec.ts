@@ -64,7 +64,7 @@ describe('App E2E', () => {
       update: {},
       create: {
         id: meshId,
-        name: 'Mesh dos Guris',
+        name: 'Mesh Seed',
         userId: user.id,
         lat: -23.5505,
         lon: -46.6333,
@@ -76,7 +76,7 @@ describe('App E2E', () => {
       update: {},
       create: {
         id: zoneId,
-        name: 'Planalto Central',
+        name: 'Zona Inicial',
         meshId: mesh.id,
         vertices: [
           { x: 0, y: 0 },
@@ -92,7 +92,7 @@ describe('App E2E', () => {
       update: {},
       create: {
         macAddress: controllerMac,
-        name: 'Luzes de Natal',
+        name: 'Dispositivo Controlador Seed',
         description: 'Controller device',
         x: 5,
         y: 5,
@@ -373,7 +373,7 @@ describe('App E2E', () => {
     });
 
     it('atualiza o nome de uma Zone', async () => {
-      const newName = 'Planalto Central Atualizado';
+      const newName = 'Zona Inicial Atualizada';
       const res = await request(app.getHttpServer())
         .patch(`/zones/${zoneId}`)
         .set('Authorization', `Bearer ${accessToken}`)
