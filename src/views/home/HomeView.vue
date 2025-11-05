@@ -334,21 +334,17 @@ onMounted(() => {
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
   .stat-value {
-    color: #e0e0e0;
+    color: var(--muted-text);
   }
-  
   .stat-label {
     color: #999;
   }
-  
   .detail-value {
-    color: #e0e0e0;
+    color: var(--muted-text);
   }
-  
   .action-title {
-    color: #e0e0e0;
+    color: var(--muted-text);
   }
-  
   .stat-details {
     background: rgba(255, 255, 255, 0.05);
   }

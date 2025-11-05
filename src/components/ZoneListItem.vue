@@ -149,7 +149,7 @@ const vertexCount = computed(() => {
 @media (prefers-color-scheme: dark) {
   .zone-item {
     background: #3d3d3d;
-    color: #e0e0e0;
+    color: var(--muted-text);
   }
   
   .zone-item:not(.active) .zone-icon {

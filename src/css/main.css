@@ -154,3 +154,8 @@
     background-color: rgba(255, 255, 255, 0.15) !important;
   }
 }
+
+/* Global muted text color for higher contrast */
+:root {
+  --muted-text: #3b3b3b; /* darker than #e0e0e0 for better contrast */
+}
