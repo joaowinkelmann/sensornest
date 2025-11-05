@@ -75,9 +75,10 @@
     />
 
     <q-dialog v-model="showStatsDialog">
-      <q-card>
-        <q-card-section>
+      <q-card class="device-stats-card">
+        <q-card-section class="row items-center justify-between">
           <div class="text-h6">{{ t('devices.statisticsTitle', { deviceName: selectedDevice?.name }) }}</div>
+          <q-btn dense flat round icon="close" v-close-popup />
         </q-card-section>
 
         <q-card-section v-if="loading">
@@ -88,7 +89,7 @@
           <p class="text-negative">{{ t('devices.statisticsError') }}</p>
         </q-card-section>
 
-        <q-card-section v-if="statistics">
+        <q-card-section v-if="statistics" class="device-stats-content">
           <q-btn-toggle
             v-model="chartPeriod"
             :options="[
@@ -268,5 +269,25 @@ const handleDeviceUpdated = () => {
   border-radius: 50%;
   border: 2px solid #fff;
   box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+.device-stats-card {
+  width: 900px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.device-stats-content {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+@media (max-width: 768px) {
+  .device-stats-card {
+    width: 95vw;
+    max-height: 85vh;
+  }
 }
 </style>

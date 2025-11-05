@@ -59,8 +59,8 @@ const { t } = useI18n();
 const authStore = useAuthStore();
 const router = useRouter();
 
-const email = ref('test@example.com');
-const password = ref('password123');
+const email = ref('');
+const password = ref('');
 
 const showRecovery = ref(false);
 
