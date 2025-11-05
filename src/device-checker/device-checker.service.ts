@@ -35,9 +35,11 @@ export class DeviceCheckerService {
     }
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  // @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  // uma vez a cada 30 minutos
+  @Cron(CronExpression.EVERY_30_MINUTES)
   async handleCron() {
-    this.logger.debug('Checking for inactive devices...');
+    this.logger.debug('Verificando dispositivos inativos...');
 
     const timeBeforeInactiveString = this.configService.get<string>(
       'TIME_BEFORE_DEVICE_INACTIVE',
