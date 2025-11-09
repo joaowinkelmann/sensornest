@@ -948,6 +948,13 @@ static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req) {
     int x = (j_x && cJSON_IsNumber(j_x)) ? j_x->valueint : 0;
     int y = (j_y && cJSON_IsNumber(j_y)) ? j_y->valueint : 0;
 
+    // Copy role (and optionally name) before deleting cJSON to avoid UAF
+    char role_copy[16] = {0};
+    strlcpy(role_copy, j_role->valuestring, sizeof(role_copy));
+    // Optional: persist name too if desired later
+    // char name_copy[64] = {0};
+    // strlcpy(name_copy, j_name->valuestring, sizeof(name_copy));
+
     esp_err_t err = rc_register_device(
         j_name->valuestring,
         role,
@@ -962,10 +969,10 @@ static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "application/json");
 
     if (err == ESP_OK) {
-        // Save role to NVS if not already saved
+        // Save role to NVS using the safe copy
         nvs_handle_t nvs;
         if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
-            nvs_set_str(nvs, "role", role);
+            nvs_set_str(nvs, "role", role_copy);
             nvs_commit(nvs);
             nvs_close(nvs);
         }
