@@ -36,6 +36,7 @@
 #include "indicator/led_indicator.h"
 
 static bool g_debug_mode_enabled = false;
+static bool g_force_simulate_readings = false;   // NEW: force simulated sensor readings
 
 // Track one‑time creation/initialization of STA netif & Wi-Fi driver
 static bool s_sta_netif_created = false;
@@ -88,6 +89,10 @@ static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 const char* get_esp_model(void);
 static void run_pre_provision_controller_scan(int duration_ms);
+
+/* NEW: forward declarations for force-simulate API */
+bool app_get_force_simulate_readings(void);
+void app_set_force_simulate_readings(bool en);
 
 RTC_DATA_ATTR bool time_is_set = false;
 RTC_DATA_ATTR bool device_config_initialized = false;
@@ -212,7 +217,8 @@ void perform_sensor_reading() {
         return;
     }
     sensor_reading_t reading;
-    esp_err_t err = sensor_read_once(g_debug_mode_enabled, &reading);
+    // CHANGED: always simulate if debug OR forced
+    esp_err_t err = sensor_read_once(g_debug_mode_enabled || g_force_simulate_readings, &reading);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Falha na leitura do sensor (err=%s)", esp_err_to_name(err));
         return;
@@ -294,6 +300,8 @@ void app_main(void)
     if (setup_complete) {
         worker_role_set_debug(g_debug_mode_enabled);
         controller_role_set_debug(g_debug_mode_enabled);
+        // force simulated DHT readings
+        app_set_force_simulate_readings(true);
         esp_err_t r = role_manager_start();
         if (r != ESP_OK) {
             ESP_LOGW(TAG, "Role manager returned (%s). Staying idle.", esp_err_to_name(r));
@@ -532,4 +540,10 @@ bool app_get_debug_mode(void) {
 void app_set_debug_mode(bool enabled) {
     g_debug_mode_enabled = enabled;
     ESP_LOGW(TAG, "Debug mode %s", enabled ? "ENABLED" : "DISABLED");
+}
+/* NEW: force simulation getters/setters */
+bool app_get_force_simulate_readings(void) { return g_force_simulate_readings; }
+void app_set_force_simulate_readings(bool en) {
+    g_force_simulate_readings = en;
+    ESP_LOGW(TAG, "Force simulate readings %s", en ? "ENABLED" : "DISABLED");
 }

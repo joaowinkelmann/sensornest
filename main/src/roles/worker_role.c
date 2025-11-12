@@ -25,7 +25,8 @@ extern void simulate_or_sleep(uint64_t secs);
 static const char *TAG_WR = "WORKER_ROLE";
 
 static bool s_debug = false;
-static bool s_ack_received = false; // Flag to track ACK reception
+// CHANGED: volatile since it is set from another task (ESPNOW manager thread)
+static volatile bool s_ack_received = false; // Flag to track ACK reception
 
 extern RTC_DATA_ATTR bool time_is_set;
 extern RTC_DATA_ATTR bool device_config_initialized;
@@ -215,7 +216,8 @@ esp_err_t worker_role_start(void) {
                     char *json_payload = NULL;
                     if (batch_store_build_json(&json_payload) == ESP_OK && json_payload) {
                         size_t len = strlen(json_payload);
-                        s_ack_received = false; // Reset ACK flag before sending
+                        // CHANGED: reset ACK flag BEFORE sending to avoid race
+                        s_ack_received = false;
                         esp_err_t se = espnow_manager_send_to_controller(json_payload, len);
                         if (se == ESP_OK) {
                             ESP_LOGI(TAG_WR, "SUCCESS: ESPNOW batch sent to controller (%u bytes). Waiting for ACK...", (unsigned)len);
@@ -278,11 +280,12 @@ esp_err_t worker_role_start(void) {
             char *json_payload = NULL;
             if (batch_store_build_json(&json_payload) == ESP_OK && json_payload) {
                 size_t len = strlen(json_payload);
+                // CHANGED: reset ACK flag BEFORE sending (was after send -> race)
+                s_ack_received = false;
                 esp_err_t se = espnow_manager_send_to_controller(json_payload, len); // CHANGED earlier
                 if (se == ESP_OK) {
                     ESP_LOGI(TAG_WR, "SUCCESS: ESPNOW batch sent to controller (%u bytes). Waiting for ACK.", (unsigned)len);
                     // Wait for ACK for up to 2 seconds
-                    s_ack_received = false;
                     for (int i = 0; i < 20; i++) {
                         if (s_ack_received) break;
                         vTaskDelay(pdMS_TO_TICKS(100));

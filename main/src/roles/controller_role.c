@@ -42,6 +42,8 @@ extern RTC_DATA_ATTR int  device_wakeUpInterval;
 
 /* Reuse helper functions still in sensornest.c */
 extern bool send_batched_data(void);
+/* NEW: access force-simulate flag from app */
+extern bool app_get_force_simulate_readings(void);
 
 /* Local helpers (duplicated from worker for now; later unify) */
 static void ensure_time(void) {
@@ -204,7 +206,9 @@ static void controller_main_task(void *arg) {
         // Sensor reading logic remains unchanged
         if (!s_controller_sensor_disabled && !batch_store_is_full()) {
             sensor_reading_t r;
-            if (sensor_read_once(s_debug, &r) == ESP_OK && batch_store_add(&r) == ESP_OK) {
+            // CHANGED: include force-simulate flag
+            if (sensor_read_once(s_debug || app_get_force_simulate_readings(), &r) == ESP_OK &&
+                batch_store_add(&r) == ESP_OK) {
                 ESP_LOGI(TAG_CR, "Stored local reading #%d (T=%.1f H=%.1f)", batch_store_count(), r.temperature, r.humidity);
             }
         }
