@@ -36,13 +36,11 @@
 #include "indicator/led_indicator.h"
 
 static bool g_debug_mode_enabled = false;
-static bool g_force_simulate_readings = false;   // NEW: force simulated sensor readings
-
-// Track one‑time creation/initialization of STA netif & Wi-Fi driver
+static bool g_force_simulate_readings = false;
 static bool s_sta_netif_created = false;
 static bool s_wifi_inited = false;
 
-// Constants
+// Constantes
 #define us_PER_SECOND 1000000ULL  /* Conversão de micro segundos para segundos*/
 
 // Config do sensor
@@ -50,18 +48,17 @@ static bool s_wifi_inited = false;
 #define DHT_GPIO 4
 #define DHT_PULLUP_MS 1500 // Tempo de espera antes de realizar a leitura do sensor DHT em millissegundos
 
-// --- WiFi connection logic (declarations moved up for visibility) ---
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 
-// BOOT button: per-target defaults.
+// Botão BOOT
 #ifndef BOOT_BTN_GPIO
 #if CONFIG_IDF_TARGET_ESP32S3
-#define BOOT_BTN_GPIO           GPIO_NUM_0     // typical S3 devkit BOOT
+#define BOOT_BTN_GPIO           GPIO_NUM_0     // Pino boot padrão no S3
 #elif CONFIG_IDF_TARGET_ESP32C3
-#define BOOT_BTN_GPIO           GPIO_NUM_9     // common C3 devkit BOOT (change if yours differs)
+#define BOOT_BTN_GPIO           GPIO_NUM_9     // Boot padrão no C3
 #else
-#define BOOT_BTN_GPIO           GPIO_NUM_0     // fallback
+#define BOOT_BTN_GPIO           GPIO_NUM_0
 #endif
 #endif
 
@@ -79,21 +76,18 @@ typedef struct {
     int data_len;
 } http_response_data_t;
 
-// --- Function Prototypes ---
 static void set_setup_stage(const char *stage);
 extern void captive_dns_task(void *pv);
-
 esp_err_t start_rest_server(const char *base_path);
 static bool wifi_boot_flow(void);
 static void start_softap_and_rest_server(void);
 static esp_err_t mount_www_fs(void);
 const char* get_esp_model(void);
 static void run_pre_provision_controller_scan(int duration_ms);
-
-/* NEW: forward declarations for force-simulate API */
 bool app_get_force_simulate_readings(void);
 void app_set_force_simulate_readings(bool en);
 
+// Varíaveis mantidas na RAM RTC durante o deep sleep
 RTC_DATA_ATTR bool time_is_set = false;
 RTC_DATA_ATTR bool device_config_initialized = false;
 RTC_DATA_ATTR int device_readingsPerBatch = 2;
@@ -104,22 +98,17 @@ void perform_sensor_reading(void);
 void simulate_or_sleep(uint64_t seconds);
 
 static void go_to_sleep(uint64_t sleep_time_seconds) {
-    // if debug mode is on, don't go to sleep
     if (g_debug_mode_enabled) {
-        ESP_LOGI(TAG, "Debug mode is enabled, not going to sleep.");
-        // wait for the specified time, but don't power off the chipset
+        ESP_LOGI(TAG, "Modo debug ativo, não entrando em deep sleep.");
         vTaskDelay(pdMS_TO_TICKS(sleep_time_seconds * 1000));
         return;
     }
-
     ESP_LOGI(TAG, "Entrando em deep sleep por %llu segundos.", sleep_time_seconds);
-    
+
     // Desliga o Wi-Fi para economizar energia
     esp_wifi_stop();
-
     // Configura o timer de despertar
     esp_sleep_enable_timer_wakeup(sleep_time_seconds * us_PER_SECOND);
-    
     // Inicia o deep sleep
     esp_deep_sleep_start();
 }
@@ -127,10 +116,10 @@ static void go_to_sleep(uint64_t sleep_time_seconds) {
 
 void simulate_or_sleep(uint64_t seconds) {
     if (g_debug_mode_enabled) {
-        ESP_LOGI(TAG, "[SIM] Sleeping (simulated) for %llu s (no deep sleep / serial kept).", seconds);
+        ESP_LOGI(TAG, "[SIMULADO] Dormindo por %llu s (sem deep sleep).", seconds);
         vTaskDelay(pdMS_TO_TICKS(seconds * 1000));
     } else {
-        go_to_sleep(seconds); // real deep sleep (does not return)
+        go_to_sleep(seconds);
     }
 }
 
@@ -139,11 +128,11 @@ void collect_and_send_task(void) {
         perform_sensor_reading();
 
         if (batch_store_count() >= device_readingsPerBatch) {
-            ESP_LOGI(TAG, "Batch full (%d/%d). Connecting to Wi-Fi to send data.", batch_store_count(), device_readingsPerBatch);
+            ESP_LOGI(TAG, "Lote cheio (%d/%d). Conectando ao Wi-Fi para enviar dados...", batch_store_count(), device_readingsPerBatch);
 
             if (wifi_manager_connect_saved(15000)) {
                 if (!time_is_set) {
-                    ESP_LOGI(TAG, "Syncing NTP time...");
+                    ESP_LOGI(TAG, "Sincronizando com SNTP...");
                     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
                     esp_sntp_setservername(0, "pool.ntp.org");
                     esp_sntp_init();
@@ -155,9 +144,9 @@ void collect_and_send_task(void) {
                     }
                     if (retry < 15) {
                         time_is_set = true;
-                        ESP_LOGI(TAG, "Time synced.");
+                        ESP_LOGI(TAG, "Tempo sincronizado com sucesso.");
                     } else {
-                        ESP_LOGE(TAG, "Time sync failed.");
+                        ESP_LOGE(TAG, "Falha ao sincronizar o tempo.");
                     }
                 }
 
@@ -169,7 +158,7 @@ void collect_and_send_task(void) {
                         if (rc_get_device_by_mac(NULL, &device_json) == ESP_OK && device_json) {
                             int batch = -1, interval = -1;
                             rc_extract_device_config(device_json, &batch, &interval);
-                            ESP_LOGI(TAG, "Fetched device config: wakeUpInterval=%d, readingsPerBatch=%d", interval, batch);
+                            ESP_LOGI(TAG, "Buscada informacoes do dispositivo: wakeUpInterval=%d, readingsPerBatch=%d", interval, batch);
                             free(device_json);
                             if (batch > 0) device_readingsPerBatch = batch;
                             if (interval > 0) device_wakeUpInterval = interval;
@@ -182,10 +171,10 @@ void collect_and_send_task(void) {
                 if (ok) {
                     batch_store_clear();
                 } else {
-                    ESP_LOGW(TAG, "Retaining batch (%d readings) for retry.", batch_store_count());
+                    ESP_LOGW(TAG, "Mantendo lote (%d leituras) para nova tentativa.", batch_store_count());
                 }
 
-                if (!g_debug_mode_enabled) { // keep Wi-Fi up in debug if you want quick repeats
+                if (!g_debug_mode_enabled) {
                     esp_wifi_disconnect();
                     esp_wifi_stop();
                     ESP_LOGI(TAG, "Wi-Fi stopped.");
@@ -193,31 +182,27 @@ void collect_and_send_task(void) {
                     ESP_LOGI(TAG, "[SIM] Keeping Wi-Fi session (debug mode).");
                 }
             } else {
-                ESP_LOGE(TAG, "Wi-Fi connect failed; will retry next cycle.");
-                // keep readings_count so we retry sending next cycle
+                ESP_LOGE(TAG, "Conexão Wi-Fi falhou. Tentando novamente na próxima vez.");
             }
         } else {
             ESP_LOGI(TAG, "Batch incomplete (%d/%d).", batch_store_count(), device_readingsPerBatch);
         }
 
-        // Simulated or real sleep
+        // Simula ou realiza o sleep real
         simulate_or_sleep(device_wakeUpInterval);
 
         if (!g_debug_mode_enabled) {
-            // real deep sleep never returns; loop not needed further
             break;
         }
-        // Loop continues in debug mode to simulate wake cycle.
     }
 }
 
 void perform_sensor_reading() {
     if (batch_store_is_full()) {
-        ESP_LOGW(TAG, "O lote de leituras está cheio. Descartando nova leitura.");
+        ESP_LOGW(TAG, "Lote de leituras cheio. Descartando nova leitura.");
         return;
     }
     sensor_reading_t reading;
-    // CHANGED: always simulate if debug OR forced
     esp_err_t err = sensor_read_once(g_debug_mode_enabled || g_force_simulate_readings, &reading);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Falha na leitura do sensor (err=%s)", esp_err_to_name(err));
@@ -229,7 +214,6 @@ void perform_sensor_reading() {
     }
 }
 
-// Replace old send_batched_data()
 bool send_batched_data() {
     static const char *DATA_TAG = "DATA_SENDER";
     char *json_payload = NULL;
@@ -256,29 +240,25 @@ void app_main(void)
 {
     // esp_log_set_vprintf(custom_log_vprintf);
 
-    // Log Levels
+    // Níveis de log
     esp_log_level_set("wifi", ESP_LOG_WARN);
     esp_log_level_set("LED_IND", ESP_LOG_DEBUG);
 
     // Inicializa e desliga o LED
     led_indicator_init();
 
-    // Initialize NVS
+    // Inicializa o flash
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-
-    // Init Batch Store
     ESP_ERROR_CHECK(batch_store_init(false));
-
-    // Initialize TCP/IP stack and event loop once
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    // Load debug mode state from NVS
+    // Busca o modo debug no NVS
     nvs_handle_t nvs;
     if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
         uint8_t debug_flag = 0; // 0 = false, 1 = true
@@ -288,23 +268,23 @@ void app_main(void)
         nvs_close(nvs);
     }
     if (g_debug_mode_enabled) {
-        ESP_LOGW(TAG, "!!! DEBUG MODE ENABLED: Sensor readings will be simulated. !!!");
+        ESP_LOGW(TAG, "!!! MODO DEBUG ATIVO: Leituras simuladas, sem deep sleep !!!");
     }
 
     // Tarefa para monitorar a ação de factory reset (segurar o botão BOOT por 5s)
     xTaskCreate(factory_reset_button_task, "factory_reset_btn", 4096, NULL, 3, NULL);
 
-    // O boot flow tenta conectar ao Wi-Fi ou inicia o modo de provisionamento.
+    // O fluxo de boot tenta conectar ao Wi-Fi ou inicia o modo de provisionamento.
     bool setup_complete = wifi_boot_flow();
 
     if (setup_complete) {
         worker_role_set_debug(g_debug_mode_enabled);
         controller_role_set_debug(g_debug_mode_enabled);
-        // force simulated DHT readings
+
         app_set_force_simulate_readings(true);
         esp_err_t r = role_manager_start();
         if (r != ESP_OK) {
-            ESP_LOGW(TAG, "Role manager returned (%s). Staying idle.", esp_err_to_name(r));
+            ESP_LOGW(TAG, "Gerenciador de papel retornou (%s)", esp_err_to_name(r));
             while (1) { vTaskDelay(pdMS_TO_TICKS(10000)); }
         }
         return;
@@ -317,19 +297,16 @@ void app_main(void)
     }
 }
 
-// --- NEW: Event handler specifically for the authentication request ---
 esp_err_t _auth_http_event_handler(esp_http_client_event_t *evt) {
     http_response_data_t *response_data = (http_response_data_t *)evt->user_data;
     switch(evt->event_id) {
         case HTTP_EVENT_ON_DATA:
-            // Check if we have enough space in the buffer
             if (response_data->buffer_size - response_data->data_len >= evt->data_len) {
                 memcpy(response_data->buffer + response_data->data_len, evt->data, evt->data_len);
                 response_data->data_len += evt->data_len;
             }
             break;
         case HTTP_EVENT_ON_FINISH:
-            // Null-terminate the buffer to make it a valid string
             response_data->buffer[response_data->data_len] = '\0';
             break;
         default:
@@ -397,13 +374,11 @@ static bool wifi_boot_flow(void) {
 }
 
 static void start_softap_and_rest_server(void) {
-    // Create both AP and STA default interfaces so we can scan/connect while AP is up
-    // It's safe to call these multiple times.
     esp_netif_create_default_wifi_ap();
     if (!s_sta_netif_created) {
-        // Avoid creating STA netif if another module (e.g. wifi_manager) already did.
+        // Se o wi-fi manager já criou, usa essa
         if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) {
-            ESP_LOGI(TAG, "STA netif already exists (detected). Reusing.");
+            ESP_LOGI(TAG, "STA já criado");
             s_sta_netif_created = true;
         } else {
             esp_netif_create_default_wifi_sta();
@@ -416,7 +391,7 @@ static void start_softap_and_rest_server(void) {
         s_wifi_inited = true;
     }
 
-    // Generate AP SSID "ESP-{MODEL}-{6 char from MAC}"
+    // Gera o SSID do SoftAP pelo MAC
     uint8_t mac[6];
     char ssid[32];
     esp_efuse_mac_get_default(mac);
@@ -447,7 +422,6 @@ static void start_softap_and_rest_server(void) {
     xTaskCreate(&captive_dns_task, "captive_dns", 4096, NULL, 3, NULL);
 }
 
-// --- NEW: LittleFS mount helper ---
 static esp_err_t mount_www_fs(void) {
     esp_vfs_littlefs_conf_t conf = {
         .base_path = "/www",
@@ -479,7 +453,7 @@ static void set_setup_stage(const char *stage) {
 }
 
 static void do_factory_reset(void) {
-    ESP_LOGW(TAG, "Factory reset requested: erasing NVS and restarting...");
+    ESP_LOGW(TAG, "Reset de fábrica solicitado. Apagando NVS e reiniciando...");
     ESP_ERROR_CHECK(nvs_flash_erase());
     ESP_ERROR_CHECK(nvs_flash_init());
     set_setup_stage("factory_reset");
@@ -498,11 +472,11 @@ static void factory_reset_button_task(void *pv) {
     gpio_config(&io);
 
     for (;;) {
-        if (gpio_get_level(BOOT_BTN_GPIO) == 0) { // pressed = low
+        if (gpio_get_level(BOOT_BTN_GPIO) == 0) { // apertado = low
             int64_t start_ms = esp_timer_get_time() / 1000;
             while (gpio_get_level(BOOT_BTN_GPIO) == 0) {
                 if (((esp_timer_get_time() / 1000) - start_ms) >= BOOT_BTN_HOLD_RESET_MS) {
-                    ESP_LOGW(TAG, "BOOT held for %d ms -> factory reset", BOOT_BTN_HOLD_RESET_MS);
+                    ESP_LOGW(TAG, "BOOT segurado por %d ms -> reset de fábrica", BOOT_BTN_HOLD_RESET_MS);
                     do_factory_reset();
                 }
                 vTaskDelay(pdMS_TO_TICKS(50));
@@ -533,7 +507,6 @@ const char* get_esp_model(void) {
     return "UNKNOWN";
 #endif
 }
-
 bool app_get_debug_mode(void) {
     return g_debug_mode_enabled;
 }
@@ -541,7 +514,6 @@ void app_set_debug_mode(bool enabled) {
     g_debug_mode_enabled = enabled;
     ESP_LOGW(TAG, "Debug mode %s", enabled ? "ENABLED" : "DISABLED");
 }
-/* NEW: force simulation getters/setters */
 bool app_get_force_simulate_readings(void) { return g_force_simulate_readings; }
 void app_set_force_simulate_readings(bool en) {
     g_force_simulate_readings = en;
