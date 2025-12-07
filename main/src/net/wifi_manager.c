@@ -228,7 +228,7 @@ static void wifi_build_and_store_scan(void)
         s_cache_ts_ms = esp_timer_get_time() / 1000;
     }
 
-    ESP_LOGI(TAG, "prefetch scan done, APs=%d", ap_num);
+    ESP_LOGI(TAG, "foram encontradas %d redes Wi-Fi durante o scan.", ap_num);
 }
 
 static void wifi_prefetch_task(void *pv)

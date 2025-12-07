@@ -230,7 +230,7 @@ static void dns_server_task(void *pvParameters) {
     struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
     setsockopt(dns_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     
-    ESP_LOGI(TAG, "DNS server bound to port %d, redirecting all queries to " IPSTR, 
+    ESP_LOGI(TAG, "Servidor DNS iniciado na porta %d, redirecionando todas as consultas para " IPSTR,
              DNS_PORT, IP2STR((esp_ip4_addr_t*)&ap_ip));
     
     // Main DNS server loop

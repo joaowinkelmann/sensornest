@@ -458,7 +458,7 @@ esp_err_t espnow_manager_enable_power_saving(void) {
 
 static void espnow_manager_task(void *pvParameter) {
     espnow_mgr_event_t evt;
-    ESP_LOGI(TAG_EN, "ESP-NOW manager task started.");
+    ESP_LOGI(TAG_EN, "Gerenciador ESP-NOW iniciado com sucesso.");
 
     for (;;) {
         if (xQueueReceive(s_espnow_queue, &evt, portMAX_DELAY) == pdTRUE) {
@@ -476,7 +476,6 @@ static void espnow_manager_task(void *pvParameter) {
                     if (s_recv_cb) {
                         s_recv_cb(&evt.info.recv_cb);
                     }
-                    // IMPORTANT: Free the data buffer allocated in the recv callback
                     free(evt.info.recv_cb.data);
                     break;
                 }
