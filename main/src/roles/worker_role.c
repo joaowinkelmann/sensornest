@@ -20,7 +20,7 @@ extern void simulate_or_sleep(uint64_t secs);
 
 #define TIME_SYNC_PREFIX "TIME:"
 #define ACK_PREFIX "ACK:"
-#define BIND_PREFIX "BIND:"   // NEW: Worker -> Controller bind announcement
+#define BIND_PREFIX "BIND:"   // Worker -> Controller bind announcement
 
 static const char *TAG_WR = "WORKER_ROLE";
 
@@ -167,7 +167,7 @@ esp_err_t worker_role_start(void) {
 
     load_controller_binding();
 
-    // NEW: announce binding to Controller so it can register this Worker in cloud
+    // announce binding to Controller so it can register this Worker in cloud
     do {
         nvs_handle_t nvs;
         if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {

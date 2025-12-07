@@ -796,7 +796,7 @@ async function changeDeviceParams() {
 }
 
 async function asyncSaveDeviceParams() {
-  // *** NEW: Set loading state ***
+  // Set loading state
   updatingDeviceLoading.value = true;
   try {
     if (!device.value) {

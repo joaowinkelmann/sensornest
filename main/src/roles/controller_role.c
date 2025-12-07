@@ -21,13 +21,13 @@
 
 #define TIME_SYNC_PREFIX "TIME:" // For sending time back to worker
 #define ACK_PREFIX "ACK:"       // For sending ACK with config back to worker
-#define BIND_PREFIX "BIND:"     // NEW: Worker -> Controller bind announcement
+#define BIND_PREFIX "BIND:"     // Worker -> Controller bind announcement
 
 static const char *TAG_CR = "CTRL_ROLE";
 static bool s_debug = false;
 static bool s_controller_sensor_disabled = true;
 
-// NEW: cache controller meshId for registering workers
+// cache controller meshId for registering workers
 static char s_controller_mesh_id[64] = {0};
 
 void controller_role_set_debug(bool enabled) {
@@ -40,15 +40,12 @@ extern RTC_DATA_ATTR bool device_config_initialized;
 extern RTC_DATA_ATTR int  device_readingsPerBatch;
 extern RTC_DATA_ATTR int  device_wakeUpInterval;
 
-/* Reuse helper functions still in sensornest.c */
 extern bool send_batched_data(void);
-/* NEW: access force-simulate flag from app */
 extern bool app_get_force_simulate_readings(void);
 
-/* Local helpers (duplicated from worker for now; later unify) */
 static void ensure_time(void) {
     if (time_is_set) return;
-    ESP_LOGI(TAG_CR, "Syncing SNTP time (controller)...");
+    ESP_LOGI(TAG_CR, "Sincronizando tempo com o SNTP");
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_init();
@@ -226,7 +223,7 @@ static void controller_send_cb(const uint8_t *mac_addr, esp_now_send_status_t st
     }
 }
 
-// NEW: helper to ensure we know the Controller's meshId from cloud
+// helper to ensure we know the Controller's meshId from cloud
 static bool ensure_controller_mesh_id(void) {
     if (s_controller_mesh_id[0]) return true;
 
@@ -256,7 +253,7 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
     ESP_LOGI(TAG_CR, "EVENT: ESPNOW RX %dB from " MACSTR " on if %d",
              recv_info->data_len, MAC2STR(recv_info->mac_addr), recv_info->ifidx);
 
-    // NEW: Handle Worker bind announcement: "BIND:<name>"
+    // Handle Worker bind announcement: "BIND:<name>"
     if (recv_info->data_len > (int)strlen(BIND_PREFIX) &&
         strncmp((const char*)recv_info->data, BIND_PREFIX, strlen(BIND_PREFIX)) == 0) {
 
@@ -365,11 +362,11 @@ esp_err_t controller_role_start(void) {
     uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_STA, mac);
 
-    ESP_LOGI(TAG_CR, "Controller beacon activated: name='%s' interval=%dms, MAC='" MACSTR "'",
+    ESP_LOGI(TAG_CR, "Beacon do controller ativado: nome='%s' intervalo=%dms, MAC='" MACSTR "'",
             ctrl_name, 1000, MAC2STR(mac));
     uint8_t ch=espnow_manager_get_fixed_channel(); wifi_second_chan_t sc=WIFI_SECOND_CHAN_NONE;
     esp_wifi_get_channel(&ch,&sc);
-    ESP_LOGI(TAG_CR, "Beacon active on channel=%u", ch);
+    ESP_LOGI(TAG_CR, "Beacon ativo no canal %d.", ch);
 
     if (xTaskCreate(controller_main_task,
                     "controller_main",

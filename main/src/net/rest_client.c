@@ -602,7 +602,7 @@ retry_once:
     return ESP_FAIL;
 }
 
-/* --- NEW: Register the current device with the cloud --- */
+/* --- Register the current device with the cloud --- */
 esp_err_t rc_register_device(const char *name, const char *role, const char *mesh_id, int readingsPerBatch, int wakeUpInterval, int x, int y) {
     if (!name || !role || !mesh_id) return ESP_ERR_INVALID_ARG;
 
@@ -690,7 +690,7 @@ retry_once:
     return ESP_FAIL;
 }
 
-/* --- NEW: Register device for arbitrary MAC (Controller registers Worker) --- */
+/* --- Register device for arbitrary MAC (Controller registers Worker) --- */
 esp_err_t rc_register_device_for_mac(const char *name,
                                      const char *role,
                                      const char *mesh_id,

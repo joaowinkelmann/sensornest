@@ -154,7 +154,7 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
         } else if (read_bytes > 0) {
             /* Send the buffer contents as HTTP response chunk */
             if (httpd_resp_send_chunk(req, chunk, read_bytes) != ESP_OK) {
-                // --- NEW: Add a small delay on EAGAIN to allow client to catch up ---
+                // --- Add a small delay on EAGAIN to allow client to catch up ---
                 if (httpd_get_global_transport_ctx(req->handle) && errno == EAGAIN) {
                     vTaskDelay(pdMS_TO_TICKS(50)); // segura por 50ms
                     if (httpd_resp_send_chunk(req, chunk, read_bytes) == ESP_OK) {
@@ -1102,7 +1102,7 @@ esp_err_t start_rest_server(const char *base_path)
     config.max_uri_handlers = MAX_URI_HANDLERS;
     config.stack_size = 8192; // Increase stack size for TLS operations
 
-    /* --- NEW: socket lifecycle tuning to mitigate ENFILE/EMFILE (accept error 23) --- */
+    /* --- socket lifecycle tuning to mitigate ENFILE/EMFILE (accept error 23) --- */
     config.lru_purge_enable = true;      // Reclaim least‑recently used session if max sockets reached
     config.enable_so_linger = true;      // Enable SO_LINGER on closed sockets
     config.linger_timeout = 0;           // 0 => send RST on close (frees TIME_WAIT immediately). Use 1–2 if you prefer graceful FIN.
@@ -1174,7 +1174,7 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &user_creds_post_uri);
 
-    // NEW: user registration endpoint
+    // user registration endpoint
     httpd_uri_t user_register_post_uri = {
         .uri = "/api/v1/provision/register",
         .method = HTTP_POST,
@@ -1215,7 +1215,7 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &wifi_status_get_uri);
 
-    // --- NEW registrations for cloud integration ---
+    // --- registrations for cloud integration ---
     httpd_uri_t cloud_device_get_uri = {
         .uri = "/api/v1/cloud/device",
         .method = HTTP_GET,

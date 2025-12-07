@@ -37,7 +37,7 @@ static uint8_t s_fixed_channel = 0;
 typedef struct {
     uint8_t mac[6];
     char name[33];
-    uint8_t channel; // NEW: store channel
+    uint8_t channel;
     int64_t last_seen_ms;
 } discovered_ctrl_t;
 
@@ -56,7 +56,7 @@ static void internal_recv_cb(const esp_now_recv_info_t *info, const uint8_t *dat
 static void espnow_manager_task(void *pvParameter);
 static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data, int len);
 
-// NEW: prebuilt beacon payload to avoid per-loop snprintf stack usage
+// prebuilt beacon payload to avoid per-loop snprintf stack usage
 static uint8_t s_beacon_payload[64];
 static size_t  s_beacon_payload_len = 0;
 #define CTRL_BEACON_STACK   3072  // words (~12 KB). Adjust if still low.
@@ -107,14 +107,14 @@ static void update_beacon_payload_locked(void) {
 
 /* --- Beacon task --- */
 static void beacon_task(void *arg) {
-    ESP_LOGI(TAG_EN, "ctrl_beacon task start (stack watermark=%u)",
+    ESP_LOGI(TAG_EN, "Tarefa de beacon do controller iniciada (pilha=%u)",
              (unsigned)uxTaskGetStackHighWaterMark(NULL));
     uint32_t send_count = 0;
     for (;;) {
         send_controller_beacon_once(false);
         send_count++;
         if (send_count <= 5 || (send_count % 30) == 0) {
-            ESP_LOGI(TAG_EN, "Beacon sent (%lu) interval=%dms watermark=%u",
+            ESP_LOGI(TAG_EN, "Sinal de beacon enviado (%lu) intervalo=%dms pilha=%u",
                      (unsigned long)send_count, s_beacon_interval_ms,
                      (unsigned)uxTaskGetStackHighWaterMark(NULL));
         }
@@ -394,7 +394,7 @@ void espnow_manager_deinit(void) {
     }
     esp_now_deinit();
     s_inited = false;
-    ESP_LOGI(TAG_EN, "ESP-NOW Manager de-initialized.");
+    ESP_LOGI(TAG_EN, "Gerenciador ESP-NOW desativado.");
 }
 
 void espnow_manager_register_callbacks(espnow_mgr_send_cb_t send_cb, espnow_mgr_rx_cb_t recv_cb) {
@@ -419,7 +419,7 @@ esp_err_t espnow_manager_config_role(bool is_controller) {
         ESP_LOGI(TAG_EN, "Enabling APSTA (AP SSID=%s ch=%d)", apcfg.ap.ssid, apcfg.ap.channel);
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &apcfg));
-        ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_LR)); // Controller's SoftAP uses long-range mode
+        ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_LR)); // Ativa o protocolo long range
         ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(48)); // 20 dBm
 
         // get wifi power
@@ -444,12 +444,12 @@ esp_err_t espnow_manager_config_role(bool is_controller) {
 
 esp_err_t espnow_manager_enable_power_saving(void) {
     #if CONFIG_ESPNOW_ENABLE_POWER_SAVE
-    ESP_LOGI(TAG_EN, "Enabling ESP-NOW Power-Saving mode.");
+    ESP_LOGI(TAG_EN, "Ativando modo de economia de energia para ESP-NOW...");
     ESP_ERROR_CHECK(esp_now_set_wake_window(CONFIG_ESPNOW_WAKE_WINDOW));
     ESP_ERROR_CHECK(esp_wifi_connectionless_module_set_wake_interval(CONFIG_ESPNOW_WAKE_INTERVAL));
     return ESP_OK;
     #else
-    ESP_LOGW(TAG_EN, "Power saving not enabled in menuconfig. Skipping.");
+    ESP_LOGW(TAG_EN, "Modo de economia de energia para ESP-NOW não está habilitado na configuração.");
     return ESP_ERR_NOT_SUPPORTED;
     #endif
 }
@@ -479,7 +479,7 @@ static void espnow_manager_task(void *pvParameter) {
                     break;
                 }
                 default:
-                    ESP_LOGW(TAG_EN, "Unknown event type: %d", evt.id);
+                    ESP_LOGW(TAG_EN, "Evento desconhecido: %d", evt.id);
                     break;
             }
         }

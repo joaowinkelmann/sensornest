@@ -290,7 +290,7 @@ static void provisioning_blink_task(void *arg) {
  * @brief Tarefa one-shot para o flash de debug do worker.
  */
 static void worker_flash_task(void *arg) {
-    ESP_LOGD(TAG_IND, "worker_flash_task start");
+    ESP_LOGD(TAG_IND, "Tarefa de flash de worker iniciada");
     #if CONFIG_IDF_TARGET_ESP32C3
         _hw_set_brightness(255);
     #else
@@ -308,7 +308,7 @@ static void worker_flash_task(void *arg) {
  * @brief Tarefa one-shot para o flash de sucesso (verde).
  */
 static void success_flash_task(void *arg) {
-    ESP_LOGD(TAG_IND, "success_flash_task start");
+    ESP_LOGD(TAG_IND, "Tarefa de flash de sucesso iniciada");
     
     vTaskDelay(pdMS_TO_TICKS(20));
     
