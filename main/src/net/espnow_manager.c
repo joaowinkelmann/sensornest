@@ -458,7 +458,6 @@ esp_err_t espnow_manager_enable_power_saving(void) {
 
 static void espnow_manager_task(void *pvParameter) {
     espnow_mgr_event_t evt;
-    ESP_LOGI(TAG_EN, "Gerenciador ESP-NOW iniciado com sucesso.");
 
     for (;;) {
         if (xQueueReceive(s_espnow_queue, &evt, portMAX_DELAY) == pdTRUE) {
