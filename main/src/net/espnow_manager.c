@@ -101,7 +101,7 @@ static void update_beacon_payload_locked(void) {
     if (n < 0) n = 0;
     if (n > (int)sizeof(s_beacon_payload)) n = sizeof(s_beacon_payload);
     s_beacon_payload_len = (size_t)n;
-    ESP_LOGI(TAG_EN, "Beacon payload updated len=%d '%.*s'",
+    ESP_LOGI(TAG_EN, "Payload de beacon atualizado tamanho=%d '%.*s'",
              (int)s_beacon_payload_len, (int)s_beacon_payload_len, s_beacon_payload);
 }
 

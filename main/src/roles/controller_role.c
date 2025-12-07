@@ -55,9 +55,9 @@ static void ensure_time(void) {
     }
     if (retry < 15) {
         time_is_set = true;
-        ESP_LOGI(TAG_CR, "Time synced.");
+        ESP_LOGI(TAG_CR, "Hora sincronizada com sucesso.");
     } else {
-        ESP_LOGW(TAG_CR, "Time sync failed.");
+        ESP_LOGW(TAG_CR, "Falha na sincronização do horário.");
     }
 }
 
@@ -157,7 +157,7 @@ static char *merge_local_and_worker_batches(char *local_json) {
 
 /* Periodic controller loop (always-on, no deep sleep) */
 static void controller_main_task(void *arg) {
-    ESP_LOGI(TAG_CR, "Controller loop started (interval=%d s, batch=%d, debug=%d, stack=%d)",
+    ESP_LOGI(TAG_CR, "Loop de controller iniciado (intervalo=%d s, lote=%d, debug=%d, pilha=%d palavras)",
              device_wakeUpInterval, device_readingsPerBatch, s_debug, CONTROLLER_MAIN_STACK);
     for (;;) {
         // Check for and process worker batches frequently

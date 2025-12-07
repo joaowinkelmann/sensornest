@@ -91,7 +91,7 @@ static void worker_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
 
 static void ensure_time(void) {
     if (time_is_set) return;
-    ESP_LOGI(TAG_WR, "Syncing SNTP time...");
+    ESP_LOGI(TAG_WR, "Sincronizando tempo com o SNTP");
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_init();
@@ -99,8 +99,8 @@ static void ensure_time(void) {
     while (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 15) {
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
-    if (retry < 15) { time_is_set = true; ESP_LOGI(TAG_WR, "Time synced."); }
-    else ESP_LOGW(TAG_WR, "Time sync failed.");
+    if (retry < 15) { time_is_set = true; ESP_LOGI(TAG_WR, "Hora sincronizada com sucesso."); }
+    else ESP_LOGW(TAG_WR, "Falha na sincronização do horário.");
 }
 
 static void fetch_remote_config(void) {

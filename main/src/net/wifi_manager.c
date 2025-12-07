@@ -73,7 +73,7 @@ esp_err_t wifi_manager_init(void) {
     }
 
     s_initialized = true;
-    ESP_LOGI(TAG, "Initialized.");
+    ESP_LOGI(TAG, "Gerernciador Wi-Fi inicializado com sucesso.");
     return ESP_OK;
 }
 
@@ -159,7 +159,7 @@ bool wifi_manager_connect_saved(int timeout_ms) {
 void wifi_manager_disconnect(void) {
     if (!s_initialized) return;
     esp_wifi_disconnect();
-    ESP_LOGI(TAG, "Disconnected.");
+    ESP_LOGI(TAG, "Gerenciador Wi-Fi desconectado.");
 }
 
 static char *s_cached_scan_json = NULL;
