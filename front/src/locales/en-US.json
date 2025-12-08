@@ -71,5 +71,21 @@
   "cancel": "Cancel",
   "create": "Create",
   "failedToCreateMesh": "Failed to create mesh",
-  "deviceRegistered": "Device Successfully Registered"
+  "deviceRegistered": "Device Successfully Registered",
+  "register": "Register",
+  "yourName": "Your Name",
+  "createAccount": "Create Account",
+  "login": "Login",
+  "backToLogin": "Back to Login",
+  "registerSuccess": "Registration successful",
+  "pleaseLogin": "Please login",
+  "controllerNotFount": "Controller not found",
+  "status_register": "Fill in your details to create an account.",
+  "debugModeToggled": "Debug mode toggled",
+  "deviceRestarting": "Device restarting...",
+  "failedToupdateDevice": "Failed to update device",
+  "failedToBindWorker": "Failed to bind device",
+  "failedToScanControllers": "Failed to scan for controllers",
+  "failedToToggleDebug": "Failed to toggle debug mode",
+  "failedToGoBack": "Failed to go back"
 }
