@@ -5,6 +5,9 @@ build/
 .vscode/
 .idea/
 
+# Cache
+.cache/
+
 
 # Components
 managed_components/
