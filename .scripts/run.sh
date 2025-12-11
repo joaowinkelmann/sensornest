@@ -31,7 +31,7 @@ log "Starting deployment process for $APP_NAME"
 export PATH="$HOME/.bun/bin:$PATH"
 
 # Source NVM and bun environments
-export NVM_DIR="$HOME/.config/nvm"
+export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" || handle_error "NVM script not found. Please install NVM first"
 
 # Check for required tools
