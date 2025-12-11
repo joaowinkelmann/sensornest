@@ -64,6 +64,7 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
           REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
           REMOTE_USER: ${{ secrets.REMOTE_USER }}
+          REMOTE_PORT: 443
           TARGET: ${{ secrets.TARGET_DIR }}
 
           # Keep it quiet and fast, delete removed files on remote
