@@ -24,7 +24,7 @@ mkdir -p "$(dirname "$LOG_FILE")"
 log "Starting deployment process for $APP_NAME"
 
 export PATH="$HOME/.bun/bin:$PATH"
-export NVM_DIR="$HOME/.config/nvm"
+export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" || handle_error "NVM script not found. Please install NVM first"
 
 if ! command_exists nvm; then
