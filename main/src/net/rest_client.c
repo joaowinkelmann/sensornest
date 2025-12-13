@@ -1,5 +1,5 @@
 /*
- * Serves as a REST client for the cloud API.
+ * Serve como cliente REST para API da nuvem.
 */
 #include <stdio.h>
 #include <string.h>
@@ -28,13 +28,13 @@ extern const char *cloud_ca_pem;
 
 #define CLOUD_BASE_URL            "https://winkels.com.br/sensornest/api"
 #define CLOUD_LOGIN_URL           CLOUD_BASE_URL "/auth/login"
-#define CLOUD_DEVICE_MAC_URL      CLOUD_BASE_URL "/devices/mac/"   /* append AA:BB:CC:DD:EE:FF */
+#define CLOUD_DEVICE_MAC_URL      CLOUD_BASE_URL "/devices/mac/"   /* adiciona AA:BB:CC:DD:EE:FF */
 #define CLOUD_READINGS_URL        CLOUD_BASE_URL "/readings/add"  /* POST */
 #define CLOUD_MESHES_URL          CLOUD_BASE_URL "/meshes"         /* GET */
 #define CLOUD_DEVICE_REGISTER_URL CLOUD_BASE_URL "/devices"        /* POST */
 #define CLOUD_DEVICE_UPDATE_URL   CLOUD_BASE_URL "/devices/"       /* PATCH {id} */
 
-/* Add user registration endpoint */
+/* Adiciona endpoint de registro de usuário */
 #define CLOUD_USER_REGISTER_URL   CLOUD_BASE_URL "/users/register"
 
 #define NVS_NS_AUTH             "auth"
@@ -42,7 +42,7 @@ extern const char *cloud_ca_pem;
 #define NVS_KEY_EMAIL           "email"
 #define NVS_KEY_PASS            "pass"
 
-/* --- NVS helpers (UPDATED) --- */
+/* --- Auxiliares NVS (ATUALIZADO) --- */
 static bool rc_store_auth(const char *email, const char *password, const char *token) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS_AUTH, NVS_READWRITE, &h) != ESP_OK) return false;
@@ -92,7 +92,7 @@ bool rc_has_token(void) {
     return (err == ESP_OK && need > 1);
 }
 
-/* --- Public: format own station MAC (uppercase colon separated) --- */
+/* --- Público: formata MAC da própria estação (maiúsculo separado por dois pontos) --- */
 char *rc_format_own_mac(char *dst, size_t len) {
     if (len < 18) return NULL;
     uint8_t mac[6];
@@ -102,7 +102,7 @@ char *rc_format_own_mac(char *dst, size_t len) {
     return dst;
 }
 
-/* Accumulator for esp_http_client event handler */
+/* Acumulador para handler de evento esp_http_client */
 typedef struct {
     char  *buf;
     size_t cap;
@@ -129,7 +129,7 @@ static esp_err_t rc_http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
-/* Debug helper to log a safe snippet of a (possibly large) PEM */
+/* Auxiliar de debug para logar trecho seguro de um PEM (possivelmente grande) */
 static void rc_log_cert_snippet(void) {
     return;
     if (!cloud_ca_pem) {
@@ -158,10 +158,10 @@ static esp_err_t rc_force_reauth(void) {
     char email[128] = {0};
     char pass[128]  = {0};
     if (!rc_load_creds(email, sizeof(email), pass, sizeof(pass))) {
-        ESP_LOGE(RC_TAG, "force_reauth: stored credentials missing");
+        ESP_LOGE(RC_TAG, "force_reauth: credenciais armazenadas faltando");
         return ESP_ERR_INVALID_STATE;
     }
-    ESP_LOGW(RC_TAG, "force_reauth: performing login with stored credentials");
+    ESP_LOGW(RC_TAG, "force_reauth: realizando login com credenciais armazenadas");
     return rc_perform_login(email, pass, false);
 }
 
@@ -185,13 +185,13 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
             .cert_pem = cloud_ca_pem,
             .event_handler = rc_http_event_handler,
             .user_data = &acc,
-            .timeout_ms = 8000,            // reduced
+            .timeout_ms = 8000,            // reduzido
             .buffer_size = 1024,
             .buffer_size_tx = 1024,
-            .skip_cert_common_name_check = true   // (optional: allow if CN mismatch; keep if needed)
+            .skip_cert_common_name_check = true   // (opcional: permitir se CN não bater; manter se necessário)
         };
 
-        ESP_LOGI(RC_TAG, "login: attempt %d/%d POST %s", attempt, max_attempts, CLOUD_LOGIN_URL);
+        ESP_LOGI(RC_TAG, "login: tentativa %d/%d POST %s", attempt, max_attempts, CLOUD_LOGIN_URL);
         esp_http_client_handle_t client = esp_http_client_init(&cfg);
         if (!client) {
             free(acc.buf);
@@ -212,10 +212,10 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
         if (acc.len < acc.cap) acc.buf[acc.len] = 0;
         else acc.buf[acc.cap - 1] = 0;
 
-        ESP_LOGI(RC_TAG, "login: perform result=%s http_status=%d content_len=%lld chunked=%d",
+        ESP_LOGI(RC_TAG, "login: resultado perform=%s http_status=%d content_len=%lld chunked=%d",
                  esp_err_to_name(err), http_status, (long long)cl, chunked);
 
-        // Snapshot a body snippet
+        // Snapshot de um trecho do corpo
         if (acc.len) {
             char snippet[161];
             size_t n = acc.len < 160 ? acc.len : 160;
@@ -230,7 +230,7 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
             if (err == ESP_ERR_HTTP_CONNECT || err == ESP_ERR_HTTP_EAGAIN) {
                 if (attempt < max_attempts) {
                     int backoff_ms = 1000 << (attempt - 1); // 1000,2000,4000
-                    ESP_LOGW(RC_TAG, "login: transient connect error (%s); backoff %d ms",
+                    ESP_LOGW(RC_TAG, "login: erro de conexão transiente (%s); backoff %d ms",
                              esp_err_to_name(err), backoff_ms);
                     vTaskDelay(pdMS_TO_TICKS(backoff_ms));
                     continue;
@@ -239,25 +239,25 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
             return err;
         }
 
-        // Completed HTTP transaction
+        // Transação HTTP completada
         if (http_status == 200 || http_status == 201) {
             cJSON *root = cJSON_Parse(acc.buf);
             if (!root) {
-                ESP_LOGE(RC_TAG, "login: JSON parse failed");
+                ESP_LOGE(RC_TAG, "login: falha json parse");
                 esp_http_client_cleanup(client);
                 free(acc.buf);
                 return ESP_FAIL;
             }
             cJSON *acc_tok = cJSON_GetObjectItem(root, "access_token");
             if (!cJSON_IsString(acc_tok)) {
-                ESP_LOGE(RC_TAG, "login: access_token missing");
+                ESP_LOGE(RC_TAG, "login: access_token faltando");
                 cJSON_Delete(root);
                 esp_http_client_cleanup(client);
                 free(acc.buf);
                 return ESP_FAIL;
             }
             bool stored = rc_store_auth(email, store_creds ? password : NULL, acc_tok->valuestring);
-            ESP_LOGI(RC_TAG, "login: token length=%d stored=%d",
+            ESP_LOGI(RC_TAG, "login: tamanho do token=%d armazenado=%d",
                      (int)strlen(acc_tok->valuestring), stored);
             cJSON_Delete(root);
             esp_http_client_cleanup(client);
@@ -266,38 +266,38 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
         }
 
         if (http_status == 401) {
-            ESP_LOGW(RC_TAG, "login: invalid credentials (401)");
+            ESP_LOGW(RC_TAG, "login: credenciais inválidas (401)");
             esp_http_client_cleanup(client);
             free(acc.buf);
             return ESP_ERR_INVALID_STATE; // signal invalid credentials
         }
 
-        // Other server errors -> maybe retry
+        // Outros erros de servidor -> talvez tentar novamente
         esp_http_client_cleanup(client);
         free(acc.buf);
         if (http_status >= 500 && attempt < max_attempts) {
             int backoff_ms = 1000 << (attempt - 1);
-            ESP_LOGW(RC_TAG, "login: server error %d -> retry in %d ms", http_status, backoff_ms);
+            ESP_LOGW(RC_TAG, "login: erro servidor %d -> retry em %d ms", http_status, backoff_ms);
             vTaskDelay(pdMS_TO_TICKS(backoff_ms));
             continue;
         }
-        ESP_LOGE(RC_TAG, "login: failed with HTTP status %d (no retry)", http_status);
+        ESP_LOGE(RC_TAG, "login: falhou com status HTTP %d (sem retry)", http_status);
         return ESP_FAIL;
     }
 
     return err;
 }
 
-/* --- Fetch device by MAC (NULL => use own) 
- * out_json: receives raw JSON body (null-terminated)
- * Caller owns buffer (malloc). */
+/* --- Busca device por MAC (NULL => usa próprio) 
+ * out_json: recebe corpo JSON raw (null-terminated)
+ * Chamador é dono do buffer (malloc). */
 esp_err_t rc_get_device_by_mac(const char *mac, char **out_json) {
     if (!out_json) return ESP_ERR_INVALID_ARG;
     *out_json = NULL;
 
     char token[512];
     if (!rc_get_token(token, sizeof(token))) {
-        ESP_LOGW(RC_TAG, "device fetch: no token (call rc_login first)");
+        ESP_LOGW(RC_TAG, "device fetch: sem token (chame rc_login primeiro)");
         return ESP_ERR_INVALID_STATE;
     }
 retry_auth:
@@ -339,7 +339,7 @@ retry_auth:
         esp_http_client_cleanup(client);
 
         if (err == ESP_ERR_HTTP_CONNECT) {
-            ESP_LOGW(RC_TAG, "device fetch connect timeout (attempt %d/3)", attempt);
+            ESP_LOGW(RC_TAG, "device fetch timeout conexão (tentativa %d/3)", attempt);
             if (attempt < 3) vTaskDelay(pdMS_TO_TICKS(2000));
             continue;
         }
@@ -347,7 +347,7 @@ retry_auth:
     }
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "device fetch HTTP error: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "device fetch erro HTTP: %s", esp_err_to_name(err));
         free(acc.buf);
         return err;
     }
@@ -377,7 +377,7 @@ esp_err_t rc_get_meshes(char **out_json) {
     *out_json = NULL;
     char token[512];
     if (!rc_get_token(token, sizeof(token))) {
-        ESP_LOGW(RC_TAG, "meshes fetch: no token (call rc_login first)");
+        ESP_LOGW(RC_TAG, "meshes fetch: sem token (chame rc_login primeiro)");
         return ESP_ERR_INVALID_STATE;
     }
 retry_auth:
@@ -410,7 +410,7 @@ retry_auth:
         esp_http_client_cleanup(client);
 
         if (err == ESP_ERR_HTTP_CONNECT) {
-            ESP_LOGW(RC_TAG, "meshes fetch connect timeout (attempt %d/3)", attempt);
+            ESP_LOGW(RC_TAG, "meshes fetch timeout conexão (tentativa %d/3)", attempt);
             if (attempt < 3) vTaskDelay(pdMS_TO_TICKS(1500));
             continue;
         }
@@ -418,13 +418,13 @@ retry_auth:
     }
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "meshes fetch HTTP error: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "meshes fetch erro HTTP: %s", esp_err_to_name(err));
         free(acc.buf);
         return err;
     }
     if (status == 200) {
         *out_json = acc.buf;
-        ESP_LOGI(RC_TAG, "meshes fetch success (%d bytes)", (int)acc.len);
+        ESP_LOGI(RC_TAG, "meshes fetch sucesso (%d bytes)", (int)acc.len);
         return ESP_OK;
     }
     if (status == 401) {
@@ -440,13 +440,13 @@ retry_auth:
     return (status == 0) ? ESP_ERR_HTTP_CONNECT : ESP_FAIL;
 }
 
-/* Create a new mesh for the authenticated user */
+/* Cria uma nova mesh para o usuário autenticado */
 esp_err_t rc_create_mesh(const char *name, double lat, double lon) {
     if (!name || !name[0]) return ESP_ERR_INVALID_ARG;
 
     char token[512];
     if (!rc_get_token(token, sizeof(token))) {
-        ESP_LOGW(RC_TAG, "create_mesh: no token");
+        ESP_LOGW(RC_TAG, "create_mesh: sem token");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -483,12 +483,12 @@ retry_once:
     free(body);
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "create_mesh: HTTP POST error: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "create_mesh: erro HTTP POST: %s", esp_err_to_name(err));
         return err;
     }
 
     if (status == 201) {
-        ESP_LOGI(RC_TAG, "create_mesh: success");
+        ESP_LOGI(RC_TAG, "create_mesh: sucesso");
         return ESP_OK;
     }
 
@@ -500,7 +500,7 @@ retry_once:
         return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_LOGE(RC_TAG, "create_mesh: failed with HTTP status %d", status);
+    ESP_LOGE(RC_TAG, "create_mesh: falhou com status HTTP %d", status);
     return ESP_FAIL;
 }
 
@@ -516,10 +516,10 @@ esp_err_t rc_update_device(const char *name, int readingsPerBatch, int wakeUpInt
     char *device_json = NULL;
     char device_id[40] = {0};
 
-    // 1. Get the full device object to find its ID
+    // 1. Obtém objeto completo do dispositivo para achar ID
     esp_err_t err = rc_get_device_by_mac(NULL, &device_json);
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "update_device: could not get own device details first. err=%s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "update_device: não conseguiu pegar detalhes do device first. err=%s", esp_err_to_name(err));
         return err;
     }
     if (!device_json) return ESP_FAIL;
@@ -535,11 +535,11 @@ esp_err_t rc_update_device(const char *name, int readingsPerBatch, int wakeUpInt
     free(device_json);
 
     if (!device_id[0]) {
-        ESP_LOGE(RC_TAG, "update_device: could not parse device ID from cloud response.");
+        ESP_LOGE(RC_TAG, "update_device: falha parse device ID da resposta nuvem.");
         return ESP_FAIL;
     }
 
-    // Build JSON body with only provided fields
+    // Constrói corpo JSON apenas com campos fornecidos
     cJSON *body_obj = cJSON_CreateObject();
     if (!body_obj) return ESP_ERR_NO_MEM;
     if (name && name[0]) cJSON_AddStringToObject(body_obj, "name", name);
@@ -583,11 +583,11 @@ retry_once:
     free(body);
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "update_device: HTTP PATCH error: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "update_device: erro HTTP PATCH: %s", esp_err_to_name(err));
         return err;
     }
     if (status >= 200 && status < 300) {
-        ESP_LOGI(RC_TAG, "update_device: success. Device %s updated", device_id);
+        ESP_LOGI(RC_TAG, "update_device: sucesso. Device %s atualizado", device_id);
         return ESP_OK;
     }
     if (status == 401) {
@@ -597,18 +597,18 @@ retry_once:
         }
         return ESP_ERR_INVALID_STATE;
     }
-    ESP_LOGE(RC_TAG, "update_device: failed with HTTP status %d", status);
+    ESP_LOGE(RC_TAG, "update_device: falhou com status HTTP %d", status);
     if (status == 404) return ESP_ERR_NOT_FOUND;
     return ESP_FAIL;
 }
 
-/* --- Register the current device with the cloud --- */
+/* --- Registra o dispositivo atual na nuvem --- */
 esp_err_t rc_register_device(const char *name, const char *role, const char *mesh_id, int readingsPerBatch, int wakeUpInterval, int x, int y) {
     if (!name || !role || !mesh_id) return ESP_ERR_INVALID_ARG;
 
     char token[512];
     if (!rc_get_token(token, sizeof(token))) {
-        return ESP_ERR_INVALID_STATE; // Not logged in
+        return ESP_ERR_INVALID_STATE; // Não logado
     }
 
     char mac_str[18];
@@ -661,18 +661,18 @@ retry_once:
     int status = esp_http_client_get_status_code(client);
     if (acc.len > 0) {
         acc.buf[acc.len] = 0;
-        ESP_LOGI(RC_TAG, "register_device: response body: %s", acc.buf);
+        ESP_LOGI(RC_TAG, "register_device: corpo resposta: %s", acc.buf);
     }
     esp_http_client_cleanup(client);
     free(body);
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "register_device: HTTP POST error: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "register_device: erro HTTP POST: %s", esp_err_to_name(err));
         return err;
     }
 
     if (status == 201) {
-        ESP_LOGI(RC_TAG, "register_device: success");
+        ESP_LOGI(RC_TAG, "register_device: sucesso");
         return ESP_OK;
     }
 
@@ -685,12 +685,12 @@ retry_once:
         return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_LOGE(RC_TAG, "register_device: failed with HTTP status %d", status);
+    ESP_LOGE(RC_TAG, "register_device: falhou com status HTTP %d", status);
     free(acc.buf);
     return ESP_FAIL;
 }
 
-/* --- Register device for arbitrary MAC (Controller registers Worker) --- */
+/* --- Registra dispositivo para MAC arbitrário (Controlador registra Worker) --- */
 esp_err_t rc_register_device_for_mac(const char *name,
                                      const char *role,
                                      const char *mesh_id,
@@ -706,7 +706,7 @@ esp_err_t rc_register_device_for_mac(const char *name,
 
     char token[512];
     if (!rc_get_token(token, sizeof(token))) {
-        return ESP_ERR_INVALID_STATE; // Not logged in
+        return ESP_ERR_INVALID_STATE; // Não logado
     }
 
     esp_err_t err = ESP_FAIL;
@@ -751,18 +751,18 @@ retry_send:
     free(body);
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "register_device_for_mac: HTTP POST error: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "register_device_for_mac: erro HTTP POST: %s", esp_err_to_name(err));
         return err;
     }
 
     if (status == 201) {
-        ESP_LOGI(RC_TAG, "register_device_for_mac: success (MAC=%s)", mac_address);
+        ESP_LOGI(RC_TAG, "register_device_for_mac: sucesso (MAC=%s)", mac_address);
         return ESP_OK;
     }
 
     if (status == 409) {
-        // Already exists; treat as success for idempotency
-        ESP_LOGW(RC_TAG, "register_device_for_mac: device already exists for MAC=%s (409).", mac_address);
+        // Já existe; trata como sucesso para idempotência
+        ESP_LOGW(RC_TAG, "register_device_for_mac: device já existe para MAC=%s (409).", mac_address);
         return ESP_OK;
     }
 
@@ -774,11 +774,11 @@ retry_send:
         return ESP_ERR_INVALID_STATE;
     }
 
-    ESP_LOGE(RC_TAG, "register_device_for_mac: failed with HTTP status %d", status);
+    ESP_LOGE(RC_TAG, "register_device_for_mac: falhou com status HTTP %d", status);
     return ESP_FAIL;
 }
 
-/* OPTIONAL: convenience to extract selected config fields (not required yet) */
+/* OPCIONAL: conveniência para extrair campos de config selecionados (ainda não requerido) */
 esp_err_t rc_extract_device_config(const char *device_json,
                                    int *readingsPerBatch,
                                    int *wakeUpInterval) {
@@ -797,33 +797,33 @@ esp_err_t rc_extract_device_config(const char *device_json,
     return ESP_OK;
 }
 
-/* (Optional) Clear stored token */
+/* (Opcional) Limpa token armazenado */
 esp_err_t rc_clear_token(void) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS_AUTH, NVS_READWRITE, &h) != ESP_OK) return ESP_FAIL;
     nvs_erase_key(h, NVS_KEY_TOKEN);
     nvs_commit(h);
     nvs_close(h);
-    ESP_LOGI(RC_TAG, "token cleared");
+    ESP_LOGI(RC_TAG, "token limpo");
     return ESP_OK;
 }
 
-/* Simple self-test (can be invoked manually) */
+/* Auto-teste simples (pode ser invocado manualmente) */
 void rc_debug_print_token(void) {
     char t[64];
     if (rc_get_token(t, sizeof(t)))
-        ESP_LOGI(RC_TAG, "stored token (truncated): %.32s...", t);
+        ESP_LOGI(RC_TAG, "token armazenado (truncado): %.32s...", t);
     else
-        ESP_LOGI(RC_TAG, "no stored token");
+        ESP_LOGI(RC_TAG, "sem token armazenado");
 }
 
-/* Post a readings batch (expects payload like {"data":[...]} ) */
+/* Posta um lote de leituras (espera payload como {"data":[...]} ) */
 esp_err_t rc_post_readings(const char *json_payload) {
     if (!json_payload || !json_payload[0]) return ESP_ERR_INVALID_ARG;
 
     char token[512];
     if (!rc_get_token(token, sizeof(token))) {
-        ESP_LOGE(RC_TAG, "post_readings: no stored token");
+        ESP_LOGE(RC_TAG, "post_readings: sem token");
         return ESP_ERR_INVALID_STATE;
     }
     int retry = 0;
@@ -854,12 +854,12 @@ retry_send:
     ESP_LOGI(RC_TAG, "post_readings: http_status=%d resp_snippet='%s'", status, resp);
     esp_http_client_cleanup(client);
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "post_readings: perform err=%s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "post_readings: erro perform=%s", esp_err_to_name(err));
         return err;
     }
     if (status == 200 || status == 201) return ESP_OK;
     if (status >= 400 && status < 500) {
-        ESP_LOGW(RC_TAG, "post_readings: server rejected payload (status=%d). Consider checking field names.", status);
+        ESP_LOGW(RC_TAG, "post_readings: servidor rejeitou payload (status=%d). Cheque nomes dos campos.", status);
     }
     if (status == 401 && retry == 0) {
         ESP_LOGW(RC_TAG, "post_readings: 401 -> re-auth & retry");
@@ -873,7 +873,7 @@ retry_send:
     return ESP_FAIL;
 }
 
-/* Register a new user (POST /users/register), then login to persist token */
+/* Registra novo usuário (POST /users/register), então faz login para persistir token */
 esp_err_t rc_register_user(const char *email, const char *password, const char *name) {
     if (!email || !password || !name || !email[0] || !password[0] || !name[0]) {
         return ESP_ERR_INVALID_ARG;
@@ -907,18 +907,18 @@ esp_err_t rc_register_user(const char *email, const char *password, const char *
     free(body);
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "user register: HTTP error: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "user register: erro HTTP: %s", esp_err_to_name(err));
         return err;
     }
 
     if (status == 201) {
-        // User created; try immediate login to store token for next steps
+        // Usuário criado; tenta login imediato para guardar token
         esp_err_t lerr = rc_login(email, password, false);
         if (lerr == ESP_OK) {
-            ESP_LOGI(RC_TAG, "user register: success and login OK");
+            ESP_LOGI(RC_TAG, "user register: sucesso e login OK");
             return ESP_OK;
         }
-        ESP_LOGW(RC_TAG, "user register: created, but login failed: %s", esp_err_to_name(lerr));
+        ESP_LOGW(RC_TAG, "user register: criado, mas falha login: %s", esp_err_to_name(lerr));
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -927,6 +927,6 @@ esp_err_t rc_register_user(const char *email, const char *password, const char *
         return ESP_ERR_INVALID_ARG;
     }
 
-    ESP_LOGE(RC_TAG, "user register: failed with HTTP status %d", status);
+    ESP_LOGE(RC_TAG, "user register: falhou com status HTTP %d", status);
     return ESP_FAIL;
 }

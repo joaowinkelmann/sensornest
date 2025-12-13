@@ -19,15 +19,15 @@
 #define CONTROLLER_MAIN_STACK   8192   // Increase from 4096 (TLS & JSON need >6K)
 #define CONTROLLER_MAIN_PRIO    5
 
-#define TIME_SYNC_PREFIX "TIME:" // For sending time back to worker
-#define ACK_PREFIX "ACK:"       // For sending ACK with config back to worker
-#define BIND_PREFIX "BIND:"     // Worker -> Controller bind announcement
+#define TIME_SYNC_PREFIX "TIME:" // Para enviar tempo de volta ao worker
+#define ACK_PREFIX "ACK:"       // Para enviar ACK com config de volta ao worker
+#define BIND_PREFIX "BIND:"     // Anuncio de vinculo Worker -> Controller
 
 static const char *TAG_CR = "CTRL_ROLE";
 static bool s_debug = false;
 static bool s_controller_sensor_disabled = true;
 
-// cache controller meshId for registering workers
+// cache meshId do controlador para registrar workers
 static char s_controller_mesh_id[64] = {0};
 
 void controller_role_set_debug(bool enabled) {
@@ -108,7 +108,7 @@ static void stash_worker_batch(const char *json, int len) {
 static char *merge_local_and_worker_batches(char *local_json) {
     if (s_worker_batch_count == 0) return local_json;
 
-    // Start with a fresh root object: {"data": []}
+    // Inicia com objeto root fresco: {"data": []}
     cJSON *root = cJSON_CreateObject();
     if (!root) return local_json;
     cJSON *main_arr = cJSON_CreateArray();
@@ -118,7 +118,7 @@ static char *merge_local_and_worker_batches(char *local_json) {
     }
     cJSON_AddItemToObject(root, "data", main_arr);
 
-    // Add local readings first, if any
+    // Adiciona leituras locais primeiro, se houver
     if (local_json) {
         cJSON *local_root = cJSON_Parse(local_json);
         if (local_root) {
@@ -131,10 +131,10 @@ static char *merge_local_and_worker_batches(char *local_json) {
             }
             cJSON_Delete(local_root);
         }
-        free(local_json); // free the original local json string
+        free(local_json); // libera string json local original
     }
 
-    // Add worker readings
+    // Adiciona leituras de workers
     for (int i=0;i<s_worker_batch_count;i++) {
         cJSON *wr = cJSON_Parse(s_worker_batches[i]);
         if (!wr) continue;
@@ -151,28 +151,28 @@ static char *merge_local_and_worker_batches(char *local_json) {
     char *merged = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
 
-    free_worker_batches(); // Clear worker batches after successful merge
+    free_worker_batches(); // Limpa lotes de workers após merge com sucesso
     return merged;
 }
 
-/* Periodic controller loop (always-on, no deep sleep) */
+/* Loop periódico do controlador (sempre ligado, sem deep sleep) */
 static void controller_main_task(void *arg) {
     ESP_LOGI(TAG_CR, "Loop de controller iniciado (intervalo=%d s, lote=%d, debug=%d, pilha=%d palavras)",
              device_wakeUpInterval, device_readingsPerBatch, s_debug, CONTROLLER_MAIN_STACK);
     for (;;) {
-        // Check for and process worker batches frequently
+        // Checa e processa lotes de workers frequentemente
         if (s_worker_batch_count > 0) {
             ESP_LOGI(TAG_CR, "Preparing combined batch (local=%d worker_batches=%d)", batch_store_count(), s_worker_batch_count);
             if (wifi_manager_connect_saved(15000)) {
                 ensure_time();
                 fetch_remote_config();
                 char *local_json = NULL;
-                batch_store_build_json(&local_json); // can be NULL if no local readings
+                batch_store_build_json(&local_json); // pode ser NULL se sem leituras locais
                 char *merged_json = merge_local_and_worker_batches(local_json);
                 if (merged_json) {
                     if (rc_post_readings(merged_json) == ESP_OK) {
-                        ESP_LOGI(TAG_CR, "Combined batch posted successfully.");
-                        batch_store_clear(); // Also clears local readings that were merged
+                        ESP_LOGI(TAG_CR, "Lote combinado postado com sucesso.");
+                        batch_store_clear(); // Também limpa leituras locais que foram fundidas
                     } else {
                         ESP_LOGW(TAG_CR, "Combined batch post failed; will retry.");
                     }
@@ -182,7 +182,7 @@ static void controller_main_task(void *arg) {
                 ESP_LOGW(TAG_CR, "Wi-Fi connect failed; will retry next interval.");
             }
         } else if (!s_controller_sensor_disabled && batch_store_count() >= device_readingsPerBatch) {
-            // Process local-only batch if it's full
+            // Processa lote local-apenas se estiver cheio
             ESP_LOGI(TAG_CR, "Preparing local-only batch (count=%d)", batch_store_count());
             if (wifi_manager_connect_saved(15000)) {
                 ensure_time();
@@ -200,10 +200,10 @@ static void controller_main_task(void *arg) {
             }
         }
 
-        // Sensor reading logic remains unchanged
+        // Lógica de leitura de sensor permanece inalterada
         if (!s_controller_sensor_disabled && !batch_store_is_full()) {
             sensor_reading_t r;
-            // CHANGED: include force-simulate flag
+            // ALTERADO: inclui flag force-simulate
             if (sensor_read_once(s_debug || app_get_force_simulate_readings(), &r) == ESP_OK &&
                 batch_store_add(&r) == ESP_OK) {
                 ESP_LOGI(TAG_CR, "Stored local reading #%d (T=%.1f H=%.1f)", batch_store_count(), r.temperature, r.humidity);
@@ -223,7 +223,7 @@ static void controller_send_cb(const uint8_t *mac_addr, esp_now_send_status_t st
     }
 }
 
-// helper to ensure we know the Controller's meshId from cloud
+// auxiliar para garantir que sabemos o meshId do Controlador da nuvem
 static bool ensure_controller_mesh_id(void) {
     if (s_controller_mesh_id[0]) return true;
 
@@ -253,7 +253,7 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
     ESP_LOGI(TAG_CR, "EVENT: ESPNOW RX %dB from " MACSTR " on if %d",
              recv_info->data_len, MAC2STR(recv_info->mac_addr), recv_info->ifidx);
 
-    // Handle Worker bind announcement: "BIND:<name>"
+    // Lida com anuncio de bind do Worker: "BIND:<name>"
     if (recv_info->data_len > (int)strlen(BIND_PREFIX) &&
         strncmp((const char*)recv_info->data, BIND_PREFIX, strlen(BIND_PREFIX)) == 0) {
 
@@ -263,7 +263,7 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
             return;
         }
 
-        // Ensure we have controller meshId
+        // Garante que temos meshId do controlador
         if (!ensure_controller_mesh_id()) {
             ESP_LOGW(TAG_CR, "Cannot register worker; controller meshId unknown.");
             return;
@@ -275,7 +275,7 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
                  recv_info->mac_addr[0], recv_info->mac_addr[1], recv_info->mac_addr[2],
                  recv_info->mac_addr[3], recv_info->mac_addr[4], recv_info->mac_addr[5]);
 
-        // Register Worker device in cloud
+        // Registra dispositivo Worker na nuvem
         esp_err_t r = rc_register_device_for_mac(
             name,
             "WORKER",
@@ -288,7 +288,7 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
 
         if (r == ESP_OK) {
             ESP_LOGI(TAG_CR, "Worker device '%s' (MAC=%s) registered/bound to mesh=%s.", name, mac_str, s_controller_mesh_id);
-            // Optional: notify worker (not strictly required). Example:
+            // Opcional: notifica worker (não estritamente necessário). Exemplo:
             // const char *ok = "REGOK";
             // espnow_manager_send_to_mac(recv_info->mac_addr, (const uint8_t*)ok, strlen(ok));
         } else {
@@ -297,7 +297,7 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
         return;
     }
 
-    // Stash the batch. The main loop will handle posting.
+    // Armazena o lote. O loop principal cuidará do post.
     stash_worker_batch((const char*)recv_info->data, recv_info->data_len);
 
     if (time_is_set) {
@@ -309,8 +309,8 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
         if (payload_len > 0) {
             esp_err_t err = espnow_manager_send_to_mac(recv_info->mac_addr, (const uint8_t*)payload, payload_len);
             if (err == ESP_OK) {
-                ESP_LOGI(TAG_CR, "ACK sent successfully to " MACSTR, MAC2STR(recv_info->mac_addr));
-                // Flash green to indicate successful communication handshake
+                ESP_LOGI(TAG_CR, "ACK enviado com sucesso para " MACSTR, MAC2STR(recv_info->mac_addr));
+                // Pisca verde para indicar handshake de comunicação com sucesso
                 if (s_debug) {
                     led_indicator_flash_success();
                 }
@@ -324,12 +324,12 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
 esp_err_t controller_role_start(void) {
     ESP_LOGI(TAG_CR, "Controller role starting (debug=%d).", s_debug);
 
-    // Init ESPNOW manager and register our callbacks
+    // Inicializa gerenciador ESPNOW e registra nossos callbacks
     espnow_manager_init();
     espnow_manager_register_callbacks(controller_send_cb, controller_recv_cb);
     espnow_manager_config_role(true);
 
-    // Now connect to Wi-Fi. The driver will use the primary channel set by ESPNOW init.
+    // Agora conecta ao Wi-Fi. O driver usará o canal primário definido pelo init do ESPNOW.
     if (wifi_manager_connect_saved(15000)) {
         ensure_time();
         fetch_remote_config();
@@ -337,7 +337,7 @@ esp_err_t controller_role_start(void) {
         ESP_LOGW(TAG_CR, "Initial Wi-Fi connect failed. Time/config will be fetched later.");
     }
 
-    /* Start pulsing LED if debug mode */
+    /* Começa a pulsar LED se modo debug */
     if (s_debug) {
         if (led_indicator_init() == ESP_OK) {
             led_indicator_controller_pulse_start();
@@ -346,7 +346,7 @@ esp_err_t controller_role_start(void) {
         led_indicator_controller_pulse_stop();
     }
 
-    // Load controller name (optional)
+    // Carrega nome do controlador (opcional)
     char ctrl_name[33]="Controller";
     nvs_handle_t nvs;
     if (nvs_open("device", NVS_READONLY, &nvs)==ESP_OK) {
@@ -358,7 +358,7 @@ esp_err_t controller_role_start(void) {
         }
         nvs_close(nvs);
     }
-    espnow_manager_start_controller_beacon(ctrl_name, 1000); // shorter interval for better discovery while testing
+    espnow_manager_start_controller_beacon(ctrl_name, 1000); // intervalo menor para melhor descoberta enquanto testa
     uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_STA, mac);
 

@@ -46,7 +46,7 @@ esp_err_t wifi_manager_init(void) {
 
     if (!s_sta_created) {
         if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) {
-            ESP_LOGI(TAG, "STA netif already exists (provisioning path); reusing.");
+            ESP_LOGI(TAG, "Netif STA já existe (caminho de provisionamento); reusando.");
             s_sta_created = true;
         } else {
             esp_netif_create_default_wifi_sta();
@@ -120,7 +120,7 @@ static bool connect_internal(const char *ssid, const char *pass, int timeout_ms)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, sta_event_handler, NULL, &inst_any));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, sta_event_handler, NULL, &inst_ip));
 
-    ESP_LOGI(TAG, "Connecting to SSID '%s'...", ssid);
+    ESP_LOGI(TAG, "Conectando ao SSID '%s'...", ssid);
     esp_err_t err = esp_wifi_connect();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_wifi_connect failed: %s", esp_err_to_name(err));
@@ -135,10 +135,10 @@ static bool connect_internal(const char *ssid, const char *pass, int timeout_ms)
     s_evt_group = NULL;
 
     if (bits & BIT_CONNECTED) {
-        ESP_LOGI(TAG, "Connected.");
+        ESP_LOGI(TAG, "Conectado.");
         return true;
     }
-    ESP_LOGW(TAG, "Connect timeout/fail.");
+    ESP_LOGW(TAG, "Conexão timeout/falha.");
     return false;
 }
 
@@ -150,7 +150,7 @@ bool wifi_manager_connect(const char *ssid, const char *pass, int timeout_ms) {
 bool wifi_manager_connect_saved(int timeout_ms) {
     char ssid[33]={0}, pass[65]={0};
     if (!load_saved(ssid, sizeof(ssid), pass, sizeof(pass))) {
-        ESP_LOGE(TAG, "No saved Wi-Fi credentials.");
+        ESP_LOGE(TAG, "Sem credenciais Wi-Fi salvas.");
         return false;
     }
     return wifi_manager_connect(ssid, pass, timeout_ms);
@@ -168,7 +168,7 @@ static SemaphoreHandle_t s_scan_mux = NULL;
 
 static void wifi_build_and_store_scan(void)
 {
-    // perform blocking scan (caller is the background task)
+    // realiza scan bloqueante (chamador é tarefa de fundo)
     wifi_scan_config_t scan_cfg = {
         .ssid = NULL,
         .bssid = NULL,
@@ -185,7 +185,7 @@ static void wifi_build_and_store_scan(void)
     uint16_t ap_num = 0;
     esp_wifi_scan_get_ap_num(&ap_num);
     if (ap_num == 0) {
-        ESP_LOGI(TAG, "prefetch scan: no APs found");
+        ESP_LOGI(TAG, "scan prefetch: nenhum AP encontrado");
     }
 
     wifi_ap_record_t *ap_records = calloc(ap_num, sizeof(wifi_ap_record_t));
@@ -209,7 +209,7 @@ static void wifi_build_and_store_scan(void)
     if (arr) cJSON_Delete(arr);
     free(ap_records);
 
-    // store under mutex
+    // armazena sob mutex
     if (!s_scan_mux) s_scan_mux = xSemaphoreCreateMutex();
     if (s_scan_mux) {
         if (xSemaphoreTake(s_scan_mux, pdMS_TO_TICKS(2000)) == pdTRUE) {
@@ -219,10 +219,10 @@ static void wifi_build_and_store_scan(void)
             xSemaphoreGive(s_scan_mux);
         } else {
             if (json) free(json);
-            ESP_LOGW(TAG, "prefetch scan: failed to take scan mutex");
+            ESP_LOGW(TAG, "scan prefetch: falha ao pegar mutex scan");
         }
     } else {
-        // no mutex -> leak not ideal, but keep safe fallback
+        // sem mutex -> vazamento não ideal, mas mantém fallback seguro
         if (s_cached_scan_json) free(s_cached_scan_json);
         s_cached_scan_json = json;
         s_cache_ts_ms = esp_timer_get_time() / 1000;
@@ -238,8 +238,8 @@ static void wifi_prefetch_task(void *pv)
     vTaskDelete(NULL);
 }
 
-/* Start an asynchronous scan that will update the cached JSON.
- * If max_age_ms > 0 and the cache is fresh, this is a no-op.
+/* Inicia scan assíncrono que atualizará o JSON cacheado.
+ * Se max_age_ms > 0 e o cache estiver fresco, isso é no-op.
  */
 esp_err_t wifi_manager_prefetch_scan(int max_age_ms)
 {
@@ -249,13 +249,13 @@ esp_err_t wifi_manager_prefetch_scan(int max_age_ms)
         uint32_t age = (s_cache_ts_ms == 0) ? UINT32_MAX : (now - s_cache_ts_ms);
         xSemaphoreGive(s_scan_mux);
         if (max_age_ms > 0 && age < (uint32_t)max_age_ms) {
-            // cache fresh enough
-            ESP_LOGD(TAG, "prefetch: cache fresh (age=%u ms) skip", age);
+            // cache fresco o suficiente
+            ESP_LOGD(TAG, "prefetch: cache fresco (age=%u ms) pulando", age);
             return ESP_OK;
         }
     }
 
-    // spawn background task to do the blocking scan and build JSON
+    // cria tarefa de fundo para scan bloqueante e build JSON
     if (xTaskCreate(wifi_prefetch_task, "wifi_prefetch", 4096, NULL, 3, NULL) != pdPASS) {
         ESP_LOGW(TAG, "prefetch: failed to create task");
         return ESP_ERR_NO_MEM;
@@ -263,8 +263,8 @@ esp_err_t wifi_manager_prefetch_scan(int max_age_ms)
     return ESP_OK;
 }
 
-/* Return a malloc'd JSON string with cached scan results. Caller must free().
- * Returns ESP_OK on success, ESP_ERR_NOT_FOUND if no cache present.
+/* Retorna string JSON alocada com resultados cacheados. Chamador deve liberar.
+ * Retorna ESP_OK em sucesso, ESP_ERR_NOT_FOUND se sem cache.
  */
 esp_err_t wifi_manager_get_cached_scan(char **out_json)
 {

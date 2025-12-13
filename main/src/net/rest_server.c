@@ -1,5 +1,5 @@
 /*
- * Exposes REST routes for the front-end to use internally
+ * Expor rotas REST para o front-end usar internamente
 */
 #include <string.h>
 #include <fcntl.h>
@@ -40,7 +40,7 @@ typedef struct rest_server_context {
     char scratch[SCRATCH_BUFSIZE];
 } rest_server_context_t;
 
-// --- Function Prototypes ---
+// --- Protótipos das Funções ---
 static inline void rs_add_close_hdr(httpd_req_t *req);
 static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap);
 static esp_err_t rs_set_content_type_from_file(httpd_req_t *req, const char *filepath);
@@ -74,27 +74,27 @@ static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req);
 
 static bool rs_read_body(httpd_req_t *req, char *buf, size_t cap) {
     int total = req->content_len;
-    ESP_LOGI(TAG, "rs_read_body called: uri=%s content_len=%d cap=%zu",
+    ESP_LOGI(TAG, "rs_read_body chamada: uri=%s content_len=%d cap=%zu",
              req->uri ? req->uri : "(null)", total, cap);
     if (total <= 0 || total >= (int)cap) {
-        ESP_LOGE(TAG, "Invalid body length: %d (max %zu)", total, cap - 1);
+        ESP_LOGE(TAG, "Tamanho do corpo inválido: %d (max %zu)", total, cap - 1);
         return false;
     }
     int off = 0;
     while (off < total) {
         int r = httpd_req_recv(req, buf + off, total - off);
         if (r <= 0) {
-            ESP_LOGE(TAG, "Failed to read body, recv returned %d", r);
+            ESP_LOGE(TAG, "Falha ao ler o corpo, recv retornou %d", r);
             return false;
         }
         off += r;
     }
     buf[total] = 0;
 
-    // Log a short safe snippet to help debug client payloads (avoid huge logs)
+    // Loga um pequeno trecho seguro para ajudar a depurar payloads (evita logs gigantes)
     int snip = total < 128 ? total : 128;
     char snippet[129]; memcpy(snippet, buf, snip); snippet[snip] = 0;
-    ESP_LOGI(TAG, "rs_read_body: read %d bytes, snippet='%s'%s",
+    ESP_LOGI(TAG, "rs_read_body: lidos %d bytes, snippet='%s'%s",
              total, snippet, (total > snip ? "..." : ""));
 
     return true;
@@ -119,7 +119,7 @@ static esp_err_t rs_set_content_type_from_file(httpd_req_t *req, const char *fil
     return httpd_resp_set_type(req, type);
 }
 
-/* Send HTTP response with the contents of the requested file */
+/* Envia resposta HTTP com o conteúdo do arquivo solicitado */
 static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
 {
     char filepath[FILE_PATH_MAX];
@@ -142,19 +142,19 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
     }
 
     rs_set_content_type_from_file(req, filepath);
-    rs_add_close_hdr(req);   // <--- ensure client won't keep socket alive
+    rs_add_close_hdr(req);   // <--- garante que o cliente não mantenha o socket vivo
 
     char *chunk = rest_context->scratch;
     ssize_t read_bytes;
     do {
-        /* Read file in chunks into the scratch buffer */
+        /* Le o arquivo em partes para o buffer de rascunho */
         read_bytes = fread(chunk, 1, SCRATCH_BUFSIZE, fd);
         if (read_bytes == -1) {
-            ESP_LOGE(TAG, "Failed to read file : %s", filepath);
+            ESP_LOGE(TAG, "Falha ao ler arquivo : %s", filepath);
         } else if (read_bytes > 0) {
-            /* Send the buffer contents as HTTP response chunk */
+            /* Envia o conteúdo do buffer como chunk da resposta HTTP */
             if (httpd_resp_send_chunk(req, chunk, read_bytes) != ESP_OK) {
-                // --- Add a small delay on EAGAIN to allow client to catch up ---
+                // --- Adiciona um pequeno atraso no EAGAIN para permitir que o cliente acompanhe ---
                 if (httpd_get_global_transport_ctx(req->handle) && errno == EAGAIN) {
                     vTaskDelay(pdMS_TO_TICKS(50)); // segura por 50ms
                     if (httpd_resp_send_chunk(req, chunk, read_bytes) == ESP_OK) {
@@ -163,23 +163,23 @@ static esp_err_t rs_rest_common_get_handler(httpd_req_t *req)
                 }
                 fclose(fd);
                 ESP_LOGE(TAG, "Falhou ao enviar arquivo");
-                /* Abort sending file */
+                /* Aborta o envio do arquivo */
                 httpd_resp_sendstr_chunk(req, NULL);
-                /* Respond with 500 Internal Server Error */
+                /* Responde com erro interno 500 */
                 httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Falhou ao enviar arquivo");
                 return ESP_FAIL;
             }
         }
     } while (read_bytes > 0);
-    /* Close file after sending complete */
+    /* Fecha arquivo após completar envio */
     fclose(fd);
     ESP_LOGI(TAG, "Envio realizado com sucesso: %s", filepath);
-    /* Respond with an empty chunk to signal HTTP response completion */
+    /* Responde com um chunk vazio para sinalizar fim da resposta HTTP */
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
 
-/* Simple handler for getting system handler */
+/* Handler simples para obter informações do chipset */
 static esp_err_t rs_system_info_get_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "application/json");
@@ -238,19 +238,19 @@ static esp_err_t test_and_save_wifi_credentials(const char *ssid, const char *pa
             pdFALSE,
             pdMS_TO_TICKS(15000)); // 15-second timeout
 
-    // Unregister handlers and clean up
+    // Remove handlers e limpa
     esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip);
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id);
     vEventGroupDelete(s_wifi_event_group);
     s_wifi_event_group = NULL;
 
-    // If we did not connect, stop the attempt; otherwise keep STA up
+    // Se não conectou, para a tentativa; senão mantem STA ligado
     if (!(bits & WIFI_CONNECTED_BIT)) {
         esp_wifi_disconnect();
     }
 
     if (bits & WIFI_CONNECTED_BIT) {
-        // Connection successful, save credentials
+        // Conexão bem sucedida, salva credenciais
         nvs_handle_t nvs;
         esp_err_t err = nvs_open("wifi", NVS_READWRITE, &nvs);
         if (err != ESP_OK) return err;
@@ -269,11 +269,11 @@ static esp_err_t rs_device_role_clear_post_handler(httpd_req_t *req) {
     nvs_handle_t nvs;
     esp_err_t err = nvs_open("device", NVS_READWRITE, &nvs);
     if (err != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs open failed");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "erro ao abrir nvs");
         return ESP_FAIL;
     }
 
-    // Prevent clearing if setup is already complete
+    // Evita limpar se o setup já estiver completo
     char stage[32] = {0};
     size_t len = sizeof(stage);
     nvs_get_str(nvs, "setup", stage, &len);
@@ -284,7 +284,7 @@ static esp_err_t rs_device_role_clear_post_handler(httpd_req_t *req) {
         return ESP_OK;
     }
 
-    // Erase role and setup stage to go back to the beginning
+    // Apaga papeis e estágio de setup para voltar ao inicio
     nvs_erase_key(nvs, "role");
     nvs_erase_key(nvs, "setup");
     err = nvs_commit(nvs);
@@ -295,7 +295,7 @@ static esp_err_t rs_device_role_clear_post_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Device role and setup stage cleared.");
+    ESP_LOGI(TAG, "Papel do dispositivo e estágio de setup limpos.");
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"ok\",\"role_cleared\":true}");
     return ESP_OK;
@@ -356,7 +356,7 @@ static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
     esp_err_t err = nvs_open("device", NVS_READWRITE, &nvs);
     if (err != ESP_OK) {
         cJSON_Delete(root);
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs open failed");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "erro ao abrir nvs");
         return ESP_FAIL;
     }
     err = nvs_set_str(nvs, "role", role);
@@ -368,11 +368,11 @@ static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Device role set to: %s", role_buf);
+    ESP_LOGI(TAG, "Papel do dispositivo definido para: %s", role_buf);
 
     if (strcmp(role, "WORKER")==0) {
         nvs_set_setup_stage("worker_role_set");  // use helper (was invalid handle)
-        ESP_LOGI(TAG, "Worker role selected; skipping Wi-Fi/cloud provisioning path.");
+        ESP_LOGI(TAG, "Role worker selecionado; pulando provisionamento Wi-Fi/Cloud.");
     } else {
         nvs_set_setup_stage("role_set");
     }
@@ -405,11 +405,11 @@ static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
-    // Copy email to a local buffer before it's freed by cJSON_Delete
+    // Copia email para buffer local antes que seja liberado
     char email_buf[128];
     strlcpy(email_buf, j_email->valuestring, sizeof(email_buf));
 
-    // Validate if the provided login is valid
+    // Valida se o login fornecido é válido
     esp_err_t login_err = rc_login(j_email->valuestring, j_pass->valuestring, false);
 
     if (login_err != ESP_OK) {
@@ -428,22 +428,22 @@ static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
         return ESP_OK;
     }
 
-    ESP_LOGI(TAG, "User credentials validated and saved for email: %s", email_buf);
-    nvs_set_setup_stage("user_saved"); // Advance setup stage
+    ESP_LOGI(TAG, "Credenciais de usuário validadas e salvas para email: %s", email_buf);
+    nvs_set_setup_stage("user_saved"); // Avança estágio de setup
 
-    // After successful login, try to get device info
+    // Após login com sucesso, tenta obter informações do dispositivo
     char *device_json = NULL;
     esp_err_t derr = rc_get_device_by_mac(NULL, &device_json);
     httpd_resp_set_type(req, "application/json");
 
     if (derr == ESP_OK && device_json) {
-        // Safely construct the response JSON
+        // Constrói o JSON de resposta com segurança
         cJSON *resp_root = cJSON_CreateObject();
         if (resp_root) {
             cJSON_AddStringToObject(resp_root, "status", "ok");
             cJSON *device_obj = cJSON_Parse(device_json);
             if (device_obj) {
-                // Persist device name from cloud to NVS so controller beacon can use it
+                // Persiste nome do dispositivo da nuvem no NVS para o beacon do controlador usar
                 cJSON *j_name = cJSON_GetObjectItem(device_obj, "name");
                 if (j_name && cJSON_IsString(j_name) && j_name->valuestring[0]) {
                     nvs_handle_t nvs;
@@ -451,9 +451,9 @@ static esp_err_t rs_user_creds_post_handler(httpd_req_t *req) {
                         nvs_set_str(nvs, "name", j_name->valuestring);
                         nvs_commit(nvs);
                         nvs_close(nvs);
-                        // If ESPNOW beacon already running, update payload immediately
+                        // Se o beacon ESPNOW já estiver rodando, atualiza payload imediatamente
                         espnow_manager_set_controller_name(j_name->valuestring);
-                        ESP_LOGI(TAG, "Persisted device name from cloud into NVS: %s", j_name->valuestring);
+                        ESP_LOGI(TAG, "Nome do dispositivo persistido da nuvem no NVS: %s", j_name->valuestring);
                     }
                 }
                 cJSON_AddItemToObject(resp_root, "device", device_obj);
@@ -511,11 +511,11 @@ static esp_err_t rs_device_debug_post_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
-    // Runtime apply without restart
+    // Aplica em tempo de execução sem reiniciar
     app_set_debug_mode(debug_flag == 1);
 
     httpd_resp_set_type(req, "application/json");
-    // Keep 'restarting' field (false) for frontend compatibility
+    // Mantem campo 'restarting' (false) para compatibilidade com frontend
     httpd_resp_sendstr(req, debug_flag ?
         "{\"status\":\"ok\",\"restarting\":false,\"debug\":true}" :
         "{\"status\":\"ok\",\"restarting\":false,\"debug\":false}");
@@ -533,7 +533,7 @@ static esp_err_t rs_setup_status_get_handler(httpd_req_t *req) {
 
     cJSON *root = cJSON_CreateObject();
 
-    // Load role and stage from NVS
+    // Carrega role e estágio do NVS
     nvs_handle_t nvs;
     if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
         size_t len = sizeof(role);
@@ -546,7 +546,7 @@ static esp_err_t rs_setup_status_get_handler(httpd_req_t *req) {
         cJSON_AddBoolToObject(root, "debug", debug_flag == 1);
     }
 
-    // Check if Wi-Fi creds exist
+    // Checa se credenciais Wi-Fi existem
     nvs_handle_t nvs_wifi;
     if (nvs_open("wifi", NVS_READONLY, &nvs_wifi) == ESP_OK) {
         size_t ssz = sizeof(ssid);
@@ -554,10 +554,10 @@ static esp_err_t rs_setup_status_get_handler(httpd_req_t *req) {
             has_wifi = true;
         }
         nvs_close(nvs_wifi);
-        ssid[0] = '\0'; // don't expose saved SSID here
+        ssid[0] = '\0'; // não expõe o SSID salvo aqui
     }
 
-    // Connection info
+    // Informações de conexão
     wifi_ap_record_t ap_info;
     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
         connected = true;
@@ -583,7 +583,7 @@ static esp_err_t rs_setup_status_get_handler(httpd_req_t *req) {
 
     const char *json = cJSON_PrintUnformatted(root);
 
-    ESP_LOGI(TAG, "Setup status: role=%s, stage=%s, has_wifi=%d, connected=%d, ssid=%s, ip=%s",
+    ESP_LOGI(TAG, "Status setup: role=%s, stage=%s, tem_wifi=%d, conectado=%d, ssid=%s, ip=%s",
              role[0] ? role : "N/A", stage[0] ? stage : "N/A", has_wifi, connected, ssid, ip_str);
 
     httpd_resp_set_type(req, "application/json");
@@ -593,7 +593,7 @@ static esp_err_t rs_setup_status_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* Provisioning handler - save WiFi credentials */
+/* Handler de provisionamento - salva credenciais Wi-Fi */
 static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req)
 {
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
@@ -611,27 +611,27 @@ static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req)
 
     const char *ssid_log = (j_ssid && cJSON_IsString(j_ssid)) ? j_ssid->valuestring : "(null)";
     const char *pass_log = (j_pass && cJSON_IsString(j_pass) && j_pass->valuestring[0] != 0) ? j_pass->valuestring : "(empty)";
-    ESP_LOGI(TAG, "Received Wi-Fi provision data: SSID='%s' PASS='%s'", ssid_log, pass_log);
+    ESP_LOGI(TAG, "Dados de provisionamento Wi-Fi recebidos: SSID='%s' SENHA='%s'", ssid_log, pass_log);
 
     if (!cJSON_IsString(j_ssid) || !cJSON_IsString(j_pass)) {
-        ESP_LOGE(TAG, "Invalid Wi-Fi provision data: %s", buf);
+        ESP_LOGE(TAG, "Dados de provisionamento Wi-Fi inválidos: %s", buf);
         cJSON_Delete(root);
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "ssid/password required");
         return ESP_FAIL;
     }
 
-    // --- REFACTORED: Test connection before saving ---
+    // --- REFATORADO: Testa conexão antes de salvar ---
     esp_err_t err = test_and_save_wifi_credentials(j_ssid->valuestring, j_pass->valuestring);
     cJSON_Delete(root);
 
     if (err == ESP_OK) {
         nvs_set_setup_stage("wifi_saved");
-        ESP_LOGI(TAG, "Wi-Fi credentials tested and saved successfully.");
+        ESP_LOGI(TAG, "Credenciais Wi-Fi testadas e salvas com sucesso.");
         httpd_resp_set_type(req, "application/json");
         httpd_resp_sendstr(req, "{\"status\":\"saved\"}");
         return ESP_OK;
     } else if (err == ESP_ERR_INVALID_STATE) {
-        ESP_LOGW(TAG, "Wi-Fi connection test failed. Credentials not saved.");
+        ESP_LOGW(TAG, "Teste de conexão Wi-Fi falhou. Credenciais não salvas.");
         httpd_resp_set_status(req, "401 Unauthorized");
         httpd_resp_sendstr(req, "{\"error\":\"invalid_credentials\"}");
         return ESP_OK; // Return OK to send custom 401 response
@@ -663,7 +663,7 @@ static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    // Keep AP up while connecting via STA
+    // Mantem o AP ligado enquanto conecta via STA
     esp_wifi_set_mode(WIFI_MODE_APSTA);
     esp_wifi_set_config(WIFI_IF_STA, &cfg);
     esp_wifi_start();
@@ -671,7 +671,7 @@ static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req)
 
     nvs_set_setup_stage("connecting");
 
-    ESP_LOGI(TAG, "Retrying Wi-Fi connection with SSID: %s", cfg.sta.ssid);
+    ESP_LOGI(TAG, "Tentando reconexão Wi-Fi com SSID: %s", cfg.sta.ssid);
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"connecting\"}");
@@ -679,19 +679,19 @@ static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req)
 }
 
 static esp_err_t rs_wifi_scan_get_handler(httpd_req_t *req) {
-    // First try cached prefetch result
+    // Primeiro tenta resultado de cache pré-busca
     char *cached = NULL;
     if (wifi_manager_get_cached_scan(&cached) == ESP_OK && cached) {
         httpd_resp_set_type(req, "application/json");
         httpd_resp_sendstr(req, cached);
         free(cached);
-        ESP_LOGI(TAG, "Served cached Wi-Fi scan results");
+        ESP_LOGI(TAG, "Servindo resultados de scan Wi-Fi do cache");
         return ESP_OK;
     }
     if (cached) free(cached);
 
-    // Fallback to performing immediate scan (existing behavior)
-    // Ensure we're in APSTA so scan can run without dropping AP
+    // Fallback para escanear imediatamente (comportamento existente)
+    // Garante que estamos em APSTA para scan rodar sem derrubar o AP
     wifi_mode_t mode;
     esp_wifi_get_mode(&mode);
     if (mode != WIFI_MODE_APSTA) {
@@ -735,7 +735,7 @@ static esp_err_t rs_wifi_scan_get_handler(httpd_req_t *req) {
     }
     free(ap_records);
 
-    ESP_LOGI(TAG, "Wi-Fi scan found %d APs", ap_num);
+    ESP_LOGI(TAG, "Scan Wi-Fi encontrou %d APs", ap_num);
 
     const char *json = cJSON_PrintUnformatted(root);
     httpd_resp_set_type(req, "application/json");
@@ -754,10 +754,10 @@ static esp_err_t rs_wifi_status_get_handler(httpd_req_t *req) {
     if (sta_netif) {
         esp_netif_ip_info_t ip_info;
         if (esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
-            // We have a valid IP, so we are fully connected.
+            // Temos um IP válido, então estamos totalmente conectados.
             connected = true;
 
-            // Now get AP info, which should be reliable.
+            // Pega info do AP, que deve ser confiável.
             wifi_ap_record_t ap_info;
             if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
                 cJSON_AddStringToObject(root, "ssid", (const char *)ap_info.ssid);
@@ -780,7 +780,7 @@ static esp_err_t rs_wifi_status_get_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* Add handlers to make mobile OSes trigger captive portal UI */
+/* Adiciona handlers para fazer OS mobile disparar UI de captive portal */
 static esp_err_t rs_probe_generate_204_handler(httpd_req_t *req)
 {
     char host[64] = {0}, ua[128] = {0};
@@ -847,7 +847,7 @@ static esp_err_t rs_cloud_meshes_get_handler(httpd_req_t *req) {
         free(meshes_json);
         return ESP_OK;
     }
-    if (err == ESP_ERR_INVALID_STATE) { // Not logged in
+    if (err == ESP_ERR_INVALID_STATE) { // Não logado
         httpd_resp_set_status(req, "401 Unauthorized");
         httpd_resp_sendstr(req, "{\"error\":\"unauthorized\"}");
         return ESP_OK;
@@ -1039,16 +1039,16 @@ static esp_err_t rs_cloud_device_update_post_handler(httpd_req_t *req) {
     }
 
     esp_err_t err = rc_update_device(name, batch, interval, meshId, role);
-    // If role updated locally, persist to NVS
+    // Se role atualizado localmente, persiste no NVS
     if (err == ESP_OK && role && role[0]) {
         if (strcmp(role, "CONTROLLER") == 0 || strcmp(role, "WORKER") == 0) {
             nvs_handle_t nvs;
             if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
                 nvs_set_str(nvs, "role", role);
-                // Persist name if provided
+                // Persiste nome se fornecido
                 if (name && name[0]) {
                     nvs_set_str(nvs, "name", name);
-                    // update beacon name immediately
+                    // atualiza nome beacon imediatamente
                     espnow_manager_set_controller_name(name);
                 }
                 nvs_commit(nvs);
@@ -1102,11 +1102,11 @@ esp_err_t start_rest_server(const char *base_path)
     config.max_uri_handlers = MAX_URI_HANDLERS;
     config.stack_size = 8192; // Increase stack size for TLS operations
 
-    /* --- socket lifecycle tuning to mitigate ENFILE/EMFILE (accept error 23) --- */
-    config.lru_purge_enable = true;      // Reclaim least‑recently used session if max sockets reached
-    config.enable_so_linger = true;      // Enable SO_LINGER on closed sockets
-    config.linger_timeout = 0;           // 0 => send RST on close (frees TIME_WAIT immediately). Use 1–2 if you prefer graceful FIN.
-    // Optionally raise if you increased lwIP limits:
+    /* --- sintonía de ciclo de vida do socket para mitigar ENFILE/EMFILE (erro 23 no accept) --- */
+    config.lru_purge_enable = true;      // Reclama sessão menos usada se max sockets atingido
+    config.enable_so_linger = true;      // Habilita SO_LINGER em sockets fechados
+    config.linger_timeout = 0;           // 0 => envia RST no close (libera TIME_WAIT imediatamente). Use 1-2 se preferir FIN gracioso.
+    // Opcionalmente aumente se tiver aumentado limites do lwIP:
     // config.max_open_sockets = 8;
 
     ESP_LOGI(TAG, "Iniciando servidor HTTP");
@@ -1114,8 +1114,8 @@ esp_err_t start_rest_server(const char *base_path)
 
     wifi_manager_prefetch_scan(30000);
 
-    /* --- REFACTORED: Register a single, global CORS OPTIONS handler --- */
-    /* This should be registered first to catch all OPTIONS requests */
+    /* --- REFATORADO: Registra um handler global CORS OPTIONS --- */
+    /* Deve ser registrado primeiro para capturar todas requisições OPTIONS */
     httpd_uri_t cors_handler = {
         .uri = "/*",
         .method = HTTP_OPTIONS,
@@ -1125,7 +1125,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_register_uri_handler(server, &cors_handler);
 
 
-    /* Register API endpoints (specific paths) */
+    /* Registra endpoints da API (caminhos específicos) */
     httpd_uri_t system_info_get_uri = {
         .uri = "/api/v1/system/info",
         .method = HTTP_GET,
@@ -1174,7 +1174,7 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &user_creds_post_uri);
 
-    // user registration endpoint
+    // endpoint de registro de usuário
     httpd_uri_t user_register_post_uri = {
         .uri = "/api/v1/provision/register",
         .method = HTTP_POST,
@@ -1215,7 +1215,7 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &wifi_status_get_uri);
 
-    // --- registrations for cloud integration ---
+    // --- registros para integração com nuvem ---
     httpd_uri_t cloud_device_get_uri = {
         .uri = "/api/v1/cloud/device",
         .method = HTTP_GET,
@@ -1251,7 +1251,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_register_uri_handler(server, &cloud_device_register_post_uri);
 
 
-    // device update handler
+    // handler de atualização do dispositivo
     httpd_uri_t cloud_device_update_post_uri = {
         .uri = "/api/v1/cloud/device/update",
         .method = HTTP_POST,
@@ -1269,7 +1269,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_register_uri_handler(server, &setup_complete_post_uri);
 
 
-    /* Register captive portal probe handlers (specific paths) */
+    /* Registra handlers de captive portal (caminhos específicos) */
     rs_register_captive_handlers(server, rest_context);
 
     // Traz os controllers encontrados durante a escaneamento
@@ -1289,7 +1289,7 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &worker_bind_post);
 
-    // último fallback para o resto dos GETs
+    // fallback comum para o resto dos GETs
     httpd_uri_t common_get_uri = {
         .uri = "/*",
         .method = HTTP_GET,
@@ -1307,11 +1307,11 @@ err:
     return ret;
 }
 
-//  --- ADD forward declarations for captive probe handlers & registrar ---
+//  --- ADICIONADO declaracoes forward para handlers de captive probe & registrar ---
 static esp_err_t rs_probe_generate_204_handler(httpd_req_t *req);
 static esp_err_t rs_probe_hotspot_detect_handler(httpd_req_t *req);
 
-// Registrar to fix implicit declaration error
+// Registrar para corrigir erro de declaração implícita
 static void rs_register_captive_handlers(httpd_handle_t server, rest_server_context_t *ctx) {
     httpd_uri_t probe_generate_204 = {
         .uri      = "/generate_204",          // Android
@@ -1338,7 +1338,7 @@ static void rs_register_captive_handlers(httpd_handle_t server, rest_server_cont
     };
     httpd_register_uri_handler(server, &probe_ncsi);
 
-    // Generic catch for some OEMs
+    // Captura genérica para alguns OEMs
     httpd_uri_t probe_fwlink = {
         .uri      = "/fwlink",
         .method   = HTTP_GET,
@@ -1347,7 +1347,7 @@ static void rs_register_captive_handlers(httpd_handle_t server, rest_server_cont
     };
     httpd_register_uri_handler(server, &probe_fwlink);
 
-    // The main "/*" handler in start_rest_server will now handle general captive redirects.
+    // O handler principal "/*" em start_rest_server agora cuidará dos redirects captive gerais.
 }
 
 static inline void rs_add_close_hdr(httpd_req_t *req) {
@@ -1355,9 +1355,9 @@ static inline void rs_add_close_hdr(httpd_req_t *req) {
 }
 
 /* --- POST /api/v1/setup/complete ---
- * Marks provisioning as complete and restarts device so main task starts sensor flow. */
+ * Marca provisionamento como completo e reinicia dispositivo para tarefa principal começar ciclo de sensor. */
 static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req) {
-    // No body needed, but consume if present
+    // Nenhum corpo necessário, mas consome se presente
     if (req->content_len > 0) {
         char *scratch = ((rest_server_context_t*)req->user_ctx)->scratch;
         if (!rs_read_body(req, scratch, SCRATCH_BUFSIZE)) {
@@ -1366,10 +1366,10 @@ static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req) {
         }
     }
     nvs_set_setup_stage("complete");
-    ESP_LOGI(TAG, "Setup marked complete. Restarting to begin sensor cycle.");
+    ESP_LOGI(TAG, "Setup marcado como completo. Reiniciando para começar ciclo de sensor.");
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"ok\",\"restarting\":true}");
-    // Allow response flush
+    // Permite flush da resposta
     vTaskDelay(pdMS_TO_TICKS(150));
     esp_restart();
     return ESP_OK;
@@ -1377,9 +1377,9 @@ static esp_err_t rs_setup_complete_post_handler(httpd_req_t *req) {
 
 /* GET /api/v1/controllers/scan */
 static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
-    ESP_LOGI(TAG, "Controller scan request received.");
+    ESP_LOGI(TAG, "Requisição de scan de controladores recebida.");
 
-    // Read query string (optional params: fast, ms, force)
+    // Lê string de query (params opcionais: fast, ms, force)
     char query[128] = {0};
     bool fast = false;
     bool force = false;
@@ -1394,8 +1394,8 @@ static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
         }
     }
 
-    // If a fresh scan wasn't explicitly requested, prefer the cached pre-provision results
-    // saved by [`wifi_boot_flow`](main/src/app/sensornest.c) under NVS key "pre_ctrls".
+    // Se um scan fresco não foi explicitamente pedido, prefere resultados cacheados de pre-provisionamento
+    // salvos pelo `wifi_boot_flow` (no sensornest.c) sob chave NVS "pre_ctrls".
     if (!force && !fast) {
         nvs_handle_t nvs;
         if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
@@ -1408,17 +1408,17 @@ static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
                     httpd_resp_sendstr(req, buf);
                     free(buf);
                     nvs_close(nvs);
-                    ESP_LOGI(TAG, "Served cached pre-provision controller list (len=%u).", (unsigned)needed);
+                    ESP_LOGI(TAG, "Servido lista de controladores pré-provisionamento cacheada (len=%u).", (unsigned)needed);
                     return ESP_OK;
                 }
                 free(buf);
             }
             nvs_close(nvs);
         }
-        ESP_LOGI(TAG, "No cached controller list or client requested fresh scan; proceeding with active scan.");
+        ESP_LOGI(TAG, "Sem lista de controladores cacheada ou cliente pediu scan fresco; procedendo com scan ativo.");
     }
 
-    // Optional query param ?ms=5000 (reuse existing query buffer)
+    // Param de query opcional ?ms=5000 (reusa buffer de query existente)
     int duration_ms = 5000;
     if (query[0] == 0) httpd_req_get_url_query_str(req, query, sizeof(query));
     if (query[0]) {
@@ -1430,27 +1430,27 @@ static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
     }
 
     if (!espnow_manager_is_initialized()) {
-        ESP_LOGW(TAG, "ESPNOW not initialized yet on worker provisioning; initializing now.");
+        ESP_LOGW(TAG, "ESPNOW não inicializado ainda no provisionamento worker; inicializando agora.");
         esp_err_t ie = espnow_manager_init();
         if (ie != ESP_OK) {
-            ESP_LOGE(TAG, "ESPNOW init failed in scan handler: %s", esp_err_to_name(ie));
+            ESP_LOGE(TAG, "Falha init ESPNOW no handler scan: %s", esp_err_to_name(ie));
         } else {
-            ESP_LOGI(TAG, "ESPNOW init success in scan handler.");
+            ESP_LOGI(TAG, "Sucesso init ESPNOW no handler scan.");
         }
     } else {
-        ESP_LOGD(TAG, "ESPNOW already initialized, proceeding with scan.");
+        ESP_LOGD(TAG, "ESPNOW já inicializado, procedendo com scan.");
     }
 
     char *json = NULL;
     esp_err_t err = espnow_manager_collect_controllers(duration_ms, &json);
     httpd_resp_set_type(req, "application/json");
     if (err == ESP_OK && json) {
-        ESP_LOGI(TAG, "Controller scan success (duration=%d) payload_len=%d", duration_ms, (int)strlen(json));
+        ESP_LOGI(TAG, "Sucesso scan controladores (duração=%d) payload_len=%d", duration_ms, (int)strlen(json));
         httpd_resp_sendstr(req, json);
         free(json);
         return ESP_OK;
     }
-    ESP_LOGW(TAG, "Controller scan failed (%s) (inited=%d) duration=%d",
+    ESP_LOGW(TAG, "Scan controladores falhou (%s) (inited=%d) duração=%d",
              esp_err_to_name(err), espnow_manager_is_initialized(), duration_ms);
     httpd_resp_set_status(req, "500 Internal Server Error");
     httpd_resp_sendstr(req, "{\"error\":\"scan_failed\"}");
@@ -1459,26 +1459,26 @@ static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
 
 /* POST /api/v1/worker/bind  body: { "name":"Worker1","controllerMac":"AA:BB:.."} */
 static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req) {
-    ESP_LOGI(TAG, "rs_worker_bind_post_handler invoked: uri=%s method=%d content_len=%d",
+    ESP_LOGI(TAG, "rs_worker_bind_post_handler invocado: uri=%s method=%d content_len=%d",
              req->uri ? req->uri : "(null)", (int)req->method, req->content_len);
-
+    
     char host_hdr[128] = {0}, ct_hdr[64] = {0}, ua_hdr[128] = {0};
     httpd_req_get_hdr_value_str(req, "Host", host_hdr, sizeof(host_hdr));
     httpd_req_get_hdr_value_str(req, "Content-Type", ct_hdr, sizeof(ct_hdr));
     httpd_req_get_hdr_value_str(req, "User-Agent", ua_hdr, sizeof(ua_hdr));
-    ESP_LOGI(TAG, "Incoming headers: Host=%s Content-Type=%s UA=%s",
+    ESP_LOGI(TAG, "Headers entrada: Host=%s Content-Type=%s UA=%s",
              host_hdr[0] ? host_hdr : "(none)", ct_hdr[0] ? ct_hdr : "(none)", ua_hdr[0] ? ua_hdr : "(none)");
 
     char *buf = ((rest_server_context_t*)req->user_ctx)->scratch;
     if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
-        ESP_LOGW(TAG, "rs_worker_bind_post_handler: failed to read body");
+        ESP_LOGW(TAG, "rs_worker_bind_post_handler: falha ao ler corpo");
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body"); return ESP_FAIL;
     }
-    ESP_LOGI(TAG, "rs_worker_bind_post_handler: body read successfully (%d bytes)", (int)strlen(buf));
+    ESP_LOGI(TAG, "rs_worker_bind_post_handler: corpo lido com sucesso (%d bytes)", (int)strlen(buf));
 
     cJSON *root = cJSON_Parse(buf);
     if (!root) {
-        ESP_LOGW(TAG, "rs_worker_bind_post_handler: bad json body='%s'", buf);
+        ESP_LOGW(TAG, "rs_worker_bind_post_handler: corpo json ruim='%s'", buf);
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad json"); return ESP_FAIL;
     }
     cJSON *j_name = cJSON_GetObjectItem(root,"name");
@@ -1505,24 +1505,24 @@ static esp_err_t rs_worker_bind_post_handler(httpd_req_t *req) {
         err = nvs_set_str(nvs, "controller_mac", j_mac->valuestring);
         if (err == ESP_OK) err = nvs_set_u8(nvs, "controller_ch", ch);
         if (err == ESP_OK) err = nvs_set_str(nvs, "name", j_name->valuestring);
-        if (err == ESP_OK) err = nvs_set_str(nvs, "setup", "complete"); // Mark setup as complete
+        if (err == ESP_OK) err = nvs_set_str(nvs, "setup", "complete"); // Marca setup como completo
         if (err == ESP_OK) err = nvs_commit(nvs);
         nvs_close(nvs);
     } else {
-        ESP_LOGW(TAG, "Failed to open NVS for writing: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, "Falha ao abrir NVS para escrita: %s", esp_err_to_name(err));
     }
 
     cJSON_Delete(root);
     httpd_resp_set_type(req,"application/json");
     httpd_resp_sendstr(req,"{\"status\":\"ok\",\"restarting\":true}");
     vTaskDelay(pdMS_TO_TICKS(150));
-    ESP_LOGI(TAG, "rs_worker_bind_post_handler: restarting now");
+    ESP_LOGI(TAG, "rs_worker_bind_post_handler: reiniciando agora");
     esp_restart();
     return ESP_OK;
 }
 
 /* --- POST /api/v1/provision/register ---
- * Registers a new user in the cloud, then logs in and returns initial state. */
+ * Registra novo usuário na nuvem, então loga e retorna estado inicial. */
 static esp_err_t rs_user_register_post_handler(httpd_req_t *req) {
     char *buf = ((rest_server_context_t *)(req->user_ctx))->scratch;
     if (!rs_read_body(req, buf, SCRATCH_BUFSIZE)) {
@@ -1560,7 +1560,7 @@ static esp_err_t rs_user_register_post_handler(httpd_req_t *req) {
     if (err == ESP_OK) {
         nvs_set_setup_stage("user_saved");
 
-        // Optionally return current device (same behavior as saving creds)
+        // Opcionalmente retorna dispositivo atual (mesmo comportamento de salvar credenciais)
         char *device_json = NULL;
         esp_err_t derr = rc_get_device_by_mac(NULL, &device_json);
         if (derr == ESP_OK && device_json) {
@@ -1569,7 +1569,7 @@ static esp_err_t rs_user_register_post_handler(httpd_req_t *req) {
                 cJSON_AddStringToObject(resp_root, "status", "ok");
                 cJSON *device_obj = cJSON_Parse(device_json);
                 if (device_obj) {
-                    // Persist device name from cloud for controller beacon if present
+                    // Persiste nome do dispositivo da nuvem para beacon do controlador se presente
                     cJSON *j_name_dev = cJSON_GetObjectItem(device_obj, "name");
                     if (j_name_dev && cJSON_IsString(j_name_dev) && j_name_dev->valuestring[0]) {
                         nvs_handle_t nvs;
@@ -1592,7 +1592,7 @@ static esp_err_t rs_user_register_post_handler(httpd_req_t *req) {
             free(device_json);
             return ESP_OK;
         }
-        // Default minimal success payload
+        // Payload de sucesso mínimo padrão
         httpd_resp_sendstr(req, "{\"status\":\"ok\",\"registered\":true,\"loggedIn\":true}");
         return ESP_OK;
     }

@@ -24,9 +24,9 @@ static device_role_t load_role_from_nvs_old(void) {
     if (nvs_open("device", NVS_READONLY, &nvs) == ESP_OK) {
         size_t len = sizeof(buf);
         if (nvs_get_str(nvs, "role", buf, &len) == ESP_OK) {
-            ESP_LOGI(TAG_RM, "Loaded role from NVS: %s", buf);
+            ESP_LOGI(TAG_RM, "Papel carregado da NVS: %s", buf);
         } else {
-            ESP_LOGI(TAG_RM, "Role not set in NVS yet.");
+            ESP_LOGI(TAG_RM, "Papel ainda não definido na NVS.");
         }
         nvs_close(nvs);
     }
@@ -38,16 +38,16 @@ esp_err_t role_manager_start(void) {
         s_cached = load_role_from_nvs_old();
 
     if (s_cached == DEVICE_ROLE_UNKNOWN) {
-        ESP_LOGW(TAG_RM, "Role UNKNOWN: staying idle until provisioning sets role.");
+        ESP_LOGW(TAG_RM, "Papel DESCONHECIDO: ficando ocioso até provisionamento definir papel.");
         return ESP_ERR_INVALID_STATE;
     }
 
     switch (s_cached) {
         case DEVICE_ROLE_WORKER:
-            ESP_LOGI(TAG_RM, "Starting WORKER role logic.");
+            ESP_LOGI(TAG_RM, "Iniciando lógica de papel WORKER.");
             return worker_role_start();
         case DEVICE_ROLE_CONTROLLER:
-            ESP_LOGI(TAG_RM, "Starting CONTROLLER role logic.");
+            ESP_LOGI(TAG_RM, "Iniciando lógica de papel CONTROLLER.");
             return controller_role_start();
         default:
             return ESP_ERR_INVALID_ARG;

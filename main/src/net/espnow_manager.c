@@ -45,7 +45,7 @@ static discovered_ctrl_t s_ctrls[MAX_DISCOVERED];
 static int s_ctrl_count = 0;
 static bool s_collect_mode = false;
 
-/* --- Controller beacon task --- */
+/* --- Tarefa de beacon do controlador --- */
 static TaskHandle_t s_beacon_task = NULL;
 static char s_beacon_name[33] = "Controller";
 static int s_beacon_interval_ms = 2000;
@@ -56,17 +56,17 @@ static void internal_recv_cb(const esp_now_recv_info_t *info, const uint8_t *dat
 static void espnow_manager_task(void *pvParameter);
 static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data, int len);
 
-// prebuilt beacon payload to avoid per-loop snprintf stack usage
+// payload de beacon pré-construído para evitar uso de pilha por snprintf por loop
 static uint8_t s_beacon_payload[64];
 static size_t  s_beacon_payload_len = 0;
 #define CTRL_BEACON_STACK   3072  // words (~12 KB). Adjust if still low.
 
-/* Single beacon send */
+/* Envio único de beacon */
 static void send_controller_beacon_once(bool log_always) {
     if (!s_inited || s_beacon_payload_len == 0) return;
 
-    // Explicitly use the AP interface for beacons to control the channel.
-    // The STA interface channel will be dictated by the connected router.
+    // Usa explicitamente interface AP para beacons controlarem o canal.
+    // A interface STA ter o canal ditado pelo roteador conectado.
     esp_now_peer_info_t peer = {
         .ifidx = WIFI_IF_AP,
         .channel = 0, // Use the current channel of the specified interface (AP)
@@ -74,7 +74,7 @@ static void send_controller_beacon_once(bool log_always) {
     };
     memcpy(peer.peer_addr, (uint8_t[6]){0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}, 6);
 
-    // Add/modify peer to ensure it's on the correct interface and channel
+    // Adiciona/modifica peer para garantir interface e canal corretos
     if (!esp_now_is_peer_exist(peer.peer_addr)) {
         esp_now_add_peer(&peer);
     } else {
@@ -89,7 +89,7 @@ static void send_controller_beacon_once(bool log_always) {
     }
 }
 
-// New helper: rebuild payload whenever name changes
+// Novo auxiliar: reconstroi payload sempre que nome muda
 static void update_beacon_payload_locked(void) {
     uint8_t ch = 0;
     wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
@@ -105,7 +105,7 @@ static void update_beacon_payload_locked(void) {
              (int)s_beacon_payload_len, (int)s_beacon_payload_len, s_beacon_payload);
 }
 
-/* --- Beacon task --- */
+/* --- Tarefa de beacon --- */
 static void beacon_task(void *arg) {
     ESP_LOGI(TAG_EN, "Tarefa de beacon do controller iniciada (pilha=%u)",
              (unsigned)uxTaskGetStackHighWaterMark(NULL));
@@ -157,7 +157,7 @@ static void internal_recv_cb(const esp_now_recv_info_t *info, const uint8_t *dat
     }
 }
 
-/* Parse controller beacons */
+/* Parseia beacons do controlador */
 static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data, int len) {
     ESP_LOGD(TAG_EN, "Beacon candidate len=%d from %02X:%02X:%02X:%02X:%02X:%02X",
              len, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
@@ -240,8 +240,8 @@ static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data,
 //     espnow_recv_cb_wrapper(mac, data, len, ifidx);
 // }
 
-/* Add unicast send that prefers controller MAC, falls back to broadcast.
- * Existing helpers set/get controller MAC (already declared in header).
+/* Adiciona envio unicast que prefere MAC do controlador, recai para broadcast.
+ * Auxiliares existentes configuram/obtem MAC do controlador (já declarado no header).
  */
 esp_err_t espnow_manager_send_to_controller(const void *data, size_t len) {
     if (!s_inited || !data || len == 0) return ESP_ERR_INVALID_STATE;
@@ -454,7 +454,7 @@ esp_err_t espnow_manager_enable_power_saving(void) {
     #endif
 }
 
-// --- Main Processing Task ---
+// --- Tarefa Principal de Processamento ---
 
 static void espnow_manager_task(void *pvParameter) {
     espnow_mgr_event_t evt;
@@ -486,7 +486,7 @@ static void espnow_manager_task(void *pvParameter) {
     }
 }
 
-/* Send data to a specific MAC address. */
+/* Envia dados para um endereço MAC específico. */
 esp_err_t espnow_manager_send_to_mac(const uint8_t *mac, const void *data, size_t len) {
     if (!s_inited || !mac || !data || len == 0) return ESP_ERR_INVALID_STATE;
     if (len > ESP_NOW_MAX_DATA_LEN) {
@@ -494,13 +494,13 @@ esp_err_t espnow_manager_send_to_mac(const uint8_t *mac, const void *data, size_
         len = ESP_NOW_MAX_DATA_LEN;
     }
 
-    // Ensure peer exists before sending
+    // Garante que peer existe antes de enviar
     if (!esp_now_is_peer_exist(mac)) {
         esp_now_peer_info_t peer = {0};
         memcpy(peer.peer_addr, mac, 6);
         peer.ifidx = WIFI_IF_STA; // Default to STA, can be refined
-        peer.channel = 0; // Use current channel
-        peer.encrypt = false; // Using PMK, so this is false
+        peer.channel = 0; // Usa canal atual
+        peer.encrypt = false; // Usando PMK, então isso é false
         esp_err_t add_err = esp_now_add_peer(&peer);
         if (add_err != ESP_OK && add_err != ESP_ERR_ESPNOW_EXIST) {
             ESP_LOGE(TAG_EN, "Failed to add peer %02X:%02X:%02X:%02X:%02X:%02X, error: %s",
@@ -512,7 +512,7 @@ esp_err_t espnow_manager_send_to_mac(const uint8_t *mac, const void *data, size_
     return esp_now_send(mac, (const uint8_t *)data, len);
 }
 
-/* Replace old esp_now_register_recv_cb call site */
+/* Substitui antigo local de chamada esp_now_register_recv_cb */
 esp_err_t espnow_manager_send_broadcast(const void *data, size_t len) {
     if (!s_inited) return ESP_ERR_INVALID_STATE;
     if (!data || len == 0) return ESP_ERR_INVALID_ARG;
@@ -529,8 +529,8 @@ esp_err_t espnow_manager_send_broadcast(const void *data, size_t len) {
 }
 
 
-// OPTIONAL helper to force channel (call from REST endpoint for debugging)
-/* Force Wi-Fi channel for ESP-NOW (STA must be disconnected): */
+// Auxiliar OPCIONAL para forçar canal (chamar do endpoint REST para debug)
+/* Força canal Wi-Fi para ESP-NOW (STA deve estar desconectado): */
 esp_err_t espnow_manager_debug_set_channel(uint8_t ch) {
     if (ch < 1 || ch > 13) return ESP_ERR_INVALID_ARG;
     esp_err_t e = esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
@@ -550,11 +550,11 @@ void espnow_manager_set_controller_name(const char *name)
              s_beacon_name, s_beacon_task ? "running" : "stopped");
 }
 
-// Static storage for optional controller MAC (kept in RAM)
+// Armazenamento estático para MAC opcional do controlador (mantido na RAM)
 static uint8_t s_controller_mac[6];
 static bool    s_have_controller_mac = false;
 
-/* Store controller MAC in RAM (NULL clears). */
+/* Armazena MAC do controlador na RAM (NULL limpa). */
 void espnow_manager_set_controller_mac(const uint8_t mac[6])
 {
     if (!mac) {
@@ -570,7 +570,7 @@ void espnow_manager_set_controller_mac(const uint8_t mac[6])
              s_controller_mac[3], s_controller_mac[4], s_controller_mac[5]);
 }
 
-/* Retrieve controller MAC if set. Returns true if MAC was copied. */
+/* Recupera MAC do controlador se definido. Retorna true se MAC foi copiado. */
 bool espnow_manager_get_controller_mac(uint8_t mac[6])
 {
     if (!s_have_controller_mac) return false;

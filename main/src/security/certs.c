@@ -1,6 +1,6 @@
 #include "security/certs.h"
 
-/* Root CA certificate (PEM) */
+/* Certificado CA Raiz (PEM) */
 
 const char *cloud_ca_pem = \
 "-----BEGIN CERTIFICATE-----\n" \

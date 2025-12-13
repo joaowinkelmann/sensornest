@@ -118,12 +118,12 @@ static void _hw_set_color(uint8_t r, uint8_t g, uint8_t b) {
 
 #define INDICATOR_MAX_LEDS 1
 static led_strip_handle_t s_strip = NULL;
-static SemaphoreHandle_t s_strip_mutex = NULL; // Add mutex for thread safety
+static SemaphoreHandle_t s_strip_mutex = NULL; // Adiciona mutex para segurança de thread
 
 static void _hw_led_init(void) {
     if (s_strip) return; // Já inicializou
     
-    // Create mutex if not already created
+    // Cria mutex se não criado ainda
     if (!s_strip_mutex) {
         s_strip_mutex = xSemaphoreCreateMutex();
     }
@@ -144,7 +144,7 @@ static void _hw_led_init(void) {
     
     esp_err_t ret = led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strip);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG_IND, "Failed to create LED strip: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG_IND, "Falha ao criar fita de LED: %s", esp_err_to_name(ret));
         return;
     }
     
@@ -155,17 +155,17 @@ static void _hw_led_init(void) {
 static void _hw_set_color(uint8_t r, uint8_t g, uint8_t b) {
     if (!s_inited || !s_strip || !s_strip_mutex) return;
     
-    // Take mutex with timeout to prevent blocking
+    // Tenta mutex com timeout para previnir travamento
     if (xSemaphoreTake(s_strip_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         esp_err_t ret = led_strip_set_pixel(s_strip, 0, r, g, b);
         if (ret == ESP_OK) {
             led_strip_refresh(s_strip);
         } else {
-            ESP_LOGW(TAG_IND, "LED set failed: %s", esp_err_to_name(ret));
+            ESP_LOGW(TAG_IND, "Set LED falhou: %s", esp_err_to_name(ret));
         }
         xSemaphoreGive(s_strip_mutex);
     } else {
-        ESP_LOGW(TAG_IND, "Failed to acquire LED mutex, skipping color update");
+        ESP_LOGW(TAG_IND, "Falha ao adquirir mutex do LED, pulando update de cor");
     }
 }
 
@@ -208,7 +208,7 @@ static void led_indicator_start_task(TaskFunction_t task_func, const char *task_
         ESP_LOGD(TAG_IND, "Parando tarefa de LED anterior antes de iniciar a nova.");
         led_indicator_stop_task();
     }
-    // Increase stack size from 2048 to 4096 to prevent overflow
+    // Aumenta pilha para 4096 para previnir overflow
     if (xTaskCreate(task_func, task_name, 4096, NULL, 2, &s_indicator_task) != pdPASS) {
         ESP_LOGE(TAG_IND, "Falha ao criar a tarefa %s", task_name);
         s_indicator_task = NULL;
@@ -381,10 +381,10 @@ void led_indicator_flash_worker_debug(void) {
 void led_indicator_flash_success(void) {
     if (!s_inited) led_indicator_init();
     
-    // Create task with higher stack and priority to ensure it runs
+    // Cria tarefa com pilha maior e prioridade para garantir execução
     if (xTaskCreate(success_flash_task, "led_success", 3072, NULL, 4, NULL) != pdPASS) {
-        ESP_LOGW(TAG_IND, "Failed to create success flash task, trying direct execution");
-        // Fallback to direct execution if task creation fails
+        ESP_LOGW(TAG_IND, "Falha ao criar tarefa sucesso, tentando execução direta");
+        // Fallback para execução direta se criar tarefa falhar
         #if CONFIG_IDF_TARGET_ESP32C3
             _hw_set_brightness(255);
         #else

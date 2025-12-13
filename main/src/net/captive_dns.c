@@ -48,7 +48,7 @@ typedef struct {
 
 static int dns_socket = -1;
 
-// Function to get the AP IP address
+// Função para obter endereço IP do AP
 static uint32_t get_ap_ip_address(void) {
     esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
     if (ap_netif == NULL) {
@@ -66,7 +66,7 @@ static uint32_t get_ap_ip_address(void) {
     return ip_info.ip.addr;
 }
 
-// Parse domain name from DNS query and return query type
+// Parseia nome de domínio da query DNS e retorna tipo
 static int parse_dns_query(const uint8_t *packet, size_t packet_len, char *domain, size_t domain_size) {
     if (packet_len < DNS_HEADER_SIZE + 5) { // minimum query size
         return -1;
@@ -142,7 +142,7 @@ static int parse_dns_query(const uint8_t *packet, size_t packet_len, char *domai
     return qtype;
 }
 
-// Create DNS response packet
+// Cria pacote de resposta DNS
 static size_t create_dns_response(const uint8_t *query_packet, size_t query_len, 
                                   uint8_t *response_packet, size_t response_max_len,
                                   uint32_t redirect_ip) {
@@ -180,7 +180,7 @@ static uint32_t rl_window_start_ms = 0;
 static uint16_t rl_count_in_window = 0;
 static TaskHandle_t dns_task_handle = NULL;
 
-// Helper to decide if we should answer (drops excess to reduce load)
+// Auxiliar para decidir se deve responder (descarta excesso para reduzir carga)
 static bool dns_rate_allowed(void) {
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000); // current time in ms
     if (rl_window_start_ms == 0 || (now - rl_window_start_ms) >= 1000) {
@@ -192,7 +192,7 @@ static bool dns_rate_allowed(void) {
     return true;
 }
 
-// Main DNS server function
+// Função principal do servidor DNS
 static void dns_server_task(void *pvParameters) {
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_addr_len;
@@ -200,23 +200,23 @@ static void dns_server_task(void *pvParameters) {
     uint8_t response_buffer[DNS_MAX_PACKET_SIZE];
     char domain_name[256];
 
-    // Get the AP IP address to redirect to
+    // Obtém endereço IP do AP para redirecionar
     uint32_t ap_ip = get_ap_ip_address();
     
-    // Create UDP socket
+    // Cria socket UDP
     dns_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (dns_socket < 0) {
         ESP_LOGE(TAG, "Failed to create DNS socket: errno=%d", errno);
         goto cleanup;
     }
     
-    // Set socket options for reuse
+    // Configura opções de socket para reuso
     int opt = 1;
     if (setsockopt(dns_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
         ESP_LOGW(TAG, "Failed to set SO_REUSEADDR: errno=%d", errno);
     }
     
-    // Bind socket to DNS port
+    // Faz bind do socket na porta DNS
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
@@ -233,11 +233,11 @@ static void dns_server_task(void *pvParameters) {
     ESP_LOGI(TAG, "Servidor DNS iniciado na porta %d, redirecionando todas as consultas para " IPSTR,
              DNS_PORT, IP2STR((esp_ip4_addr_t*)&ap_ip));
     
-    // Main DNS server loop
+    // Loop principal do servidor DNS
     while (1) {
         client_addr_len = sizeof(client_addr);
         
-        // Receive DNS query
+        // Recebe query DNS
         ssize_t packet_len = recvfrom(dns_socket, packet_buffer, sizeof(packet_buffer), 0,
                                       (struct sockaddr *)&client_addr, &client_addr_len);
         
@@ -259,7 +259,7 @@ static void dns_server_task(void *pvParameters) {
             continue;
         }
         
-        // Parse the DNS query
+        // Parseia a query DNS
         domain_name[0] = '\0';
         int query_type = parse_dns_query(packet_buffer, packet_len, domain_name, sizeof(domain_name));
         
@@ -271,7 +271,7 @@ static void dns_server_task(void *pvParameters) {
         ESP_LOGD(TAG, "DNS query from %s: '%s' (type %d)",
                  inet_ntoa(client_addr.sin_addr), domain_name, query_type);
         
-        // Only respond to A record queries (type 1)
+        // Responde apenas queries de registro A (tipo 1)
         if (query_type != 1) {
             ESP_LOGD(TAG, "Ignoring non-A record query for '%s' (type %d)", domain_name, query_type);
             continue;
@@ -282,7 +282,7 @@ static void dns_server_task(void *pvParameters) {
             continue;
         }
         
-        // Create response packet
+        // Cria pacote de resposta
         size_t response_len = create_dns_response(packet_buffer, packet_len, 
                                                   response_buffer, sizeof(response_buffer), ap_ip);
         
@@ -291,7 +291,7 @@ static void dns_server_task(void *pvParameters) {
             continue;
         }
         
-        // Send DNS response
+        // Envia resposta DNS
         ssize_t sent_bytes = sendto(dns_socket, response_buffer, response_len, 0,
                                     (struct sockaddr *)&client_addr, client_addr_len);
         
@@ -303,7 +303,7 @@ static void dns_server_task(void *pvParameters) {
                      domain_name, IP2STR((esp_ip4_addr_t*)&ap_ip), (int)response_len);
         }
         
-        // Brief delay to prevent overwhelming the log
+        // Breve atraso para evitar sobrecarregar o log
         vTaskDelay(pdMS_TO_TICKS(1));
     }
     
@@ -317,20 +317,20 @@ cleanup:
     vTaskDelete(NULL);
 }
 
-// Public function to start the captive DNS server (called from main app)
+// Função pública para iniciar o servidor DNS captive (chamada do app principal)
 void captive_dns_task(void *pv) {
     if (dns_task_handle) {
         ESP_LOGW(TAG, "Captive DNS already running");
         return;
     }
-    // Launch actual server in this same task context (original behavior) OR create new task.
-    // Keep original behavior (blocking) but mark handle:
+    // Lançar o servidor real neste mesmo contexto de tarefa (comportamento original) OU criar uma nova tarefa.
+    // Manter o comportamento original (bloqueante), mas marcar o handle:
     dns_task_handle = xTaskGetCurrentTaskHandle();
     vTaskDelay(pdMS_TO_TICKS(2000));
     dns_server_task(pv);
 }
 
-// Optional: Function to stop DNS server (if needed for cleanup)
+// Opcional: Função para parar servidor DNS (se necessário para limpeza)
 void captive_dns_stop(void) {
     if (dns_socket >= 0) {
         ESP_LOGI(TAG, "Stopping captive DNS server...");

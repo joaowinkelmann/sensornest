@@ -25,7 +25,7 @@ esp_err_t sensor_init(void) {
 }
 
 bool sensor_is_available(void) {
-    return s_inited; /* Later: could add self‑test */
+    return s_inited; /* Futuro: poderia adicionar auto-teste */
 }
 
 static void fill_simulated(sensor_reading_t *out) {
@@ -41,7 +41,7 @@ esp_err_t sensor_read_once(bool simulate, sensor_reading_t *out) {
 
     if (simulate) {
         fill_simulated(out);
-        ESP_LOGD(SENSOR_TAG, "Simulated reading: T=%.1fC H=%.1f%%", out->temperature, out->humidity);
+        ESP_LOGD(SENSOR_TAG, "Leitura simulada: T=%.1fC H=%.1f%%", out->temperature, out->humidity);
         return ESP_OK;
     }
 
@@ -52,17 +52,17 @@ esp_err_t sensor_read_once(bool simulate, sensor_reading_t *out) {
         vTaskDelay(pdMS_TO_TICKS(DHT_PULLUP_MS));
         last = dht_read_data(DHT_TYPE, DHT_GPIO, &raw_h, &raw_t);
         if (last == ESP_OK) break;
-        ESP_LOGW(SENSOR_TAG, "DHT read fail (%d/%d): %s", attempt + 1, DHT_MAX_RETRIES, esp_err_to_name(last));
+        ESP_LOGW(SENSOR_TAG, "Falha leitura DHT (%d/%d): %s", attempt + 1, DHT_MAX_RETRIES, esp_err_to_name(last));
     }
 
     if (last != ESP_OK) {
-        ESP_LOGE(SENSOR_TAG, "DHT final failure: %s", esp_err_to_name(last));
+        ESP_LOGE(SENSOR_TAG, "Falha final DHT: %s", esp_err_to_name(last));
         return last;
     }
 
     out->temperature = (float)raw_t / 10.0f;
     out->humidity    = (float)raw_h / 10.0f;
     time(&out->timestamp);
-    ESP_LOGI(SENSOR_TAG, "Reading: T=%.1fC H=%.1f%%", out->temperature, out->humidity);
+    ESP_LOGI(SENSOR_TAG, "Leitura: T=%.1fC H=%.1f%%", out->temperature, out->humidity);
     return ESP_OK;
 }

@@ -51,7 +51,7 @@ esp_err_t batch_store_build_json(char **out_json) {
         cJSON_Delete(root);
         return ESP_ERR_NO_MEM;
     }
-    // API requires key "data"
+    // API requer chave "data"
     cJSON_AddItemToObject(root, "data", arr);
 
     uint8_t mac[6];
@@ -70,14 +70,14 @@ esp_err_t batch_store_build_json(char **out_json) {
         cJSON_AddNumberToObject(obj, "temp", r->temperature);
         cJSON_AddNumberToObject(obj, "hum", r->humidity);
 
-        // Optional readingTime (server uses processing time if omitted)
-        // Format: YYYY-MM-DDTHH:MM:SS.000Z
+        // Opcional readingTime (servidor usa hora de processamento se omitido)
+        // Formato: YYYY-MM-DDTHH:MM:SS.000Z
         char iso[32];
         struct tm tm_info;
         gmtime_r(&r->timestamp, &tm_info);
-        // seconds
+        // segundos
         strftime(iso, sizeof(iso), "%Y-%m-%dT%H:%M:%S", &tm_info);
-        // append milliseconds + Z
+        // adiciona milissegundos + Z
         strlcat(iso, ".000Z", sizeof(iso));
         cJSON_AddStringToObject(obj, "readingTime", iso);
 
@@ -91,6 +91,6 @@ esp_err_t batch_store_build_json(char **out_json) {
     }
     *out_json = printed;
     cJSON_Delete(root);
-    ESP_LOGI(TAG_BS, "Built JSON payload (%d readings).", s_count);
+    ESP_LOGI(TAG_BS, "Payload JSON construído (%d leituras).", s_count);
     return ESP_OK;
 }

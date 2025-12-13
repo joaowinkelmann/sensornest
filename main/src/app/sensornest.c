@@ -177,15 +177,15 @@ void collect_and_send_task(void) {
                 if (!g_debug_mode_enabled) {
                     esp_wifi_disconnect();
                     esp_wifi_stop();
-                    ESP_LOGI(TAG, "Wi-Fi stopped.");
+                    ESP_LOGI(TAG, "Wi-Fi parado.");
                 } else {
-                    ESP_LOGI(TAG, "[SIM] Keeping Wi-Fi session (debug mode).");
+                    ESP_LOGI(TAG, "[SIM] Mantendo sessão Wi-Fi (modo debug).");
                 }
             } else {
                 ESP_LOGE(TAG, "Conexão Wi-Fi falhou. Tentando novamente na próxima vez.");
             }
         } else {
-            ESP_LOGI(TAG, "Batch incomplete (%d/%d).", batch_store_count(), device_readingsPerBatch);
+            ESP_LOGI(TAG, "Lote incompleto (%d/%d).", batch_store_count(), device_readingsPerBatch);
         }
 
         // Simula ou realiza o sleep real
@@ -512,10 +512,10 @@ bool app_get_debug_mode(void) {
 }
 void app_set_debug_mode(bool enabled) {
     g_debug_mode_enabled = enabled;
-    ESP_LOGW(TAG, "Debug mode %s", enabled ? "ENABLED" : "DISABLED");
+    ESP_LOGW(TAG, "Modo Debug %s", enabled ? "ATIVADO" : "DESATIVADO");
 }
 bool app_get_force_simulate_readings(void) { return g_force_simulate_readings; }
 void app_set_force_simulate_readings(bool en) {
     g_force_simulate_readings = en;
-    ESP_LOGW(TAG, "Force simulate readings %s", en ? "ENABLED" : "DISABLED");
+    ESP_LOGW(TAG, "Simulação de leituras %s", en ? "ATIVADO" : "DESATIVADO");
 }
