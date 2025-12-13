@@ -162,7 +162,7 @@ static void controller_main_task(void *arg) {
     for (;;) {
         // Checa e processa lotes de workers frequentemente
         if (s_worker_batch_count > 0) {
-            ESP_LOGI(TAG_CR, "Preparing combined batch (local=%d worker_batches=%d)", batch_store_count(), s_worker_batch_count);
+            ESP_LOGI(TAG_CR, "Preparando lote combinado (local=%d lotes_trabalhador=%d)", batch_store_count(), s_worker_batch_count);
             if (wifi_manager_connect_saved(15000)) {
                 ensure_time();
                 fetch_remote_config();
@@ -174,26 +174,26 @@ static void controller_main_task(void *arg) {
                         ESP_LOGI(TAG_CR, "Lote combinado postado com sucesso.");
                         batch_store_clear(); // Também limpa leituras locais que foram fundidas
                     } else {
-                        ESP_LOGW(TAG_CR, "Combined batch post failed; will retry.");
+                        ESP_LOGW(TAG_CR, "Envio de lote combinado falhou; tentará novamente.");
                     }
                     free(merged_json);
                 }
             } else {
-                ESP_LOGW(TAG_CR, "Wi-Fi connect failed; will retry next interval.");
+                ESP_LOGW(TAG_CR, "Conexão Wi-Fi falhou; tentará no próximo intervalo.");
             }
         } else if (!s_controller_sensor_disabled && batch_store_count() >= device_readingsPerBatch) {
             // Processa lote local-apenas se estiver cheio
-            ESP_LOGI(TAG_CR, "Preparing local-only batch (count=%d)", batch_store_count());
+            ESP_LOGI(TAG_CR, "Preparando lote apenas local (contagem=%d)", batch_store_count());
             if (wifi_manager_connect_saved(15000)) {
                 ensure_time();
                 fetch_remote_config();
                 char *local_json = NULL;
                 if (batch_store_build_json(&local_json) == ESP_OK && local_json) {
                     if (rc_post_readings(local_json) == ESP_OK) {
-                        ESP_LOGI(TAG_CR, "Local batch posted successfully.");
+                        ESP_LOGI(TAG_CR, "Lote local enviado com sucesso.");
                         batch_store_clear();
                     } else {
-                        ESP_LOGW(TAG_CR, "Local batch post failed; retaining.");
+                        ESP_LOGW(TAG_CR, "Envio de lote local falhou; mantendo.");
                     }
                     free(local_json);
                 }
@@ -206,7 +206,7 @@ static void controller_main_task(void *arg) {
             // ALTERADO: inclui flag force-simulate
             if (sensor_read_once(s_debug || app_get_force_simulate_readings(), &r) == ESP_OK &&
                 batch_store_add(&r) == ESP_OK) {
-                ESP_LOGI(TAG_CR, "Stored local reading #%d (T=%.1f H=%.1f)", batch_store_count(), r.temperature, r.humidity);
+                ESP_LOGI(TAG_CR, "Leitura local armazenada #%d (T=%.1f H=%.1f)", batch_store_count(), r.temperature, r.humidity);
             }
         }
 
@@ -229,7 +229,7 @@ static bool ensure_controller_mesh_id(void) {
 
     char *device_json = NULL;
     if (rc_get_device_by_mac(NULL, &device_json) != ESP_OK || !device_json) {
-        ESP_LOGW(TAG_CR, "ensure_controller_mesh_id: failed to fetch controller device.");
+        ESP_LOGW(TAG_CR, "ensure_controller_mesh_id: falha ao buscar dispositivo controlador.");
         return false;
     }
     bool ok = false;
@@ -242,7 +242,7 @@ static bool ensure_controller_mesh_id(void) {
             ok = true;
             ESP_LOGI(TAG_CR, "Controller meshId=%s", s_controller_mesh_id);
         } else {
-            ESP_LOGW(TAG_CR, "ensure_controller_mesh_id: meshId missing in device JSON.");
+            ESP_LOGW(TAG_CR, "ensure_controller_mesh_id: meshId ausente no JSON do dispositivo.");
         }
         cJSON_Delete(root);
     }
@@ -259,13 +259,13 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
 
         const char *name = (const char*)recv_info->data + strlen(BIND_PREFIX);
         if (!name || !name[0]) {
-            ESP_LOGW(TAG_CR, "BIND received with empty name. Ignoring.");
+            ESP_LOGW(TAG_CR, "BIND recebido com nome vazio. Ignorando.");
             return;
         }
 
         // Garante que temos meshId do controlador
         if (!ensure_controller_mesh_id()) {
-            ESP_LOGW(TAG_CR, "Cannot register worker; controller meshId unknown.");
+            ESP_LOGW(TAG_CR, "Não é possível registrar trabalhador; meshId do controlador desconhecido.");
             return;
         }
 
@@ -287,12 +287,12 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
         );
 
         if (r == ESP_OK) {
-            ESP_LOGI(TAG_CR, "Worker device '%s' (MAC=%s) registered/bound to mesh=%s.", name, mac_str, s_controller_mesh_id);
+            ESP_LOGI(TAG_CR, "Dispositivo Trabalhador '%s' (MAC=%s) registrado/vinculado à malha=%s.", name, mac_str, s_controller_mesh_id);
             // Opcional: notifica worker (não estritamente necessário). Exemplo:
             // const char *ok = "REGOK";
             // espnow_manager_send_to_mac(recv_info->mac_addr, (const uint8_t*)ok, strlen(ok));
         } else {
-            ESP_LOGW(TAG_CR, "Failed to register worker '%s' (MAC=%s): %s", name, mac_str, esp_err_to_name(r));
+            ESP_LOGW(TAG_CR, "Falha ao registrar trabalhador '%s' (MAC=%s): %s", name, mac_str, esp_err_to_name(r));
         }
         return;
     }
@@ -322,7 +322,7 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
 }
 
 esp_err_t controller_role_start(void) {
-    ESP_LOGI(TAG_CR, "Controller role starting (debug=%d).", s_debug);
+    ESP_LOGI(TAG_CR, "Função Controlador iniciando (debug=%d).", s_debug);
 
     // Inicializa gerenciador ESPNOW e registra nossos callbacks
     espnow_manager_init();
@@ -334,7 +334,7 @@ esp_err_t controller_role_start(void) {
         ensure_time();
         fetch_remote_config();
     } else {
-        ESP_LOGW(TAG_CR, "Initial Wi-Fi connect failed. Time/config will be fetched later.");
+        ESP_LOGW(TAG_CR, "Conexão Wi-Fi inicial falhou. Tempo/configuração serão buscados depois.");
     }
 
     /* Começa a pulsar LED se modo debug */
@@ -374,7 +374,7 @@ esp_err_t controller_role_start(void) {
                     NULL,
                     CONTROLLER_MAIN_PRIO,
                     NULL) != pdPASS) {
-        ESP_LOGE(TAG_CR, "Failed to create controller_main task.");
+        ESP_LOGE(TAG_CR, "Falha ao criar tarefa controller_main.");
         return ESP_ERR_NO_MEM;
     }
     return ESP_OK;

@@ -353,7 +353,7 @@ retry_auth:
     }
     if (status == 200) {
         *out_json = acc.buf;
-        ESP_LOGI(RC_TAG, "device encontrado com successo pelo MAC (%d bytes)", (int)acc.len);
+        ESP_LOGI(RC_TAG, "device encontrado com sucesso pelo MAC (%d bytes)", (int)acc.len);
         return ESP_OK;
     }
     if (status == 401) {
@@ -410,7 +410,7 @@ retry_auth:
         esp_http_client_cleanup(client);
 
         if (err == ESP_ERR_HTTP_CONNECT) {
-            ESP_LOGW(RC_TAG, "meshes fetch timeout conexão (tentativa %d/3)", attempt);
+            ESP_LOGW(RC_TAG, "malhas fetch timeout conexão (tentativa %d/3)", attempt);
             if (attempt < 3) vTaskDelay(pdMS_TO_TICKS(1500));
             continue;
         }
@@ -418,29 +418,29 @@ retry_auth:
     }
 
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "meshes fetch erro HTTP: %s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "malhas fetch erro HTTP: %s", esp_err_to_name(err));
         free(acc.buf);
         return err;
     }
     if (status == 200) {
         *out_json = acc.buf;
-        ESP_LOGI(RC_TAG, "meshes fetch sucesso (%d bytes)", (int)acc.len);
+        ESP_LOGI(RC_TAG, "malhas fetch sucesso (%d bytes)", (int)acc.len);
         return ESP_OK;
     }
     if (status == 401) {
-        ESP_LOGW(RC_TAG, "meshes fetch 401 -> re-auth & retry");
+        ESP_LOGW(RC_TAG, "malhas fetch 401 -> re-auth & retry");
         free(acc.buf);
         if (rc_force_reauth() == ESP_OK && rc_get_token(token, sizeof(token))) {
             goto retry_auth;
         }
         return ESP_ERR_INVALID_STATE;
     }
-    ESP_LOGW(RC_TAG, "meshes fetch status=%d body=%s", status, acc.buf ? acc.buf : "");
+    ESP_LOGW(RC_TAG, "malhas fetch status=%d body=%s", status, acc.buf ? acc.buf : "");
     free(acc.buf);
     return (status == 0) ? ESP_ERR_HTTP_CONNECT : ESP_FAIL;
 }
 
-/* Cria uma nova mesh para o usuário autenticado */
+/* Cria uma nova malha para o usuário autenticado */
 esp_err_t rc_create_mesh(const char *name, double lat, double lon) {
     if (!name || !name[0]) return ESP_ERR_INVALID_ARG;
 
@@ -519,7 +519,7 @@ esp_err_t rc_update_device(const char *name, int readingsPerBatch, int wakeUpInt
     // 1. Obtém objeto completo do dispositivo para achar ID
     esp_err_t err = rc_get_device_by_mac(NULL, &device_json);
     if (err != ESP_OK) {
-        ESP_LOGE(RC_TAG, "update_device: não conseguiu pegar detalhes do device first. err=%s", esp_err_to_name(err));
+        ESP_LOGE(RC_TAG, "update_device: não conseguiu pegar detalhes do dispositivo. err=%s", esp_err_to_name(err));
         return err;
     }
     if (!device_json) return ESP_FAIL;
@@ -587,7 +587,7 @@ retry_once:
         return err;
     }
     if (status >= 200 && status < 300) {
-        ESP_LOGI(RC_TAG, "update_device: sucesso. Device %s atualizado", device_id);
+        ESP_LOGI(RC_TAG, "update_device: sucesso. Dispositivo %s atualizado", device_id);
         return ESP_OK;
     }
     if (status == 401) {
