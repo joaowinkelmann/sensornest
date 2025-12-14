@@ -41,7 +41,7 @@ vi.mock('vue-router', () => ({
   createWebHistory: vi.fn(),
 }));
 
-import { useRouter, useRoute } from 'vue-router';
+
 import apiClient from '@/api';
 
 vi.mock('@/api', () => ({
