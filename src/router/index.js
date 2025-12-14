@@ -21,6 +21,11 @@ const routes = [
     component: RegisterView,
   },
   {
+    path: '/reset-password',
+    name: 'reset-password',
+    component: LoginView,
+  },
+  {
     path: '/',
     component: MainLayout,
     meta: { requiresAuth: true },
@@ -69,11 +74,7 @@ const routes = [
         name: 'data',
         component: () => import('@/views/data/DataView.vue'),
       },
-      {
-        path: 'reset-password',
-        name: 'reset-password',
-        component: LoginView,
-      },
+
     ],
   },
   // Catch-all redirect
