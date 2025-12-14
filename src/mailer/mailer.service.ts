@@ -12,7 +12,7 @@ export class MailerService {
     private readonly nestMailerService: NestMailerService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async sendTestEmail() {
     const message = `This is a test email.`;
@@ -42,7 +42,7 @@ export class MailerService {
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async sendMonthlyReports() {
     this.logger.log('Sending monthly reports...');
-    // keep track of execution time
+    // monitora o tempo de execução
     const start = Date.now();
 
     const users = await this.prisma.user.findMany({

@@ -14,7 +14,7 @@ type ReadingAgg = {
 
 @Injectable()
 export class StatisticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private async getStatistics(
     model: 'device' | 'zone' | 'mesh',
@@ -167,7 +167,7 @@ export class StatisticsService {
   }
 
   async getDeviceGraph(deviceId: string): Promise<GraphReturnDto> {
-    // Helper to group readings by hour/day
+    // Auxiliar para agrupar leituras por hora/dia
     const groupByPeriod = async (
       period: 'hour' | 'day',
       since: Date,
@@ -205,7 +205,7 @@ export class StatisticsService {
         avgTemperature:
           vals.temperature.length > 0
             ? vals.temperature.reduce((a, b) => a + b, 0) /
-              vals.temperature.length
+            vals.temperature.length
             : 0,
         avgHumidity:
           vals.humidity.length > 0

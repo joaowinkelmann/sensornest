@@ -15,7 +15,7 @@ export class UsersService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly mailerService: MailerService,
-  ) {}
+  ) { }
 
   async findOne(username: string) {
     return await this.prismaService.user.findUnique({
@@ -35,16 +35,16 @@ export class UsersService {
   }
 
   async create(email: string, password: string, name?: string) {
-    // Check if user already exists
+    // Verifica se o usuário já existe
     const existingUser = await this.findByEmail(email);
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
     }
 
-    // Hash the password
+    // Gera o hash da senha
     const hashedPassword = await argon2.hash(password);
 
-    // Create the user
+    // Cria o usuário
     return await this.prismaService.user.create({
       data: {
         email,

@@ -26,17 +26,14 @@ export class TilerService {
     this.logger.debug(
       `Starting tile generation from image buffer: length=${buffer.length} meshId=${meshId}`,
     );
-    // // Prefer a short, deterministic id when meshId is present; otherwise random
-    // const id = meshId
-    //   ? crypto.createHash('sha256').update(`mesh:${meshId}`).digest('hex').slice(0, 40)
-    //   : crypto.randomUUID();
 
-    // Removed update based on meshId, avoiding cache-miss when we change the background image. This way, we ensure a different URL every time the tile is updated.
+
+    // Remove a atualização baseada no meshId para evitar cache-miss ao alterar a imagem de fundo. Assim, garantimos uma URL diferente a cada atualização dos tiles.
     const id = crypto.randomUUID();
 
     const prefix = `custom-maps/${id}`;
 
-    // Configurable output format (default webp for better size), quality/effort
+    // Formato de saída configurável (padrão webp por ser menor), qualidade/esforço
     const envFmt = (process.env.MAP_TILE_FORMAT || 'webp').toLowerCase();
     const format: 'png' | 'webp' = envFmt === 'png' ? 'png' : 'webp';
     const quality = Number.isFinite(Number(process.env.MAP_TILE_QUALITY))
@@ -47,7 +44,7 @@ export class TilerService {
       : 4;
     const ext: 'png' | 'webp' = format;
 
-    // Normalize orientation
+    // Normaliza a orientação
     const base = sharp(buffer, { limitInputPixels: false }).rotate();
     const baseMeta = await base.metadata();
     const width = baseMeta.width ?? 0;
@@ -57,20 +54,19 @@ export class TilerService {
       throw new Error('Invalid image: missing dimensions');
     }
 
-    // Tile size (default 256)
+    // Tamanho do tile (padrão 256)
     const tileSize = Number.isFinite(Number(process.env.MAP_TILE_SIZE))
       ? Math.max(64, Math.min(1024, Number(process.env.MAP_TILE_SIZE)))
       : 256;
 
-    // Compute an auto maxZoom so the image uses as many world tiles as possible at the top level.
-    // World tiles per axis at z is 2^z. We want 2^z >= ceil(dim / tileSize).
+    // Calcula um maxZoom automático para que a imagem use o máximo de tiles possível no nível superior.
     const tilesXNative = Math.max(1, Math.ceil(width / tileSize));
     const tilesYNative = Math.max(1, Math.ceil(height / tileSize));
     const autoMaxZoom = Math.ceil(
       Math.log2(Math.max(tilesXNative, tilesYNative)),
     );
 
-    // Always build up to a fixed max zoom (inclusive). Default is auto; override with MAP_MAX_ZOOM if numeric.
+    // Sempre constrói até um max zoom fixo (inclusivo)
     const envMaxZoom = process.env.MAP_MAX_ZOOM;
     const maxZoom =
       envMaxZoom && Number.isFinite(Number(envMaxZoom))
@@ -85,13 +81,13 @@ export class TilerService {
       `Generating tiles up to maxZoom=${maxZoom} (levels 0..${maxZoom}), tileSize=${tileSize}`,
     );
 
-    // Generate pyramid: z = 0..maxZoom (z=maxZoom uses original dimensions)
+    // Gera pirâmide: z = 0..maxZoom (z=maxZoom usa dimensões originais)
     for (let z = 0; z <= maxZoom; z++) {
       const scale = 1 / Math.pow(2, maxZoom - z);
       const targetW = Math.max(1, Math.round(width * scale));
       const targetH = Math.max(1, Math.round(height * scale));
 
-      // Resize once from the normalized base; preserve AR
+      // Redimensiona uma vez a partir da base normalizada; preserva AR
       const resizedBuf = await base
         .clone()
         .resize(targetW, targetH, { fit: 'inside', withoutEnlargement: true })
@@ -102,17 +98,17 @@ export class TilerService {
       const rW = rMeta.width ?? targetW;
       const rH = rMeta.height ?? targetH;
 
-      // Define the world canvas for this zoom (pixel space). We won’t allocate the full canvas; we’ll
-      // compute the minimal bounding tile region and composite into that to avoid huge buffers.
+      // Define o canvas mundial para este zoom (espaço pixel). Não alocamos o canvas inteiro;
+      // calculamos a região mínima de tiles delimitadores e compomos nela para evitar buffers enormes.
       const worldTiles = 2 ** z;
       const canvasWorldW = worldTiles * tileSize;
       const canvasWorldH = worldTiles * tileSize;
 
-      // Center the resized image in pixel space (not in tile units) to avoid half-tile rounding.
+      // Centraliza a imagem redimensionada no espaço pixel (não em unidades de tile) para evitar arredondamento de meio tile.
       const leftWorldPx = Math.floor((canvasWorldW - rW) / 2);
       const topWorldPx = Math.floor((canvasWorldH - rH) / 2);
 
-      // Compute the minimal world tile range that intersects the image
+      // Calcula o intervalo mínimo de tiles mundiais que intercepta a imagem
       const minX = Math.max(0, Math.floor(leftWorldPx / tileSize));
       const maxX = Math.min(
         worldTiles - 1,
@@ -128,14 +124,14 @@ export class TilerService {
       const spanY = Math.max(0, maxY - minY + 1);
 
       if (spanX === 0 || spanY === 0) {
-        continue; // nothing visible at this zoom
+        continue; // nada visível neste zoom
       }
 
-      // Build a small local canvas covering just the intersecting tile region
+      // Constrói um pequeno canvas local cobrindo apenas a região de tiles interceptados
       const localCanvasW = spanX * tileSize;
       const localCanvasH = spanY * tileSize;
 
-      // Position of the image inside the local canvas
+      // Posição da imagem dentro do canvas local
       const localLeft = leftWorldPx - minX * tileSize;
       const localTop = topWorldPx - minY * tileSize;
 

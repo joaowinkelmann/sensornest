@@ -49,7 +49,7 @@ export class UploaderService {
         process.env.OCI_USER ?? '',
         process.env.OCI_FINGERPRINT ?? '',
         privateKey,
-        null, // passphrase
+        null, // senha
       );
 
       this.client = new objectstorage.ObjectStorageClient({
@@ -72,7 +72,7 @@ export class UploaderService {
   }
 
   getBaseUrl(): string {
-    // Public URL base for objects
+    // URL base pública para objetos
     return `https://objectstorage.${this.region}.oraclecloud.com/n/${this.namespaceName}/b/${this.bucketName}/o`;
   }
 

@@ -14,7 +14,7 @@ export class MeshesService {
     private prisma: PrismaService,
     private tiler: TilerService,
     private uploader: UploaderService,
-  ) {}
+  ) { }
 
   async create(createMeshDto: CreateMeshDto, userId: string) {
     return await this.prisma.mesh.create({
@@ -55,7 +55,7 @@ export class MeshesService {
     });
   }
 
-  // Generates tiles and uploads them to OCI. Returns the Leaflet tile URL template.
+  // Gera os tiles (ladrilhos) e faz upload para o OCI. Retorna o template de URL do Leaflet.
   async uploadMap(
     file: MultipartFile & { buffer: Buffer },
     userId: string,
@@ -70,7 +70,7 @@ export class MeshesService {
       throw new BadRequestException('Nenhum meshId fornecido');
     }
 
-    // Support both memory and disk storage
+    // Suporta armazenamento em memória e disco
     const buffer = file.buffer;
 
     if (!buffer) {
@@ -101,7 +101,7 @@ export class MeshesService {
     if (meshId && userId) {
       const mesh = await this.findOne(meshId, userId);
       if (mesh) {
-        // let updated_mesh = await this.prisma.mesh.update({
+
         await this.prisma.mesh.update({
           where: { id: meshId },
           data: { mapUrl, mapMinZoom: 0, mapMaxZoom: maxZoom },

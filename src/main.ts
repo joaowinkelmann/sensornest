@@ -16,11 +16,11 @@ async function bootstrap() {
 
   await app.register(multipart as any, {
     limits: {
-      fileSize: 1024 * 1024 * 5, // 5mb- max file size
-      fieldNameSize: 100, // 100 bytes- max field name size
-      fields: 10, // 10 files- max number of fields
-      fieldSize: 100, // 100 bytes- max field value size
-      files: 5, // 5 files- max number of files
+      fileSize: 1024 * 1024 * 5, // 5mb - tamanho máximo do arquivo
+      fieldNameSize: 100, // 100 bytes - tamanho máximo do nome do campo
+      fields: 10, // 10 campos - número máximo de campos
+      fieldSize: 100, // 100 bytes - tamanho máximo do valor do campo
+      files: 5, // 5 arquivos - número máximo de arquivos
     },
   });
 

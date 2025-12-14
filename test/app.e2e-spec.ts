@@ -130,7 +130,7 @@ describe('App E2E', () => {
       },
     });
 
-    // Seed rich readings for the worker device
+    // Semeia leituras para o dispositivo worker
     const workerDevice = await prisma.device.findUnique({
       where: { macAddress: knownWorkerMac },
     });
@@ -156,7 +156,7 @@ describe('App E2E', () => {
       }
     }
 
-    // Create separate mesh and zone for stats tests
+    // Cria mesh e zone separadas para testes de estatísticas
     const statsMesh = await prisma.mesh.upsert({
       where: { id: statsTestMeshId },
       update: {},
@@ -185,7 +185,7 @@ describe('App E2E', () => {
       },
     });
 
-    // Create a separate device for statistics tests with NO initial readings
+    // Cria um dispositivo separado para testes de estatísticas SEM leituras iniciais
     await prisma.device.upsert({
       where: { macAddress: statsTestMac },
       update: {},
@@ -423,7 +423,7 @@ describe('App E2E', () => {
     //   const fs = require('fs');
     //   const form = new FormData();
 
-    //   // Read file into buffer first
+    // Lê o arquivo para o buffer primeiro
     //   const fileBuffer = await fsPromises.readFile(sampleImagePath);
 
     //   form.append('file', fileBuffer, {
@@ -434,7 +434,7 @@ describe('App E2E', () => {
 
     //   const fastifyInstance = app.getHttpAdapter().getInstance();
 
-    //   // Get form buffer using the callback-based getBuffer method
+    // Obtém o buffer do formulário usando o método getBuffer baseado em callback
     //   const formBuffer = await new Promise<Buffer>((resolve, reject) => {
     //     form.getBuffer((err: Error | null, buffer: Buffer) => {
     //       if (err) reject(err);
@@ -504,7 +504,7 @@ describe('App E2E', () => {
         hums.reduce((a, b) => a + b, 0) / hums.length;
 
       beforeAll(async () => {
-        // Use the dedicated stats test device instead of knownWorkerMac
+        // Usa o dispositivo de teste de estatísticas dedicado em vez do knownWorkerMac
         await request(app.getHttpServer())
           .post('/readings/add')
           .set('Authorization', `Bearer ${accessToken}`)
@@ -697,7 +697,7 @@ describe('App E2E', () => {
       });
 
       it('retorna dados para gráficos do dispositivo', async () => {
-        // Use knownWorkerMac which has 56 readings over 14 days
+        // Usa knownWorkerMac que tem 56 leituras ao longo de 14 dias
         const workerRes = await request(app.getHttpServer())
           .get(`/devices/mac/${knownWorkerMac}`)
           .set('Authorization', `Bearer ${accessToken}`)
@@ -717,7 +717,7 @@ describe('App E2E', () => {
         expect(res.body).toHaveProperty('month');
         expect(Array.isArray(res.body.month)).toBe(true);
 
-        // Verify day has multiple buckets (4 readings per day, grouped by hour)
+        // Verifica se o dia tem múltiplos buckets (4 leituras por dia, agrupadas por hora)
         expect(res.body.day.length).toBeGreaterThan(0);
         res.body.day.forEach((bucket: any) => {
           expect(bucket).toHaveProperty('bucket');
@@ -727,7 +727,7 @@ describe('App E2E', () => {
           expect(typeof bucket.avgHumidity).toBe('number');
         });
 
-        // Verify week has multiple buckets (14 days of data, grouped by day)
+        // Verifica se a semana tem múltiplos buckets (14 dias de dados, agrupados por dia)
         expect(res.body.week.length).toBeGreaterThan(0);
         res.body.week.forEach((bucket: any) => {
           expect(bucket).toHaveProperty('bucket');
@@ -735,7 +735,7 @@ describe('App E2E', () => {
           expect(bucket).toHaveProperty('avgHumidity');
         });
 
-        // Verify month has multiple buckets (14 days of data, grouped by day)
+        // Verifica se o mês tem múltiplos buckets (14 dias de dados, agrupados por dia)
         expect(res.body.month.length).toBeGreaterThan(0);
         expect(res.body.month.length).toBeLessThanOrEqual(15); // Allow 14-15 days due to partial day boundaries
         res.body.month.forEach((bucket: any) => {

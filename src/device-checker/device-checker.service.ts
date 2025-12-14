@@ -11,9 +11,9 @@ export class DeviceCheckerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
-  // A helper function to parse time strings like "1 day", "2 hours", etc.
+  // Helper para interpretar strings de tempo como "1 day", "2 hours", etc. (como o strtotime do PHP)
   private parseTimeString(timeString: string): number {
     const [value, unit] = timeString.split(' ');
     const intValue = parseInt(value, 10);
@@ -35,7 +35,7 @@ export class DeviceCheckerService {
     }
   }
 
-  // @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+
   // uma vez a cada 30 minutos
   @Cron(CronExpression.EVERY_30_MINUTES)
   async handleCron() {
@@ -43,7 +43,7 @@ export class DeviceCheckerService {
 
     const timeBeforeInactiveString = this.configService.get<string>(
       'TIME_BEFORE_DEVICE_INACTIVE',
-      '1 day', // Default to 1 day
+      '1 day', // Padrão de 1 dia
     );
     const timeBeforeInactive = this.parseTimeString(timeBeforeInactiveString);
     const cutoffDate = new Date(Date.now() - timeBeforeInactive);
@@ -75,7 +75,7 @@ export class DeviceCheckerService {
           );
         }
       } else {
-        // If device has no readings, check its creation date
+        // Se o dispositivo não tiver leituras, verifica a data de criação
         if (device.insDthr < cutoffDate) {
           await this.prisma.device.update({
             where: { id: device.id },

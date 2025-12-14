@@ -14,7 +14,7 @@ import { Device as PrismaDevice } from '@prisma/client';
 @Injectable()
 export class DevicesService {
   private readonly logger = new Logger(DevicesService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(
     createDeviceDto: CreateDeviceDto,
@@ -25,7 +25,7 @@ export class DevicesService {
       `Create device payload: ${JSON.stringify(createDeviceDto)}`,
     );
 
-    // Validate required fields
+    // Valida campos obrigatórios
     if (!createDeviceDto.macAddress) {
       this.logger.error(
         `Device creation failed: Missing macAddress for user ${userId}`,
@@ -52,7 +52,7 @@ export class DevicesService {
     }
 
     try {
-      // Check if device with same MAC already exists
+      // Verifica se um dispositivo com o mesmo MAC já existe
       const existingDevice = await this.prisma.device.findUnique({
         where: { macAddress: createDeviceDto.macAddress },
       });
