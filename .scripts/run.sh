@@ -73,9 +73,4 @@ fi
 log "Saving PM2 configuration..."
 pm2 save || handle_error "Failed to save PM2 configuration"
 
-log "Setting up PM2 startup..."
-pm2 startup | grep -v "ignore" > /tmp/pm2_startup_command.sh
-chmod +x /tmp/pm2_startup_command.sh
-/tmp/pm2_startup_command.sh || log "Warning: PM2 startup command may require sudo privileges. Run the generated command manually."
-
 log "Deployment completed successfully"
