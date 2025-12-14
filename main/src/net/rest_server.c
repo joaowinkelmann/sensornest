@@ -34,7 +34,7 @@ static const char *TAG = "REST_SERVER";
 #define SCRATCH_BUFSIZE (10240)
 #define MAX_URI_HANDLERS 32
 
-// Move struct definition before using its type in prototype
+// Move definição de struct antes de usar seu tipo em protótipo
 typedef struct rest_server_context {
     char base_path[ESP_VFS_PATH_MAX + 1];
     char scratch[SCRATCH_BUFSIZE];
@@ -236,7 +236,7 @@ static esp_err_t test_and_save_wifi_credentials(const char *ssid, const char *pa
             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
             pdFALSE,
             pdFALSE,
-            pdMS_TO_TICKS(15000)); // 15-second timeout
+            pdMS_TO_TICKS(15000)); // Timeout de 15 segundos
 
     // Remove handlers e limpa
     esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip);
@@ -371,7 +371,7 @@ static esp_err_t rs_device_role_post_handler(httpd_req_t *req) {
     ESP_LOGI(TAG, "Papel do dispositivo definido para: %s", role_buf);
 
     if (strcmp(role, "WORKER")==0) {
-        nvs_set_setup_stage("worker_role_set");  // use helper (was invalid handle)
+        nvs_set_setup_stage("worker_role_set");  // usa auxiliar (era handle inválido)
         ESP_LOGI(TAG, "Role worker selecionado; pulando provisionamento Wi-Fi/Cloud.");
     } else {
         nvs_set_setup_stage("role_set");
@@ -642,7 +642,7 @@ static esp_err_t rs_wifi_provision_post_handler(httpd_req_t *req)
     }
 }
 
-/* Provisioning handler - retry connection using saved credentials */
+/* Handler de provisionamento, tenta reconexão usando credenciais salvas */
 static esp_err_t rs_wifi_retry_post_handler(httpd_req_t *req)
 {
     wifi_config_t cfg;
@@ -948,10 +948,9 @@ static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req) {
     int x = (j_x && cJSON_IsNumber(j_x)) ? j_x->valueint : 0;
     int y = (j_y && cJSON_IsNumber(j_y)) ? j_y->valueint : 0;
 
-    // Copy role (and optionally name) before deleting cJSON to avoid UAF
+    // Copia papel antes de deletar cJSON para evitar UAF
     char role_copy[16] = {0};
     strlcpy(role_copy, j_role->valuestring, sizeof(role_copy));
-    // Optional: persist name too if desired later
     // char name_copy[64] = {0};
     // strlcpy(name_copy, j_name->valuestring, sizeof(name_copy));
 
@@ -969,7 +968,7 @@ static esp_err_t rs_cloud_device_register_post_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "application/json");
 
     if (err == ESP_OK) {
-        // Save role to NVS using the safe copy
+        // Salva papel na NVS
         nvs_handle_t nvs;
         if (nvs_open("device", NVS_READWRITE, &nvs) == ESP_OK) {
             nvs_set_str(nvs, "role", role_copy);
@@ -1100,7 +1099,7 @@ esp_err_t start_rest_server(const char *base_path)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.max_uri_handlers = MAX_URI_HANDLERS;
-    config.stack_size = 8192; // Increase stack size for TLS operations
+    config.stack_size = 8192; // Aumenta o tamanho da pilha para operações TLS
 
     /* --- sintonía de ciclo de vida do socket para mitigar ENFILE/EMFILE (erro 23 no accept) --- */
     config.lru_purge_enable = true;      // Reclama sessão menos usada se max sockets atingido
@@ -1418,7 +1417,7 @@ static esp_err_t rs_controllers_scan_get_handler(httpd_req_t *req) {
         ESP_LOGI(TAG, "Sem lista de controladores cacheada ou cliente pediu scan fresco; procedendo com scan ativo.");
     }
 
-    // Param de query opcional ?ms=5000 (reusa buffer de query existente)
+    // Param de query  ?ms=5000
     int duration_ms = 5000;
     if (query[0] == 0) httpd_req_get_url_query_str(req, query, sizeof(query));
     if (query[0]) {
@@ -1560,7 +1559,7 @@ static esp_err_t rs_user_register_post_handler(httpd_req_t *req) {
     if (err == ESP_OK) {
         nvs_set_setup_stage("user_saved");
 
-        // Opcionalmente retorna dispositivo atual (mesmo comportamento de salvar credenciais)
+        // retorna dispositivo atual (mesmo comportamento de salvar credenciais)
         char *device_json = NULL;
         esp_err_t derr = rc_get_device_by_mac(NULL, &device_json);
         if (derr == ESP_OK && device_json) {

@@ -18,7 +18,7 @@
 
 static const char *TAG = "CAPTIVE_DNS";
 
-// DNS packet structure definitions
+// Definições de estrutura de pacote DNS
 #define DNS_PORT 53
 #define DNS_MAX_PACKET_SIZE 512
 #define DNS_HEADER_SIZE 12
@@ -26,7 +26,7 @@ static const char *TAG = "CAPTIVE_DNS";
 #define DNS_QUERY_FLAG_AUTHORITATIVE 0x0400
 #define DNS_QUERY_FLAG_RECURSION_DESIRED 0x0100
 
-// DNS header structure
+// Estrutura de cabeçalho DNS
 typedef struct {
     uint16_t id;
     uint16_t flags;
@@ -36,14 +36,14 @@ typedef struct {
     uint16_t additional_rrs;
 } __attribute__((packed)) dns_header_t;
 
-// DNS answer structure for A record
+// Estrutura de resposta DNS para registro A
 typedef struct {
-    uint16_t name_ptr;      // Pointer to name (0xC00C for compression)
-    uint16_t type;          // A record = 1
-    uint16_t class;         // IN = 1
-    uint32_t ttl;           // Time to live
-    uint16_t data_length;   // Length of IP address (4 bytes)
-    uint32_t ip_address;    // IP address in network byte order
+    uint16_t name_ptr;      // Ponteiro para o nome (0xC00C para compressão)
+    uint16_t type;          // Registro A = 1
+    uint16_t class;         // Classe IN = 1
+    uint32_t ttl;           // Tempo de vida (TTL)
+    uint16_t data_length;   // Comprimento do endereço IP (4 bytes)
+    uint32_t ip_address;    // Endereço IP em ordem de bytes de rede
 } __attribute__((packed)) dns_answer_t;
 
 static int dns_socket = -1;
@@ -78,12 +78,12 @@ static int parse_dns_query(const uint8_t *packet, size_t packet_len, char *domai
         return -1;
     }
     
-    // Skip DNS header to get to question section
+    // Pula o cabeçalho DNS para a seção de perguntas
     const uint8_t *question_start = packet + DNS_HEADER_SIZE;
     const uint8_t *ptr = question_start;
     const uint8_t *packet_end = packet + packet_len;
     
-    // Parse domain name from question
+    // Analisa o nome de domínio da pergunta
     size_t domain_pos = 0;
     bool first_label = true;
     
@@ -92,7 +92,7 @@ static int parse_dns_query(const uint8_t *packet, size_t packet_len, char *domai
         
         if (label_len == 0) break;
         
-        // Check for compression (not expected in questions, but handle it)
+        // Verifica compressão (não esperada, mas trata)
         if ((label_len & 0xC0) == 0xC0) {
             ESP_LOGD(TAG, "Unexpected compression in DNS question");
             break;
@@ -104,7 +104,7 @@ static int parse_dns_query(const uint8_t *packet, size_t packet_len, char *domai
             return -1;
         }
         
-        // Add dot separator (except for first label)
+        // Adiciona separador de ponto
         if (!first_label) {
             if (domain_pos < domain_size - 1) {
                 domain[domain_pos++] = '.';
@@ -112,7 +112,7 @@ static int parse_dns_query(const uint8_t *packet, size_t packet_len, char *domai
         }
         first_label = false;
         
-        // Copy label to domain string
+        // Copia rótulo para string de domínio
         for (int i = 0; i < label_len && domain_pos < domain_size - 1; i++) {
             domain[domain_pos++] = (char)ptr[i];
         }
@@ -128,7 +128,7 @@ static int parse_dns_query(const uint8_t *packet, size_t packet_len, char *domai
     domain[domain_pos] = '\0';
     ptr++; // Skip null terminator
     
-    // Get query type and class
+    // Obtém tipo e classe da consulta
     if (ptr + 4 > packet_end) {
         ESP_LOGE(TAG, "DNS question too short for type/class");
         return -1;
@@ -151,24 +151,24 @@ static size_t create_dns_response(const uint8_t *query_packet, size_t query_len,
         return 0;
     }
     
-    // Copy original query packet as base
+    // Copia pacote de consulta original como base
     memcpy(response_packet, query_packet, query_len);
     
-    // Modify header to make it a response
+    // Modifica cabeçalho para torná-lo uma resposta
     dns_header_t *header = (dns_header_t *)response_packet;
     header->flags = htons(DNS_QUERY_FLAG_RESPONSE | DNS_QUERY_FLAG_AUTHORITATIVE | DNS_QUERY_FLAG_RECURSION_DESIRED);
     header->answers = htons(1);
     header->authority_rrs = 0;
     header->additional_rrs = 0;
     
-    // Add answer section at the end of the original query
+    // Adiciona seção de resposta ao final da consulta original
     dns_answer_t *answer = (dns_answer_t *)(response_packet + query_len);
-    answer->name_ptr = htons(0xC00C);  // Pointer to name in question (compression)
-    answer->type = htons(1);           // A record
-    answer->class = htons(1);          // IN class
-    answer->ttl = htonl(60);           // 60 seconds TTL
-    answer->data_length = htons(4);    // IPv4 address length
-    answer->ip_address = redirect_ip;  // Already in network byte order
+    answer->name_ptr = htons(0xC00C);  // Ponteiro para nome na pergunta (compressão)
+    answer->type = htons(1);           // Registro A
+    answer->class = htons(1);          // Classe IN
+    answer->ttl = htonl(60);           // TTL de 60 segundos
+    answer->data_length = htons(4);    // Comprimento do endereço IPv4
+    answer->ip_address = redirect_ip;  // Já está na ordem de bytes de rede
     
     return query_len + sizeof(dns_answer_t);
 }
@@ -243,11 +243,10 @@ static void dns_server_task(void *pvParameters) {
         
         if (packet_len < 0) {
             if (errno == EINTR) {
-                continue; // Interrupted, try again
+                continue; // Interrompido, tenta de novo
             }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // Timeout (SO_RCVTIMEO). Not a fatal error; just loop again.
-                // Could add housekeeping here if needed.
+                // Timeout (SO_RCVTIMEO), faz mais um loop
                 continue;
             }
             ESP_LOGE(TAG, "DNS recvfrom fatal error: errno=%d", errno);
@@ -312,7 +311,7 @@ cleanup:
         close(dns_socket);
         dns_socket = -1;
     }
-    dns_task_handle = NULL;   // <--- mark free
+    dns_task_handle = NULL;   // libera
     ESP_LOGI(TAG, "DNS server task ended");
     vTaskDelete(NULL);
 }
@@ -330,7 +329,7 @@ void captive_dns_task(void *pv) {
     dns_server_task(pv);
 }
 
-// Opcional: Função para parar servidor DNS (se necessário para limpeza)
+// Função para parar servidor DNS
 void captive_dns_stop(void) {
     if (dns_socket >= 0) {
         ESP_LOGI(TAG, "Stopping captive DNS server...");

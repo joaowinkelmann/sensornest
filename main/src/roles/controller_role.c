@@ -288,9 +288,6 @@ static void controller_recv_cb(const espnow_mgr_event_recv_cb_t *recv_info) {
 
         if (r == ESP_OK) {
             ESP_LOGI(TAG_CR, "Dispositivo Trabalhador '%s' (MAC=%s) registrado/vinculado à malha=%s.", name, mac_str, s_controller_mesh_id);
-            // Opcional: notifica worker (não estritamente necessário). Exemplo:
-            // const char *ok = "REGOK";
-            // espnow_manager_send_to_mac(recv_info->mac_addr, (const uint8_t*)ok, strlen(ok));
         } else {
             ESP_LOGW(TAG_CR, "Falha ao registrar trabalhador '%s' (MAC=%s): %s", name, mac_str, esp_err_to_name(r));
         }
@@ -346,7 +343,7 @@ esp_err_t controller_role_start(void) {
         led_indicator_controller_pulse_stop();
     }
 
-    // Carrega nome do controlador (opcional)
+    // Carrega nome do controlador
     char ctrl_name[33]="Controller";
     nvs_handle_t nvs;
     if (nvs_open("device", NVS_READONLY, &nvs)==ESP_OK) {

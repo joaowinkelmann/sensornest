@@ -188,7 +188,7 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
             .timeout_ms = 8000,            // reduzido
             .buffer_size = 1024,
             .buffer_size_tx = 1024,
-            .skip_cert_common_name_check = true   // (opcional: permitir se CN não bater; manter se necessário)
+            .skip_cert_common_name_check = true  // (opcional: permitir se o CN do cert não bater)
         };
 
         ESP_LOGI(RC_TAG, "login: tentativa %d/%d POST %s", attempt, max_attempts, CLOUD_LOGIN_URL);
@@ -230,7 +230,7 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
             if (err == ESP_ERR_HTTP_CONNECT || err == ESP_ERR_HTTP_EAGAIN) {
                 if (attempt < max_attempts) {
                     int backoff_ms = 1000 << (attempt - 1); // 1000,2000,4000
-                    ESP_LOGW(RC_TAG, "login: erro de conexão transiente (%s); backoff %d ms",
+                    ESP_LOGW(RC_TAG, "login: erro de conexão %s -- backoff %d ms",
                              esp_err_to_name(err), backoff_ms);
                     vTaskDelay(pdMS_TO_TICKS(backoff_ms));
                     continue;
@@ -239,7 +239,7 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
             return err;
         }
 
-        // Transação HTTP completada
+        // Transação HTTP finalizou
         if (http_status == 200 || http_status == 201) {
             cJSON *root = cJSON_Parse(acc.buf);
             if (!root) {
@@ -269,7 +269,7 @@ static esp_err_t rc_perform_login(const char *email, const char *password, bool 
             ESP_LOGW(RC_TAG, "login: credenciais inválidas (401)");
             esp_http_client_cleanup(client);
             free(acc.buf);
-            return ESP_ERR_INVALID_STATE; // signal invalid credentials
+            return ESP_ERR_INVALID_STATE; // sinaliza credenciais inválidas
         }
 
         // Outros erros de servidor -> talvez tentar novamente
@@ -343,7 +343,7 @@ retry_auth:
             if (attempt < 3) vTaskDelay(pdMS_TO_TICKS(2000));
             continue;
         }
-        break; // either success or non-connect error
+        break; // sucesso ou erro não ser de conexão
     }
 
     if (err != ESP_OK) {
@@ -778,7 +778,7 @@ retry_send:
     return ESP_FAIL;
 }
 
-/* OPCIONAL: conveniência para extrair campos de config selecionados (ainda não requerido) */
+/* extrair campos de config selecionados (não precisa ainda)*/
 esp_err_t rc_extract_device_config(const char *device_json,
                                    int *readingsPerBatch,
                                    int *wakeUpInterval) {

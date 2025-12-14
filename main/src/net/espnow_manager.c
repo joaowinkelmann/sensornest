@@ -59,7 +59,7 @@ static void handle_possible_ctrl_beacon(const uint8_t *mac, const uint8_t *data,
 // payload de beacon pré-construído para evitar uso de pilha por snprintf por loop
 static uint8_t s_beacon_payload[64];
 static size_t  s_beacon_payload_len = 0;
-#define CTRL_BEACON_STACK   3072  // words (~12 KB). Adjust if still low.
+#define CTRL_BEACON_STACK   3072  // palavras (~12 KB)
 
 /* Envio único de beacon */
 static void send_controller_beacon_once(bool log_always) {
@@ -69,7 +69,7 @@ static void send_controller_beacon_once(bool log_always) {
     // A interface STA ter o canal ditado pelo roteador conectado.
     esp_now_peer_info_t peer = {
         .ifidx = WIFI_IF_AP,
-        .channel = 0, // Use the current channel of the specified interface (AP)
+        .channel = 0, // Usa o canal atual da interface especificada (AP)
         .encrypt = false
     };
     memcpy(peer.peer_addr, (uint8_t[6]){0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}, 6);
@@ -251,12 +251,12 @@ esp_err_t espnow_manager_send_to_controller(const void *data, size_t len) {
     }
     uint8_t mac[6];
     if (espnow_manager_get_controller_mac(mac)) {
-        // Check if peer exists, add if not, to prevent warnings
+        // Verifica se peer existe, adiciona se não, para evitar avisos
         if (!esp_now_is_peer_exist(mac)) {
             esp_now_peer_info_t peer = {0};
             memcpy(peer.peer_addr, mac, 6);
             peer.ifidx = WIFI_IF_STA;
-            peer.channel = s_fixed_channel; // Use the stored channel
+            peer.channel = s_fixed_channel; // Usa o canal armazenado
             peer.encrypt = false;
             esp_err_t add_err = esp_now_add_peer(&peer);
             if (add_err != ESP_OK) {
@@ -309,7 +309,7 @@ esp_err_t espnow_manager_collect_controllers(int duration_ms, char **out_json) {
     while (esp_timer_get_time() - start_time < (int64_t)duration_ms * 1000) {
         esp_wifi_set_channel(current_channel, WIFI_SECOND_CHAN_NONE);
         ESP_LOGD(TAG_EN, "Scanning on channel %d", current_channel);
-        vTaskDelay(pdMS_TO_TICKS(250)); // Dwell on each channel for 500ms
+        vTaskDelay(pdMS_TO_TICKS(250)); // Fica em cada canal por 250ms
 
         current_channel++;
         if (current_channel > 13) {
@@ -429,7 +429,7 @@ esp_err_t espnow_manager_config_role(bool is_controller) {
         ESP_LOGI(TAG_EN, "ESP-NOW started with power set to %d (0.25 dBm).", power);
     }
 
-    // Add broadcast peer(s)
+    // Adiciona peers de broadcast
     esp_now_peer_info_t peer_sta = { .ifidx = WIFI_IF_STA, .channel = 0, .encrypt = false };
     memcpy(peer_sta.peer_addr, (uint8_t[6]){0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}, 6);
     if (!esp_now_is_peer_exist(peer_sta.peer_addr)) esp_now_add_peer(&peer_sta);
@@ -498,7 +498,7 @@ esp_err_t espnow_manager_send_to_mac(const uint8_t *mac, const void *data, size_
     if (!esp_now_is_peer_exist(mac)) {
         esp_now_peer_info_t peer = {0};
         memcpy(peer.peer_addr, mac, 6);
-        peer.ifidx = WIFI_IF_STA; // Default to STA, can be refined
+        peer.ifidx = WIFI_IF_STA; // Padrão para STA
         peer.channel = 0; // Usa canal atual
         peer.encrypt = false; // Usando PMK, então isso é false
         esp_err_t add_err = esp_now_add_peer(&peer);
@@ -529,8 +529,8 @@ esp_err_t espnow_manager_send_broadcast(const void *data, size_t len) {
 }
 
 
-// Auxiliar OPCIONAL para forçar canal (chamar do endpoint REST para debug)
-/* Força canal Wi-Fi para ESP-NOW (STA deve estar desconectado): */
+// Auxiliar para forçar canal (chama do endpoint REST para debug)
+/* Força canal Wi-Fi para ESP-NOW (STA precisa estar desconectado): */
 esp_err_t espnow_manager_debug_set_channel(uint8_t ch) {
     if (ch < 1 || ch > 13) return ESP_ERR_INVALID_ARG;
     esp_err_t e = esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);

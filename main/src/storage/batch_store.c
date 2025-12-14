@@ -70,7 +70,7 @@ esp_err_t batch_store_build_json(char **out_json) {
         cJSON_AddNumberToObject(obj, "temp", r->temperature);
         cJSON_AddNumberToObject(obj, "hum", r->humidity);
 
-        // Opcional readingTime (servidor usa hora de processamento se omitido)
+        // readingTime
         // Formato: YYYY-MM-DDTHH:MM:SS.000Z
         char iso[32];
         struct tm tm_info;
