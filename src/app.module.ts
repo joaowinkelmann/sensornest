@@ -14,6 +14,7 @@ import { UploaderModule } from './uploader/uploader.module';
 import { TilerService } from './tiler/tiler.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailerModule } from '@nestjs-modules/mailer';
+import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DeviceCheckerModule } from './device-checker/device-checker.module';
 import { MailerServiceModule } from './mailer/mailer.module';
@@ -47,6 +48,13 @@ import { DataExporterModule } from './data-exporter/data-exporter.module';
         defaults: {
           from: '"No Reply" <noreply@winkels.com.br>',
         },
+        template: {
+          dir: process.cwd() + '/src/mailer/templates',
+          adapter: new HandlebarsAdapter(),
+          options: {
+            strict: true,
+          },
+        },
       }),
     }),
     DeviceCheckerModule,
@@ -66,4 +74,4 @@ import { DataExporterModule } from './data-exporter/data-exporter.module';
   ],
   exports: [PrismaService],
 })
-export class AppModule {}
+export class AppModule { }

@@ -43,6 +43,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "fastify": "^5.6.2",
+    "handlebars": "^4.7.8",
     "nodemailer": "^7.0.11",
     "oci-common": "^2.122.1",
     "oci-objectstorage": "^2.122.1",

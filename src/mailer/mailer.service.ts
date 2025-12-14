@@ -12,7 +12,7 @@ export class MailerService {
     private readonly nestMailerService: NestMailerService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async sendTestEmail() {
     const message = `This is a test email.`;
@@ -27,17 +27,15 @@ export class MailerService {
 
   async sendPasswordRecoveryEmail(email: string, token: string) {
     const baseUrl = this.configService.get<string>('APP_BASE_URL');
-    const message = `
-      You are receiving this email because you (or someone else) have requested the reset of the password for your account.
-      Please click on the following link, or paste this into your browser to complete the process:
-      ${baseUrl}/reset-password?token=${token}
-      If you did not request this, please ignore this email and your password will remain unchanged.
-    `;
+    const url = `${baseUrl}/reset-password?token=${token}`;
 
     await this.nestMailerService.sendMail({
       to: email,
       subject: 'Password Reset',
-      text: message,
+      template: 'recover-password',
+      context: {
+        url,
+      },
     });
   }
 

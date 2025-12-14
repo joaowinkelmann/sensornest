@@ -14,6 +14,8 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { RecoverPasswordDto } from './dto/recover-password.dto';
+import { GenericMessageDto } from '../common/dto/generic-message.dto';
+import { CheckResetTokenResponseDto } from './dto/check-reset-token-response.dto';
 import { Public } from '../auth/public.decorator';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import {
@@ -28,7 +30,7 @@ import {
 @Controller('users')
 @ApiTags('Users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Public()
   @Post('register')
@@ -77,11 +79,16 @@ export class UsersController {
   @Public()
   @Post('recover-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Envia um e-mail de recuperação de senha.' })
+  @ApiOperation({
+    summary: 'Envia um e-mail de recuperação de senha.',
+    description:
+      'Envia um e-mail contendo um link no formato `${baseUrl}/reset-password?token=${token}` para redefinição de senha.',
+  })
   @ApiBody({ type: RecoverPasswordDto })
   @ApiResponse({
     status: 200,
     description: 'E-mail de recuperação de senha enviado com sucesso.',
+    type: GenericMessageDto,
   })
   async recoverPassword(@Body() recoverPasswordDto: RecoverPasswordDto) {
     await this.usersService.recoverPassword(recoverPasswordDto.email);
@@ -94,7 +101,11 @@ export class UsersController {
   @Get('reset-password/check')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Valida o token de recuperação de senha.' })
-  @ApiResponse({ status: 200, description: 'Token válido.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Token válido.',
+    type: CheckResetTokenResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Token inválido ou expirado.' })
   async checkResetToken(@Query('token') token: string) {
     const valid = await this.usersService.verifyResetToken(token);
@@ -111,7 +122,11 @@ export class UsersController {
     summary: 'Redefine a senha usando o token recebido por e-mail.',
   })
   @ApiBody({ type: ResetPasswordDto })
-  @ApiResponse({ status: 200, description: 'Senha redefinida com sucesso.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Senha redefinida com sucesso.',
+    type: GenericMessageDto,
+  })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.usersService.resetPassword(dto.token, dto.newPassword);
     return { message: 'Password updated successfully' };

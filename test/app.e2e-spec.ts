@@ -18,6 +18,7 @@ describe('App E2E', () => {
   let app: NestFastifyApplication;
   let prisma: PrismaClient;
   let accessToken: string;
+  let mailerService: MailerService;
 
   // --- Constantes e Helpers do SensorNest ---
   const runId = crypto.randomUUID().replace(/-/g, '');
@@ -238,6 +239,8 @@ describe('App E2E', () => {
     app = moduleFixture.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(), // Fastify (do arquivo 1)
     );
+
+    mailerService = app.get<MailerService>(MailerService);
 
     // Pipe de Validação (do arquivo 2)
     app.useGlobalPipes(
@@ -618,7 +621,7 @@ describe('App E2E', () => {
         // Verifica estrutura de readingsPerMesh
         expect(body).toHaveProperty('readingsPerMesh');
         expect(Array.isArray(body.readingsPerMesh)).toBe(true);
-        
+
         // Verifica que o mesh do seed está presente
         const meshStats = body.readingsPerMesh.find(
           (m: any) => m.meshId === meshId
@@ -770,6 +773,32 @@ describe('App E2E', () => {
 
       return token;
     };
+
+    it('POST /users/recover-password should send recovery email', async () => {
+      const sendEmailSpy = jest.spyOn(mailerService, 'sendPasswordRecoveryEmail');
+      sendEmailSpy.mockClear();
+
+      await request(app.getHttpServer())
+        .post('/users/recover-password')
+        .send({ email: testEmail })
+        .expect(200);
+
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+      expect(sendEmailSpy).toHaveBeenCalledWith(testEmail, expect.any(String));
+
+      // Capture the token from the mock call arguments
+      const calledToken = sendEmailSpy.mock.calls[0][1];
+      expect(calledToken).toBeDefined();
+
+      // Verify the token is valid using the check endpoint
+      await request(app.getHttpServer())
+        .get('/users/reset-password/check')
+        .query({ token: calledToken })
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toEqual({ valid: true });
+        });
+    });
 
     it('GET /users/reset-password/check should accept a valid token', async () => {
       const token = await setResetTokenForUser(1);
