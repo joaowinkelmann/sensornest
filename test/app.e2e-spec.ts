@@ -7,6 +7,8 @@ import { ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaClient, DeviceStatus, DeviceRole } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 import * as argon2 from 'argon2';
 import { promises as fsPromises, existsSync } from 'node:fs';
 import * as path from 'node:path';
@@ -223,7 +225,11 @@ describe('App E2E', () => {
     process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
     process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '3600s';
 
-    prisma = new PrismaClient();
+    const connectionString = process.env.DATABASE_URL!;
+    const pool = new Pool({ connectionString });
+    const adapter = new PrismaPg(pool);
+    prisma = new PrismaClient({ adapter });
+
     await prisma.$connect();
     await seed();
 
