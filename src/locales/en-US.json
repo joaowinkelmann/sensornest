@@ -280,5 +280,15 @@
     "humidity": "Humidity",
     "average": "Average",
     "highest": "Highest"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close"
+  },
+  "buttons": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "save": "Save"
   }
 }

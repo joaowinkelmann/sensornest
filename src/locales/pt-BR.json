@@ -286,6 +286,11 @@
     "average": "Média",
     "highest": "Maior"
   },
+  "common": {
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "close": "Fechar"
+  },
   "buttons": {
     "close": "Fechar",
     "cancel": "Cancelar",

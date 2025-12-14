@@ -31,7 +31,7 @@
 
           <div class="row justify-end q-mt-lg">
              <!-- User cannot cancel a reset process initiated by token, usually. But maybe they want to just go to login. -->
-             <q-btn flat :label="t('buttons.cancel')" color="primary" @click="$emit('close')" />
+             <q-btn flat :label="t('common.cancel')" color="primary" @click="$emit('close')" />
              <q-btn :label="t('resetPassword.submitButton')" type="submit" color="primary" :loading="loading" />
           </div>
         </q-form>
