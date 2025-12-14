@@ -27,7 +27,11 @@ export function useDeviceRenderer(map, props, emit) {
 
     if (mode === 'move-devices') {
       marker.on('dragstart', () => {
-        marker.getElement().style.transform = 'scale(1.3)';
+        const wrapper = marker.getElement().querySelector('.device-marker-wrapper');
+        if (wrapper) {
+          wrapper.style.transform = 'scale(1.3)';
+          wrapper.style.transition = 'transform 0.2s';
+        }
         marker.getElement().style.zIndex = '2000';
 
         // Temporarily disable map interactions only while dragging a device
@@ -39,7 +43,10 @@ export function useDeviceRenderer(map, props, emit) {
       });
 
       marker.on('dragend', (event) => {
-        marker.getElement().style.transform = 'scale(1)';
+        const wrapper = marker.getElement().querySelector('.device-marker-wrapper');
+        if (wrapper) {
+          wrapper.style.transform = 'scale(1)';
+        }
         marker.getElement().style.zIndex = 'auto';
 
         // Re-enable map interactions after dragging
@@ -72,12 +79,12 @@ export function useDeviceRenderer(map, props, emit) {
       const registerStatsButton = (popupEvent) => {
         const popupEl = popupEvent?.popup?.getElement();
         if (!popupEl) return;
-        
+
         statsButtonEl = popupEl.querySelector('.device-popup-stats');
         if (statsButtonEl) {
           statsButtonEl.addEventListener('click', handleStatsClick);
         }
-        
+
         const zoneButtonEl = popupEl.querySelector('.device-popup-zone');
         if (zoneButtonEl) {
           zoneButtonEl.addEventListener('click', handleZoneClick);
