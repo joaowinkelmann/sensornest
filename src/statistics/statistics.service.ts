@@ -206,12 +206,11 @@ export class StatisticsService {
           vals.temperature.length > 0
             ? vals.temperature.reduce((a, b) => a + b, 0) /
               vals.temperature.length
-            : 0, // ensure number
+            : 0,
         avgHumidity:
           vals.humidity.length > 0
-            ? vals.humidity.reduce((a, b) => a + b, 0) /
-              vals.humidity.length
-            : 0, // ensure number
+            ? vals.humidity.reduce((a, b) => a + b, 0) / vals.humidity.length
+            : 0,
       }));
     };
 

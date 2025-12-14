@@ -74,4 +74,4 @@ import { DataExporterModule } from './data-exporter/data-exporter.module';
   ],
   exports: [PrismaService],
 })
-export class AppModule { }
+export class AppModule {}

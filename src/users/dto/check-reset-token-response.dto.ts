@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CheckResetTokenResponseDto {
-    @ApiProperty({
-        example: true,
-        description: 'Indica se o token é válido.'
-    })
-    valid: boolean;
+  @ApiProperty({
+    example: true,
+    description: 'Indica se o token é válido.',
+  })
+  valid: boolean;
 }

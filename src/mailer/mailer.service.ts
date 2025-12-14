@@ -12,7 +12,7 @@ export class MailerService {
     private readonly nestMailerService: NestMailerService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
   async sendTestEmail() {
     const message = `This is a test email.`;

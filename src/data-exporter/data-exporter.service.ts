@@ -31,17 +31,15 @@ export class DataExporterService {
       from,
       to,
       includeHeadersPerFile = true,
-      maxBytesPerFile, // NEW: optional cap in bytes
+      maxBytesPerFile,
     } = dto;
 
     this.logger.log(
       `Starting data export for ${entityType}:${entityId} (chunk=${chunkSize}, page=${pageSize})`,
     );
 
-    // Validate ownership without loading readings
     await this.assertOwnership(entityType, entityId, userId);
 
-    // Build reading where clause
     const timeFilter =
       from || to
         ? {
@@ -59,7 +57,6 @@ export class DataExporterService {
           ? { device: { zoneId: entityId } }
           : { device: { meshId: entityId } };
 
-    // Iterate readings in pages
     let cursor: { id: string } | undefined;
     let rowsInCurrentChunk: any[] = [];
     let totalRows = 0;
@@ -67,14 +64,12 @@ export class DataExporterService {
     const files: string[] = [];
     const startedAt = new Date().toISOString();
 
-    // NEW: determine byte cap (prefer DTO, then ENV, then default 15 MiB)
     const envMaxBytes = Number(process.env.EXPORT_MAX_BYTES);
     const byteCap =
       (Number.isFinite(envMaxBytes) ? envMaxBytes : undefined) ??
       maxBytesPerFile ??
       15 * 1024 * 1024; // 15 MiB
 
-    // NEW: fixed CSV column order used for estimates
     const csvFields = [
       'meshId',
       'meshName',
@@ -88,7 +83,6 @@ export class DataExporterService {
       'readingTime',
     ] as const;
 
-    // NEW: estimate bytes for a single CSV cell (approximate, conservative)
     const estimateCsvCellBytes = (val: unknown) => {
       const s =
         val === null || val === undefined
@@ -98,11 +92,9 @@ export class DataExporterService {
             : String(val);
       const quoteCount = (s.match(/"/g) || []).length;
       const needsQuotes = /[",\n]/.test(s);
-      // Double quotes within value + wrap quotes if needed
       return s.length + quoteCount + (needsQuotes ? 2 : 0);
     };
 
-    // NEW: estimate bytes for the header row (if emitted)
     const headerBytes =
       csvFields.reduce(
         (acc, key, i) =>
@@ -112,7 +104,6 @@ export class DataExporterService {
         0,
       ) + 1; // newline
 
-    // NEW: current estimated bytes in the chunk (start with header if we’ll include per file)
     let currentChunkEstimatedBytes = includeHeadersPerFile ? headerBytes : 0;
 
     const estimateRowBytes = (row: Record<string, unknown>) =>
@@ -144,8 +135,6 @@ export class DataExporterService {
       files.push(url);
     };
 
-    // Paged loop
-    // Order by id asc to use cursor pagination
     for (;;) {
       const page = await this.prisma.reading.findMany({
         where: { ...baseWhere, ...timeFilter },
@@ -167,7 +156,6 @@ export class DataExporterService {
       if (page.length === 0) break;
 
       for (const r of page) {
-        // map to flat CSV row
         const flatRow = {
           meshId: r.device?.mesh?.id ?? null,
           meshName: r.device?.mesh?.name ?? null,
@@ -181,7 +169,6 @@ export class DataExporterService {
           readingTime: r.readingTime.toISOString(),
         };
 
-        // NEW: split by byte cap before pushing the row (exact upload still via Papa for the chunk)
         const rowBytes = estimateRowBytes(flatRow);
         if (
           rowsInCurrentChunk.length > 0 &&
@@ -209,7 +196,6 @@ export class DataExporterService {
       cursor = { id: page[page.length - 1].id };
     }
 
-    // Flush remaining rows
     if (rowsInCurrentChunk.length > 0) {
       await uploadChunk(rowsInCurrentChunk, partIndex);
       partIndex++;
@@ -233,7 +219,6 @@ export class DataExporterService {
     };
   }
 
-  // Validates entity exists and belongs to user (keeps existing behavior of throwing 404).
   private async assertOwnership(
     entityType: string,
     entityId: string,
