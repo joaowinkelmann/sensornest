@@ -72,7 +72,7 @@ const routes = [
       {
         path: 'reset-password',
         name: 'reset-password',
-        component: () => import('@/views/auth/ResetPasswordView.vue'),
+        component: LoginView,
       },
     ],
   },
@@ -102,7 +102,7 @@ router.beforeEach(async (to, from, next) => {
 
   if (requiresAuth && !isAuthenticated) {
     next('/login');
-  } else if ((to.name === 'login' || to.name === 'register') && isAuthenticated) {
+  } else if ((to.name === 'login' || to.name === 'register' || to.name === 'reset-password') && isAuthenticated) {
     next('/');
   } else {
     next();

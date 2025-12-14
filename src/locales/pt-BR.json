@@ -100,7 +100,10 @@
     "registerButton": "Registrar",
     "loginButton": "Voltar para o login",
     "successMessage": "Registro bem-sucedido! Por favor, faça o login.",
-    "errorMessage": "O registro falhou."
+    "errorMessage": "O registro falhou.",
+    "passwordsMustMatch": "As senhas devem coincidir",
+    "confirmPasswordRequired": "Confirme sua senha",
+    "passwordLength": "A senha deve ter pelo menos 6 caracteres"
   },
   "profile": {
     "title": "Editar Perfil",
@@ -254,6 +257,7 @@
   },
   "resetPassword": {
     "title": "Redefinir Senha",
+    "instructions": "Digite sua nova senha abaixo.",
     "newPasswordLabel": "Nova Senha",
     "confirmPasswordLabel": "Confirmar Nova Senha",
     "submitButton": "Redefinir Senha",

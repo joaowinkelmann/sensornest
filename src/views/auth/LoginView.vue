@@ -43,26 +43,41 @@
 
         <!-- Recovery dialog -->
         <PasswordRecoveryDialog :show="showRecovery" :initial-email="email" @close="showRecovery = false" />
+        
+        <!-- Reset Password Dialog -->
+        <ResetPasswordDialog 
+          :show="showReset" 
+          :token="resetToken" 
+          @close="showReset = false" 
+          @success="showReset = false" 
+        />
       </q-page>
     </q-page-container>
   </q-layout>
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { useQuasar } from 'quasar';
+import apiClient from '@/api';
 import { useI18n } from 'vue-i18n';
 import PasswordRecoveryDialog from '@/components/PasswordRecoveryDialog.vue';
+import ResetPasswordDialog from '@/components/ResetPasswordDialog.vue';
 
 const { t } = useI18n();
+const $q = useQuasar();
 const authStore = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 
 const email = ref('');
 const password = ref('');
 
 const showRecovery = ref(false);
+const showReset = ref(false);
+const resetToken = ref('');
 
 const handleLogin = () => {
   authStore.login({ email: email.value, password: password.value });
@@ -71,4 +86,29 @@ const handleLogin = () => {
 const goToRegister = () => {
   router.push('/register');
 };
+
+const checkResetToken = async () => {
+  const token = route.query.token;
+  if (token && typeof token === 'string') {
+    try {
+      // Validate token
+      const response = await apiClient.get('/users/reset-password/check', { params: { token } });
+      if (response.data && response.data.valid) {
+        resetToken.value = token;
+        showReset.value = true;
+      } else {
+         $q.notify({ type: 'negative', message: t('resetPassword.tokenInvalid') });
+      }
+    } catch (e) {
+      console.error(e);
+      $q.notify({ type: 'negative', message: t('resetPassword.tokenInvalid') });
+    }
+    // Clean up URL ?
+    router.replace({ query: null });
+  }
+};
+
+onMounted(() => {
+  checkResetToken();
+});
 </script>
