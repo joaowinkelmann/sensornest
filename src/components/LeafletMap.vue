@@ -165,31 +165,12 @@ const drawNewZoneLayer = () => {
   }
 };
 
-// Helper to refresh device positions (re-draw markers)
-const refreshDevicePositions = () => {
-  if (mode.value === null || mode.value === 'move-devices') {
-    drawDevices(props.devices, props.conversionFn, mode.value);
-  }
-};
 
-let refreshPending = false;
-
-const scheduleDeviceRefresh = () => {
-  if (refreshPending) return;
-  refreshPending = true;
-  requestAnimationFrame(() => {
-    refreshPending = false;
-    refreshDevicePositions();
-  });
-};
 
 const setupMapEvents = () => {
   if (map.value) {
     map.value.on('click', handleMapClick);
-    map.value.on('move', scheduleDeviceRefresh);
-    map.value.on('zoom', scheduleDeviceRefresh);
-    map.value.on('zoomend', refreshDevicePositions);
-    map.value.on('moveend', refreshDevicePositions);
+    map.value.on('click', handleMapClick);
   }
 };
 
@@ -208,10 +189,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (map.value) {
-    map.value.off('move', scheduleDeviceRefresh);
-    map.value.off('zoom', scheduleDeviceRefresh);
-    map.value.off('zoomend', refreshDevicePositions);
-    map.value.off('moveend', refreshDevicePositions);
     map.value.off('click', handleMapClick);
   }
   clearZoneLayers();
