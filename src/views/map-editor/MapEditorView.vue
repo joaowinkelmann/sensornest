@@ -35,7 +35,7 @@
         @save-zone-clicked="saveZone" @undo-zone-clicked="zonesStore.restoreActiveZone()" />
     </div>
 
-    <!-- Device Statistics Dialog -->
+    <!-- Diálogo de Estatísticas do Dispositivo -->
     <q-dialog v-model="showStatsDialog">
       <q-card class="device-stats-card">
         <q-card-section class="row items-center justify-between">
@@ -69,7 +69,7 @@
       </q-card>
     </q-dialog>
 
-    <!-- Device Zone Change Dialog -->
+    <!-- Diálogo de Alteração de Zona do Dispositivo -->
     <DeviceZoneDialog
       :show="showZoneDialog"
       :device="selectedDeviceForZone"
@@ -108,7 +108,7 @@ const selectedDevice = ref(null);
 const selectedDeviceForZone = ref(null);
 const chartPeriod = ref('day');
 
-const SCALE = 0.0001; // For OpenStreetMap coordinate conversion
+const SCALE = 0.0001; // Para conversão de coordenadas do OpenStreetMap
 
 const isCustomMap = computed(() => !!meshesStore.selectedMesh?.mapUrl);
 
@@ -117,7 +117,7 @@ const baseCoords = computed(() => {
   if (selectedMesh && !isCustomMap.value) {
     return { lat: selectedMesh.lat, lng: selectedMesh.lon };
   }
-  return { lat: -23.5505, lng: -46.6333 }; // Default for OSM
+  return { lat: -23.5505, lng: -46.6333 }; // Padrão para OSM
 });
 
 onMounted(async () => {

@@ -9,7 +9,7 @@ export const useAuthStore = defineStore('auth', {
     user: null,
     loading: false,
     error: null,
-    // cache flags
+    // flags de cache
     profileLoaded: false,
     profileLoadedAt: null,
     _profilePromise: null,
@@ -81,26 +81,26 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await apiClient.patch(`users/${id}`, { name });
         this.user = response.data.user || response.data;
-        
+
         Notify.create({
           type: 'positive',
           message: response.data.message || 'Usuário atualizado com sucesso',
           position: 'top',
           timeout: 2000
         });
-        
+
         return response.data;
       } catch (e) {
         this.error = 'Failed to update profile.';
         console.error('Profile update failed:', e);
-        
+
         Notify.create({
           type: 'negative',
           message: 'Falha ao atualizar perfil',
           position: 'top',
           timeout: 2000
         });
-        
+
         throw e;
       } finally {
         this.loading = false;
@@ -111,7 +111,7 @@ export const useAuthStore = defineStore('auth', {
       this.user = null;
       localStorage.removeItem('token');
       router.push('/login');
-      // reset cache flags
+      // reseta flags de cache
       this.profileLoaded = false;
       this.profileLoadedAt = null;
     },

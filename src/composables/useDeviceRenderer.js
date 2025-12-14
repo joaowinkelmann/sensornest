@@ -34,7 +34,7 @@ export function useDeviceRenderer(map, props, emit) {
         }
         marker.getElement().style.zIndex = '2000';
 
-        // Temporarily disable map interactions only while dragging a device
+        // Desabilita temporariamente as interações do mapa apenas enquanto arrasta um dispositivo
         if (map.value) {
           map.value.dragging.disable();
           map.value.touchZoom.disable();
@@ -49,7 +49,7 @@ export function useDeviceRenderer(map, props, emit) {
         }
         marker.getElement().style.zIndex = 'auto';
 
-        // Re-enable map interactions after dragging
+        // Reabilita as interações do mapa após arrastar
         if (map.value) {
           map.value.dragging.enable();
           map.value.touchZoom.enable();

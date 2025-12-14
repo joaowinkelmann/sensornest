@@ -92,7 +92,7 @@ export function useZoneRenderer(map, props, emit) {
 
   const enableEditMode = (zoneId, mode) => {
     clearVertexMarkers();
-    if (!mode || mode === 'zones' || mode === 'view' || mode === 'draw-zone') return; // pure view modes or drawing new zone (handled by map click)
+    if (!mode || mode === 'zones' || mode === 'view' || mode === 'draw-zone') return; // modos de visualização pura ou desenhando nova zona (tratado pelo clique no mapa)
 
     const zone = props.zones.find(z => z.id === zoneId);
     if (!zone || !zone.vertices) return;
@@ -135,7 +135,7 @@ export function useZoneRenderer(map, props, emit) {
     });
 
     polygon.on('click', (e) => {
-      // Prevent event from bubbling if we just want to select
+      // Impede a propagação do evento se quisermos apenas selecionar
       L.DomEvent.stopPropagation(e);
       emit('zone-clicked', zone.id);
     });
@@ -146,10 +146,10 @@ export function useZoneRenderer(map, props, emit) {
   const drawZones = (zones, activeZoneId) => {
     if (!map.value) return;
 
-    // Remove old layers that aren't in new zones list
+    // Remove camadas antigas que não estão na nova lista de zonas
     const newZoneIds = new Set(zones.map(z => z.id));
     Object.keys(zoneLayers.value).forEach(id => {
-      // Need to convert id to correct type if necessary (keys are strings)
+      // Precisa converter id para o tipo correto se necessário (chaves são strings)
       if (!newZoneIds.has(Number(id)) && !newZoneIds.has(String(id))) {
         if (map.value.hasLayer(zoneLayers.value[id])) {
           map.value.removeLayer(zoneLayers.value[id]);
@@ -162,7 +162,7 @@ export function useZoneRenderer(map, props, emit) {
       const isActive = zone.id === activeZoneId;
       const existingLayer = zoneLayers.value[zone.id];
 
-      // Remove existing if it exists, to re-render fresh
+      // Remove existente se existir, para renderizar novamente
       if (existingLayer && map.value.hasLayer(existingLayer)) {
         map.value.removeLayer(existingLayer);
       }

@@ -1,6 +1,6 @@
 <template>
   <div class="map-controls-container">
-    <!-- Instruction Display -->
+    <!-- Exibição de Instruções -->
     <transition name="fade">
       <div v-if="showInstruction && currentInstruction" :key="mode" class="mode-instruction">
         <q-icon :name="currentInstruction.icon" class="instruction-icon" />
@@ -9,7 +9,7 @@
     </transition>
 
     <div class="controls-group">
-      <!-- Vertex Editing Controls -->
+      <!-- Controles de Edição de Vértices -->
       <q-btn-group push class="mode-controls">
         <ControlButton
           v-for="control in vertexControls"
@@ -22,10 +22,10 @@
         />
       </q-btn-group>
 
-      <!-- Divider -->
+      <!-- Divisor -->
       <div class="divider"></div>
 
-      <!-- Other Controls -->
+      <!-- Outros Controles -->
       <q-btn-group push class="mode-controls">
         <ControlButton
           v-for="control in otherControls"
@@ -65,8 +65,8 @@ const handleOtherClick = (control) => {
   emit('mode-changed', control.mode);
 };
 
-// Control definitions
-// changed to computed to react to locale changes
+// Definições de controles
+// alterado para computed para reagir a mudanças de idioma
 const vertexControls = computed(() => ([
   { mode: 'add', label: t('mapControls.buttons.addVertex'), icon: 'add_circle', color: 'primary' },
   { mode: 'remove', label: t('mapControls.buttons.removeVertex'), icon: 'remove_circle', color: 'negative' },
@@ -79,7 +79,7 @@ const otherControls = computed(() => ([
   { mode: null, label: t('mapControls.buttons.panMap'), icon: 'pan_tool', color: 'positive' }
 ]));
 
-// Instructions for each mode
+// Instruções para cada modo
 const modeInstructions = computed(() => ({
   add: { icon: 'touch_app', text: t('mapControls.instructions.add') },
   remove: { icon: 'delete', text: t('mapControls.instructions.remove') },
@@ -103,7 +103,7 @@ watch(() => props.mode, () => {
   if (timeoutId) clearTimeout(timeoutId);
   timeoutId = setTimeout(() => {
     showInstruction.value = false;
-  }, 3000); // Auto-hide after 3 seconds
+  }, 3000); // Ocultar automaticamente após 3 segundos
 });
 </script>
 
@@ -130,7 +130,7 @@ watch(() => props.mode, () => {
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  /* glassmorphism effect */
+  /* efeito glassmorphism */
   backdrop-filter: blur(4px);
 }
 
@@ -175,7 +175,7 @@ watch(() => props.mode, () => {
   opacity: 0.9;
 }
 
-/* Smooth transitions */
+/* Transições suaves */
 .fade-enter-active,
 .fade-leave-active {
   transition: all 0.15s ease;
@@ -187,7 +187,7 @@ watch(() => props.mode, () => {
   transform: translateY(10px);
 }
 
-/* Mobile responsiveness */
+/* Responsividade mobile */
 @media (max-width: 768px) {
   .controls-group {
     flex-direction: column;
@@ -228,17 +228,17 @@ watch(() => props.mode, () => {
   }
 }
 
-/* Dark mode support */
+/* Suporte a modo escuro */
 @media (prefers-color-scheme: dark) {
   .controls-group {
     background: rgba(45, 45, 45, 0.45);
     border-color: rgba(255, 255, 255, 0.1);
-    /* glassmorphism blur effect */
+    /* efeito de desfoque glassmorphism */
     backdrop-filter: blur(4px);
   }
 }
 
-/* High contrast mode */
+/* Modo de alto contraste */
 @media (prefers-contrast: high) {
   .controls-group {
     background: white;

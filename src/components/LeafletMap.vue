@@ -2,7 +2,7 @@
   <div class="leaflet-map-wrapper">
     <div ref="mapContainer" class="leaflet-map-container"></div>
 
-    <!-- Map Controls -->
+    <!-- Controles do Mapa -->
     <MapControls
       :mode="mode"
       :active-zone="activeZone"
@@ -40,7 +40,7 @@ import { useDeviceRenderer } from '../composables/useDeviceRenderer';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
-// Define props
+// Definição de props
 const props = defineProps({
   mesh: {
     type: Object,
@@ -80,7 +80,7 @@ const props = defineProps({
   }
 });
 
-// Define emits
+// Definição de emits
 const emit = defineEmits([
   'vertex-added',
   'vertex-removed',
@@ -94,13 +94,13 @@ const emit = defineEmits([
   'device-zone-clicked'
 ]);
 
-// Reactive references
+// Referências reativas
 const mapContainer = ref(null);
 const mode = ref(null);
 const newZoneVertices = ref([]);
 const newZoneLayer = ref(null);
 
-// Use composables for map management
+// Usa composables para gerenciamento do mapa
 const {
   map,
   initializeMap,
@@ -119,20 +119,20 @@ const {
   clearDeviceMarkers
 } = useDeviceRenderer(map, props, emit);
 
-// Mode management
+// Gerenciamento de modo
 const handleModeChange = (newMode) => {
   mode.value = newMode;
   
-  // Clear old markers first
+  // Limpa marcadores antigos primeiro
   clearVertexMarkers();
 
-  // Redraw zones (pure rendering)
+  // Redesenha zonas (renderização pura)
   drawZones(props.zones, props.activeZoneId);
 
-  // Apply edit mode (interaction)
+  // Aplica modo de edição (interação)
   enableEditMode(props.activeZoneId, newMode);
 
-  // Show/hide devices based on mode
+  // Mostra/oculta dispositivos baseado no modo
   if (newMode && newMode !== 'move-devices') {
     clearDeviceMarkers();
   } else {
@@ -140,7 +140,7 @@ const handleModeChange = (newMode) => {
   }
 };
 
-// Map click handler
+// Handler de clique no mapa
 const handleMapClick = (event) => {
   if (mode.value === 'add' && props.activeZoneId) {
     emit('vertex-added', event.latlng);
@@ -170,11 +170,10 @@ const drawNewZoneLayer = () => {
 const setupMapEvents = () => {
   if (map.value) {
     map.value.on('click', handleMapClick);
-    map.value.on('click', handleMapClick);
   }
 };
 
-// Lifecycle hooks
+// Hooks de ciclo de vida
 onMounted(async () => {
   await initializeMap({
     lat: props.centerLat,
@@ -196,7 +195,7 @@ onUnmounted(() => {
   destroyMap();
 });
 
-// Watchers
+// Observadores (Watchers)
 watch(() => mode.value, (newMode, oldMode) => {
   handleModeChange(newMode);
 
@@ -215,7 +214,7 @@ watch(() => [props.zones, props.activeZoneId], () => {
 }, { deep: true });
 
 watch(() => props.devices, (newDevices) => {
-  // Only redraw devices if we are not in a vertex editing mode
+  // Só redesenha dispositivos se não estivermos em modo de edição de vértices
   if (mode.value === null || mode.value === 'move-devices') {
     drawDevices(newDevices, props.conversionFn, mode.value);
   }
@@ -231,14 +230,14 @@ watch(() => props.mesh, async (newMesh) => {
     lon: props.centerLng,
     mesh: newMesh,
   });
-  // After re-initializing, we need to redraw everything and re-attach events
+  // Após reinicializar, precisamos redesenhar tudo e reanexar eventos
   setupMapEvents();
   drawZones(props.zones, props.activeZoneId);
   enableEditMode(props.activeZoneId, mode.value);
   drawDevices(props.devices, props.conversionFn, mode.value);
 }, { deep: true });
 
-// Expose methods for parent component
+// Expõe métodos para o componente pai
 defineExpose({
   setMode: (newMode) => {
     mode.value = newMode;
@@ -251,7 +250,7 @@ defineExpose({
 .leaflet-map-wrapper {
   position: relative;
   width: 100%;
-  height: 100%; /* fill parent, not viewport */
+  height: 100%; /* preenche o pai, não a viewport */
   background: #f0f0f0;
 }
 
@@ -270,12 +269,12 @@ defineExpose({
 }
 
 .leaflet-map-container {
-  height: 100%; /* fill wrapper, not viewport */
+  height: 100%; /* preenche o pai, não a viewport */
   width: 100%;
   border-radius: 0;
 }
 
-/* Loading state */
+/* Estado de carregamento */
 .leaflet-map-container:empty::before {
   content: 'Loading map...';
   position: absolute;
@@ -287,14 +286,14 @@ defineExpose({
   z-index: 1000;
 }
 
-/* Mobile adjustments */
+/* Ajustes para mobile */
 @media (max-width: 768px) {
   .leaflet-map-wrapper {
     height: 100%; /* keep consistent */
   }
 }
 
-/* Dark mode */
+/* Modo escuro */
 @media (prefers-color-scheme: dark) {
   .leaflet-map-wrapper {
     background: #1a1a1a;

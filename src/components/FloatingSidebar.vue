@@ -1,6 +1,6 @@
 <template>
   <div class="sidebar-container">
-    <!-- Floating Save + Undo Buttons -->
+    <!-- Botões Flutuantes Salvar + Desfazer -->
     <transition name="save-button-fade">
       <div v-if="showSaveButton || showUndoButton" class="floating-action-buttons">
         <div v-if="showUndoButton" class="floating-undo-button">
@@ -22,7 +22,7 @@
       <transition name="sidebar-actions-fade">
         <div v-if="expanded || showActions" class="sidebar-actions-wrapper" :class="{ visible: expanded }">
           <div class="sidebar-actions">
-            <!-- Mesh Selector -->
+            <!-- Seletor de Malha -->
             <div class="selector-container">
               <div class="selector-header">
                 <q-icon name="grid_on" size="20px" />
@@ -50,10 +50,10 @@
               </q-select>
             </div>
 
-            <!-- Divider -->
+            <!-- Divisor -->
             <q-separator class="selector-divider" />
 
-            <!-- Zone Selector (only if mesh is selected) -->
+            <!-- Seletor de Zona (apenas se malha selecionada) -->
             <div v-if="selectedMeshId && zones.length > 0" class="selector-container">
               <div class="selector-header">
                 <q-icon name="layers" size="20px" />
@@ -81,10 +81,10 @@
               </q-select>
             </div>
 
-            <!-- Divider -->
+            <!-- Divisor -->
             <q-separator v-if="selectedMeshId" class="selector-divider" />
 
-            <!-- Action Buttons -->
+            <!-- Botões de Ação -->
             <div class="action-buttons-container">
               <ActionGroup 
                 v-for="(group, index) in actionGroups" 
@@ -137,7 +137,7 @@ const zonesStore = useZonesStore();
 const expanded = ref(false);
 const showActions = ref(false);
 
-// Mesh options for dropdown
+// Opções de malha para dropdown
 const meshOptions = computed(() => {
   return props.meshes.map(mesh => ({
     label: mesh.name,
@@ -145,7 +145,7 @@ const meshOptions = computed(() => {
   }));
 });
 
-// Zone options for dropdown
+// Opções de zona para dropdown
 const zoneOptions = computed(() => {
   return props.zones.map(zone => ({
     label: zone.name,
@@ -153,7 +153,7 @@ const zoneOptions = computed(() => {
   }));
 });
 
-// Action groups (only create zone button now)
+// Grupos de ação (apenas botão de criar zona agora)
 const actionGroups = computed(() => [
   [
     { 
@@ -195,7 +195,7 @@ const handleZoneSelected = (zoneId) => {
   if (props.activeZoneId === zoneId) return;
 
   const switchZone = () => {
-    emit('undo-zone-clicked'); // to restore changes
+    emit('undo-zone-clicked'); // para restaurar mudanças
     zonesStore.setActiveZone(zoneId);
   };
 
@@ -341,7 +341,7 @@ defineExpose({
   gap: 8px;
 }
 
-/* preserve existing save-button styles */
+/* preserva estilos existentes de save-button */
 .save-button {
   width: 56px;
   height: 56px;
@@ -370,7 +370,7 @@ defineExpose({
   transform: scale(1.05);
 }
 
-/* Responsive design */
+/* Design responsivo */
 @media (max-width: 768px) {
   .sidebar-container {
     top: 64px;
@@ -422,7 +422,7 @@ defineExpose({
   }
 }
 
-/* Dark mode support */
+/* Suporte a modo escuro */
 @media (prefers-color-scheme: dark) {
   .floating-sidebar {
     background: rgba(45, 45, 45, 0.45);

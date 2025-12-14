@@ -26,7 +26,7 @@ import { useMeshesStore } from '@/stores/meshes';
 const meshesStore = useMeshesStore();
 
 onMounted(() => {
-  // Fetch meshes when the component is mounted
+  // Busca as malhas ao montar o componente
   meshesStore.fetchMeshes();
 });
 </script>
