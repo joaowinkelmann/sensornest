@@ -5,7 +5,7 @@ import apiClient from '@/api';
 
 vi.mock('@/api');
 
-describe('dataExporter store', () => {
+describe('store dataExporter', () => {
   let store;
 
   beforeEach(() => {
@@ -13,7 +13,7 @@ describe('dataExporter store', () => {
     store = useDataExporterStore();
   });
 
-  it('calls the export endpoint with the correct payload', async () => {
+  it('chama o endpoint de exportação com o payload correto', async () => {
     apiClient.post.mockResolvedValue({ data: 'http://localhost/export.csv' });
 
     await store.exportData('mesh', 'mesh1');
@@ -25,7 +25,7 @@ describe('dataExporter store', () => {
     });
   });
 
-  it('returns the URL from the API call', async () => {
+  it('retorna a URL da chamada da API', async () => {
     apiClient.post.mockResolvedValue({ data: 'http://localhost/export.csv' });
 
     const url = await store.exportData('mesh', 'mesh1');
@@ -33,11 +33,11 @@ describe('dataExporter store', () => {
     expect(url).toBe('http://localhost/export.csv');
   });
 
-  it('sets loading and error states correctly', async () => {
+  it('define estados de carregamento e erro corretamente', async () => {
     apiClient.post.mockRejectedValue(new Error('Network Error'));
 
     await expect(store.exportData('mesh', 'mesh1')).rejects.toThrow('Network Error');
     expect(store.loading).toBe(false);
-    expect(store.error).toBe('Failed to export data.');
+    expect(store.error).toBe('Falha ao exportar dados.');
   });
 });

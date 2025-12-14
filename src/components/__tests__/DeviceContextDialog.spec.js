@@ -13,10 +13,8 @@ const i18n = createI18n({
     'en-US': {
       devices: {
         contextDialog: {
-          // Updated: title no longer includes deviceName
           title: 'Device',
           statisticsTab: 'Statistics',
-          // Match the current UI label
           zoneTab: 'Zone',
         },
       },
@@ -67,7 +65,6 @@ describe('DeviceContextDialog', () => {
     });
     await wrapper.vm.$nextTick();
     await flushPromises();
-    // Updated expectation: generic title
     expect(wrapper.text()).toContain('Device');
   });
 

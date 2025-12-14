@@ -61,8 +61,8 @@ vi.mock('@/stores/auth', () => ({
 }));
 
 describe('LoginView.vue', () => {
-  // const pushMock = vi.fn(); // Unused
-  // const replaceMock = vi.fn(); // Unused
+  // const pushMock = vi.fn();
+  // const replaceMock = vi.fn();
 
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -70,8 +70,6 @@ describe('LoginView.vue', () => {
 
     // Reset query
     queryRef.value = {};
-
-
 
     apiClient.get.mockClear();
     apiClient.post.mockClear();
@@ -84,7 +82,6 @@ describe('LoginView.vue', () => {
         'q-layout': { template: '<div><slot /></div>' },
         'q-page-container': { template: '<div><slot /></div>' },
         'q-page': { template: '<div><slot /></div>' },
-        // Stub dialogs to avoid intense rendering but keep existence check
         'PasswordRecoveryDialog': true,
         'ResetPasswordDialog': true
       }

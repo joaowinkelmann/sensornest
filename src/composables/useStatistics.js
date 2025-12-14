@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import api from '@/api'; // Assuming you have an api module for making requests
+import api from '@/api';
 
 export function useStatistics() {
   const statistics = ref(null);

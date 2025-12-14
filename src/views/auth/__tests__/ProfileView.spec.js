@@ -9,7 +9,7 @@ import { ref } from 'vue';
 import flushPromises from 'flush-promises';
 
 const i18n = createI18n({
-  legacy: false, // use composition API
+  legacy: false, // composition api
   locale: 'en',
   messages: {
     en: {

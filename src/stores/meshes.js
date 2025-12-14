@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import apiClient from '@/api';
-import { useZonesStore } from './zones'; // We'll need this to trigger zone fetching
+import { useZonesStore } from './zones';
 import { useDevicesStore } from './devices';
 
 export const useMeshesStore = defineStore('meshes', {
@@ -22,12 +22,11 @@ export const useMeshesStore = defineStore('meshes', {
       try {
         const response = await apiClient.get('/meshes');
         this.meshes = response.data;
-        // Automatically select the first mesh if none is selected
         if (this.meshes.length > 0 && !this.selectedMeshId) {
           this.selectMesh(this.meshes[0].id);
         }
       } catch (e) {
-        this.error = 'Failed to fetch meshes.';
+        this.error = 'Falha ao buscar meshes.';
         console.error(e);
       } finally {
         this.loading = false;
@@ -48,7 +47,7 @@ export const useMeshesStore = defineStore('meshes', {
         this.meshes.push(response.data);
         return response.data;
       } catch (e) {
-        this.error = 'Failed to create mesh.';
+        this.error = 'Falha ao criar mesh.';
         console.error(e);
         throw e;
       } finally {
@@ -66,7 +65,7 @@ export const useMeshesStore = defineStore('meshes', {
         }
         return response.data;
       } catch (e) {
-        this.error = 'Failed to update mesh.';
+        this.error = 'Falha ao atualizar mesh.';
         console.error(e);
         throw e;
       } finally {
@@ -90,16 +89,14 @@ export const useMeshesStore = defineStore('meshes', {
           },
         });
 
-        // After a successful upload, update the mesh data in the store
         const index = this.meshes.findIndex(m => m.id === meshId);
         if (index !== -1) {
-          // Merge the new map data into the existing mesh object
           this.meshes[index] = { ...this.meshes[index], ...response.data };
         }
 
         return response.data;
       } catch (e) {
-        console.error('Failed to upload map image:', e);
+        console.error('Falha ao carregar imagem do mapa:', e);
         throw e;
       }
     },

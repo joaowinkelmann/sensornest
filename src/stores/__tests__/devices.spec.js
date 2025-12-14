@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-// Mock API client safely (no top-level mutated refs)
 vi.mock('@/api', () => {
   const get = vi.fn()
   const post = vi.fn()
@@ -12,13 +11,13 @@ vi.mock('@/api', () => {
 import apiClient from '@/api'
 import { useDevicesStore } from '../devices'
 
-describe('devices store: fetchDevices URL selection and error handling', () => {
+describe('store de dispositivos: seleção de URL fetchDevices e tratamento de erros', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     apiClient.get.mockReset()
   })
 
-  it('calls /devices when no filters are provided', async () => {
+  it('chama /devices quando nenhum filtro é fornecido', async () => {
     const store = useDevicesStore()
     apiClient.get.mockResolvedValueOnce({ data: [{ id: 'd1' }] })
 
@@ -30,7 +29,7 @@ describe('devices store: fetchDevices URL selection and error handling', () => {
     expect(store.error).toBeNull()
   })
 
-  it('calls /meshes/{meshId}/devices when meshId is provided', async () => {
+  it('chama /meshes/{meshId}/devices quando meshId é fornecido', async () => {
     const store = useDevicesStore()
     apiClient.get.mockResolvedValueOnce({ data: [{ id: 'd2' }] })
 
@@ -41,7 +40,7 @@ describe('devices store: fetchDevices URL selection and error handling', () => {
     expect(store.devices).toEqual([{ id: 'd2' }])
   })
 
-  it('calls /zones/{zoneId}/devices when zoneId is provided (overrides mesh route)', async () => {
+  it('chama /zones/{zoneId}/devices quando zoneId é fornecido (sobrescreve rota da malha)', async () => {
     const store = useDevicesStore()
     apiClient.get.mockResolvedValueOnce({ data: [{ id: 'd3' }] })
 
@@ -52,17 +51,17 @@ describe('devices store: fetchDevices URL selection and error handling', () => {
     expect(store.devices).toEqual([{ id: 'd3' }])
   })
 
-  it('handles errors by clearing devices and setting error message', async () => {
+  it('trata erros limpando dispositivos e definindo mensagem de erro', async () => {
     const store = useDevicesStore()
     apiClient.get.mockRejectedValueOnce(new Error('network'))
 
     await store.fetchDevices()
 
     expect(store.devices).toEqual([])
-    expect(store.error).toBe('Failed to fetch devices.')
+    expect(store.error).toBe('Falha ao buscar dispositivos.')
   })
 
-  it('clearDevices empties the list', async () => {
+  it('clearDevices limpa a lista', async () => {
     const store = useDevicesStore()
     store.devices = [{ id: 'dX' }]
 

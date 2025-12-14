@@ -25,8 +25,8 @@ export const useAuthStore = defineStore('auth', {
         const response = await apiClient.post('auth/login', credentials);
         this.token = response.data.access_token;
         localStorage.setItem('token', this.token);
-        await this.getProfile(); // Fetch user profile after login
-        router.push('/'); // Redirect to dashboard
+        await this.getProfile();
+        router.push('/');
       } catch (e) {
         this.error = 'Invalid email or password.';
         console.error('Login failed:', e);
@@ -39,7 +39,6 @@ export const useAuthStore = defineStore('auth', {
       this.error = null;
       try {
         const response = await apiClient.get('auth/profile');
-        // API returns { user: { id, email, name } } according to OpenAPI spec
         this.user = response.data.user || response.data;
       } catch (e) {
         this.error = 'Failed to fetch profile.';
@@ -48,7 +47,6 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false;
       }
     },
-    // New: only fetch if not loaded, or if stale, or if forced
     async getProfileIfNeeded({ force = false, maxAgeMs = 5 * 60 * 1000 } = {}) {
       if (this._profilePromise) {
         return this._profilePromise;
@@ -64,7 +62,6 @@ export const useAuthStore = defineStore('auth', {
       this._profilePromise = (async () => {
         try {
           const response = await apiClient.get('auth/profile');
-          // API returns { user: { id, email, name } } according to OpenAPI spec
           this.user = response.data.user || response.data;
           this.profileLoaded = true;
           this.profileLoadedAt = Date.now();
@@ -83,13 +80,11 @@ export const useAuthStore = defineStore('auth', {
       this.error = null;
       try {
         const response = await apiClient.patch(`users/${id}`, { name });
-        // API returns { message, user: { id, email, name, altDthr, insDthr } }
         this.user = response.data.user || response.data;
         
-        // Show success notification
         Notify.create({
           type: 'positive',
-          message: response.data.message || 'User updated successfully',
+          message: response.data.message || 'Usuário atualizado com sucesso',
           position: 'top',
           timeout: 2000
         });
@@ -99,10 +94,9 @@ export const useAuthStore = defineStore('auth', {
         this.error = 'Failed to update profile.';
         console.error('Profile update failed:', e);
         
-        // Show error notification
         Notify.create({
           type: 'negative',
-          message: 'Failed to update profile',
+          message: 'Falha ao atualizar perfil',
           position: 'top',
           timeout: 2000
         });

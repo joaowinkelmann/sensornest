@@ -1,20 +1,19 @@
 import { defineStore } from 'pinia';
 import apiClient from '@/api';
 import { useDevicesStore } from './devices';
-import { useMeshesStore } from './meshes'; // added import
+import { useMeshesStore } from './meshes';
 
 export const useZonesStore = defineStore('zones', {
   state: () => ({
     zones: [],
-    allZones: [], // NEW: holds zones across all meshes
-    activeZoneId: null, // To track the currently selected zone
+    allZones: [],
+    activeZoneId: null,
     loading: false,
     error: null,
-    isZoneDirty: false, // Track if the active zone has unsaved changes
+    isZoneDirty: false,
     backupVertices: null,
   }),
   getters: {
-    // Getter to easily find the active zone object
     activeZone: (state) => {
       return state.zones.find(z => z.id === state.activeZoneId) || null;
     },
@@ -29,26 +28,22 @@ export const useZonesStore = defineStore('zones', {
       }
       this.loading = true;
       this.error = null;
-      this.isZoneDirty = false; // Reset dirty state on fetch
+      this.isZoneDirty = false;
       try {
-        // This corresponds to GET /meshes/:meshId/zones
         const response = await apiClient.get(`/meshes/${meshId}/zones`);
         this.zones = response.data;
-        // Automatically select the first zone as active if available
         if (this.zones.length > 0) {
           this.setActiveZone(this.zones[0].id);
         } else {
           this.activeZoneId = null;
-          // NEW: still fetch devices for the current mesh even if there are no zones
           const devicesStore = useDevicesStore();
           devicesStore.fetchDevices({ meshId });
         }
       } catch (e) {
-        this.error = 'Failed to fetch zones.';
+        this.error = 'Falha ao buscar zones.';
         this.zones = [];
         this.activeZoneId = null;
         console.error(e);
-        // NEW: fallback — attempt to fetch devices for the mesh even if zones failed
         try {
           const devicesStore = useDevicesStore();
           await devicesStore.fetchDevices({ meshId });
@@ -64,40 +59,36 @@ export const useZonesStore = defineStore('zones', {
       this.error = null;
       try {
         const response = await apiClient.get('/zones');
-        this.allZones = response.data; // store globally, do not overwrite per-mesh zones
+        this.allZones = response.data;
       } catch (e) {
-        this.error = 'Failed to fetch all zones.';
+        this.error = 'Falha ao buscar zones.';
         console.error(e);
       } finally {
         this.loading = false;
       }
     },
-    // Action to set the active zone
     setActiveZone(zoneId) {
-      if (this.activeZoneId === zoneId) return; // Avoid re-fetching if already active
+      if (this.activeZoneId === zoneId) return;
 
       this.activeZoneId = zoneId;
-      this.isZoneDirty = false; // Reset dirty state when changing zone
+      this.isZoneDirty = false;
 
       const devicesStore = useDevicesStore();
       const meshesStore = useMeshesStore();
 
       if (zoneId) {
-        // FIX: pass options object so it hits /meshes/{meshId}/devices
         devicesStore.fetchDevices({ meshId: meshesStore.selectedMeshId });
       } else {
         devicesStore.clearDevices();
       }
     },
-    // Action to optimistically update a zone locally
     updateLocalZone(zoneId, zoneData) {
       const index = this.zones.findIndex(z => z.id === zoneId);
       if (index !== -1) {
         this.zones[index] = { ...this.zones[index], ...zoneData };
-        this.isZoneDirty = true; // Mark as dirty
+        this.isZoneDirty = true;
       }
     },
-    // Action to update a zone's data (e.g., adding a vertex)
     async updateZone(zoneId, zoneData) {
       this.loading = true;
       this.error = null;
@@ -106,12 +97,11 @@ export const useZonesStore = defineStore('zones', {
         const index = this.zones.findIndex(z => z.id === zoneId);
         if (index !== -1) {
           this.zones[index] = response.data;
-          this.isZoneDirty = false; // Mark as clean after successful save
+          this.isZoneDirty = false;
         }
       } catch (e) {
-        this.error = 'Failed to update zone.';
+        this.error = 'Falha ao atualizar zone.';
         console.error(e);
-        // Here you might want to revert the optimistic update if the API call fails
       } finally {
         this.loading = false;
       }

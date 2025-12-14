@@ -52,7 +52,6 @@ watch(
 );
 
 onMounted(async () => {
-  // Ensure profile is loaded
   await authStore.getProfileIfNeeded({ force: true });
 });
 

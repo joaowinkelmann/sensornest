@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-// Mocks for dependent stores used inside zones store
 const fetchDevicesMock = vi.fn()
 const clearDevicesMock = vi.fn()
 const selectedMeshId = 'mesh123'
 
-// Mock API client used by zones store for network calls
 vi.mock('@/api', () => {
   const get = vi.fn()
   const post = vi.fn()
@@ -30,7 +28,7 @@ vi.mock('../meshes', () => ({
 import apiClient from '@/api'
 import { useZonesStore } from '../zones'
 
-describe('zones store: active zone, optimistic updates, backup/restore', () => {
+describe('store de zones: zona ativa, atualizações otimistas, backup/restauração', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     fetchDevicesMock.mockReset()
@@ -40,7 +38,7 @@ describe('zones store: active zone, optimistic updates, backup/restore', () => {
     apiClient.patch.mockReset()
   })
 
-  it('setActiveZone sets id, resets dirty flag, and fetches devices for current mesh', () => {
+  it('setActiveZone define id, redefine flag dirty e busca dispositivos para a malha atual', () => {
     const zones = useZonesStore()
 
     zones.setActiveZone('zone1')
@@ -51,7 +49,7 @@ describe('zones store: active zone, optimistic updates, backup/restore', () => {
     expect(clearDevicesMock).not.toHaveBeenCalled()
   })
 
-  it('setActiveZone(null) clears devices (after being on a zone)', () => {
+  it('setActiveZone(null) limpa dispositivos (após estar em uma zona)', () => {
     const zones = useZonesStore()
 
     zones.setActiveZone('z-prev')
@@ -65,7 +63,7 @@ describe('zones store: active zone, optimistic updates, backup/restore', () => {
     expect(fetchDevicesMock).not.toHaveBeenCalled()
   })
 
-  it('setActiveZone with same id is a no-op (does not re-fetch devices)', () => {
+  it('setActiveZone com mesmo id é uma operação nula (não busca dispositivos novamente)', () => {
     const zones = useZonesStore()
     zones.setActiveZone('z1')
     fetchDevicesMock.mockClear()
@@ -75,7 +73,7 @@ describe('zones store: active zone, optimistic updates, backup/restore', () => {
     expect(fetchDevicesMock).not.toHaveBeenCalled()
   })
 
-  it('updateLocalZone mutates zone and marks as dirty', () => {
+  it('updateLocalZone altera a zona e marca como dirty', () => {
     const zones = useZonesStore()
     zones.zones = [{ id: 'z1', name: 'Z1', vertices: [{ x: 0, y: 0 }] }]
 
@@ -85,7 +83,7 @@ describe('zones store: active zone, optimistic updates, backup/restore', () => {
     expect(zones.isZoneDirty).toBe(true)
   })
 
-  it('updateLocalZone for non-existent zone does not mark dirty', () => {
+  it('updateLocalZone para zona inexistente não marca como dirty', () => {
     const zones = useZonesStore()
     zones.zones = [{ id: 'z1', name: 'Z1' }]
 
@@ -95,7 +93,7 @@ describe('zones store: active zone, optimistic updates, backup/restore', () => {
     expect(zones.isZoneDirty).toBe(false)
   })
 
-  it('backupActiveZone and restoreActiveZone revert unsaved changes', () => {
+  it('backupActiveZone e restoreActiveZone revertem alterações não salvas', () => {
     const zones = useZonesStore()
     zones.zones = [{ id: 'z1', name: 'Z1', vertices: [{ x: 0, y: 0 }, { x: 10, y: 10 }] }]
     zones.setActiveZone('z1')
@@ -113,7 +111,7 @@ describe('zones store: active zone, optimistic updates, backup/restore', () => {
     expect(zones.backupVertices).toBeNull()
   })
 
-  it('restoreActiveZone without backup does nothing', () => {
+  it('restoreActiveZone sem backup não faz nada', () => {
     const zones = useZonesStore()
     zones.zones = [{ id: 'z1', vertices: [{ x: 1, y: 1 }] }]
     zones.setActiveZone('z1')
@@ -126,7 +124,7 @@ describe('zones store: active zone, optimistic updates, backup/restore', () => {
   })
 })
 
-describe('zones store: networking (fetchZones, fetchAllZones, updateZone, createZone)', () => {
+describe('store de zones: rede (fetchZones, fetchAllZones, updateZone, createZone)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     fetchDevicesMock.mockReset()
@@ -136,7 +134,7 @@ describe('zones store: networking (fetchZones, fetchAllZones, updateZone, create
     apiClient.patch.mockReset()
   })
 
-  it('fetchZones(null) clears zones and devices without calling API', async () => {
+  it('fetchZones(null) limpa zonas e dispositivos sem chamar API', async () => {
     const zones = useZonesStore()
     zones.zones = [{ id: 'z-old' }]
     await zones.fetchZones(null)
@@ -146,7 +144,7 @@ describe('zones store: networking (fetchZones, fetchAllZones, updateZone, create
     expect(apiClient.get).not.toHaveBeenCalled()
   })
 
-  it('fetchZones success selects first zone and triggers device fetch', async () => {
+  it('fetchZones sucesso seleciona primeira zona e aciona busca de dispositivos', async () => {
     const zones = useZonesStore()
     apiClient.get.mockResolvedValueOnce({
       data: [
@@ -164,7 +162,7 @@ describe('zones store: networking (fetchZones, fetchAllZones, updateZone, create
     expect(fetchDevicesMock).toHaveBeenCalledWith({ meshId: selectedMeshId })
   })
 
-  it('fetchZones error sets error and resets state', async () => {
+  it('fetchZones erro define erro e redefine estado', async () => {
     const zones = useZonesStore()
     zones.zones = [{ id: 'x' }]
     zones.activeZoneId = 'x'
@@ -172,12 +170,12 @@ describe('zones store: networking (fetchZones, fetchAllZones, updateZone, create
 
     await zones.fetchZones(selectedMeshId)
 
-    expect(zones.error).toBe('Failed to fetch zones.')
+    expect(zones.error).toBe('Falha ao buscar zones.')
     expect(zones.zones).toEqual([])
     expect(zones.activeZoneId).toBeNull()
   })
 
-  it('fetchAllZones success stores data into allZones', async () => {
+  it('fetchAllZones sucesso armazena dados em allZones', async () => {
     const zones = useZonesStore()
     const list = [{ id: 'a' }, { id: 'b' }]
     apiClient.get.mockResolvedValueOnce({ data: list })
@@ -188,7 +186,7 @@ describe('zones store: networking (fetchZones, fetchAllZones, updateZone, create
     expect(zones.allZones).toEqual(list)
   })
 
-  it('updateZone success updates server data and clears dirty flag', async () => {
+  it('updateZone sucesso atualiza dados no servidor e limpa flag dirty', async () => {
     const zones = useZonesStore()
     zones.zones = [{ id: 'z1', name: 'Before' }]
     zones.updateLocalZone('z1', { name: 'Dirty' })
@@ -203,7 +201,7 @@ describe('zones store: networking (fetchZones, fetchAllZones, updateZone, create
     expect(zones.isZoneDirty).toBe(false)
   })
 
-  it('createZone success pushes zone, activates it, marks dirty, and fetches devices', async () => {
+  it('createZone sucesso adiciona zona, ativa-a, marca dirty e busca dispositivos', async () => {
     const zones = useZonesStore()
     const created = { id: 'zNew', name: 'New', vertices: [] }
     apiClient.post.mockResolvedValueOnce({ data: created })

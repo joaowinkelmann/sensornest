@@ -155,7 +155,6 @@
   }
 }
 
-/* Global muted text color for higher contrast */
 :root {
-  --muted-text: #3b3b3b; /* darker than #e0e0e0 for better contrast */
+  --muted-text: #3b3b3b;
 }

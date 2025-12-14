@@ -18,17 +18,13 @@ export const useDevicesStore = defineStore('devices', {
           url = `/meshes/${meshId}/devices`;
         }
         if (zoneId) {
-          // This endpoint is not in the spec, but let's assume it could exist
-          // or filtering is done client-side. For now, we add it as a query param.
-          // A better approach would be to have a dedicated endpoint or filter on the client.
-          // Based on spec, we have /zones/{zoneId}/devices
           url = `/zones/${zoneId}/devices`;
         }
 
         const response = await apiClient.get(url, { params });
         this.devices = response.data;
       } catch (e) {
-        this.error = 'Failed to fetch devices.';
+        this.error = 'Falha ao buscar dispositivos.';
         this.devices = [];
         console.error(e);
       } finally {
@@ -43,16 +39,15 @@ export const useDevicesStore = defineStore('devices', {
       this.error = null;
       try {
         const response = await apiClient.patch(`/devices/${deviceId}`, payload);
-        // Update the local device data
         const index = this.devices.findIndex(d => d.id === deviceId);
         if (index !== -1) {
           this.devices[index] = { ...this.devices[index], ...response.data };
         }
         return response.data;
       } catch (e) {
-        this.error = 'Failed to update device.';
+        this.error = 'Falha ao atualizar dispositivo.';
         console.error(e);
-        throw e; // Re-throw to be caught in the component
+        throw e;
       } finally {
         this.loading = false;
       }

@@ -6,7 +6,6 @@ import { ref } from 'vue';
 import * as useStatistics from '@/composables/useStatistics';
 import flushPromises from 'flush-promises';
 
-// Mock vue-echarts to prevent it from rendering in JSDOM
 vi.mock('vue-echarts', () => ({
   default: {
     name: 'VChart',
@@ -33,7 +32,7 @@ describe('MeshStatistics.vue', () => {
   let useStatisticsMock;
 
   beforeEach(() => {
-    vi.clearAllMocks(); // Clear mocks before each test
+    vi.clearAllMocks();
     useStatisticsMock = {
       statistics: ref(null),
       loading: ref(false),

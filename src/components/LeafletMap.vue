@@ -109,7 +109,9 @@ const {
 
 const {
   drawZones,
-  clearZoneLayers
+  clearZoneLayers,
+  enableEditMode,
+  clearVertexMarkers
 } = useZoneRenderer(map, props, emit);
 
 const {
@@ -120,10 +122,15 @@ const {
 // Mode management
 const handleModeChange = (newMode) => {
   mode.value = newMode;
-  // setMapDragging(newMode === null); // REMOVED: keep map movable in all modes
+  
+  // Clear old markers first
+  clearVertexMarkers();
 
-  // Redraw zones to show/hide vertex markers based on mode
-  drawZones(props.zones, props.activeZoneId, mode.value);
+  // Redraw zones (pure rendering)
+  drawZones(props.zones, props.activeZoneId);
+
+  // Apply edit mode (interaction)
+  enableEditMode(props.activeZoneId, newMode);
 
   // Show/hide devices based on mode
   if (newMode && newMode !== 'move-devices') {
@@ -194,7 +201,8 @@ onMounted(async () => {
     mesh: props.mesh
   });
   setupMapEvents();
-  drawZones(props.zones, props.activeZoneId, mode.value);
+  drawZones(props.zones, props.activeZoneId);
+  enableEditMode(props.activeZoneId, mode.value);
   drawDevices(props.devices, props.conversionFn, mode.value);
 });
 
@@ -213,14 +221,7 @@ onUnmounted(() => {
 
 // Watchers
 watch(() => mode.value, (newMode, oldMode) => {
-  // setMapDragging(newMode === null); // REMOVED: keep map movable in all modes
-  drawZones(props.zones, props.activeZoneId, newMode);
-  if (newMode && newMode !== 'move-devices') {
-    clearDeviceMarkers();
-  } else {
-    // This will draw devices for 'move-devices' mode and when mode is null
-    drawDevices(props.devices, props.conversionFn, newMode);
-  }
+  handleModeChange(newMode);
 
   if (oldMode === 'draw-zone' && newMode !== 'draw-zone') {
     newZoneVertices.value = [];
@@ -232,7 +233,8 @@ watch(() => mode.value, (newMode, oldMode) => {
 });
 
 watch(() => [props.zones, props.activeZoneId], () => {
-  drawZones(props.zones, props.activeZoneId, mode.value);
+  drawZones(props.zones, props.activeZoneId);
+  enableEditMode(props.activeZoneId, mode.value);
 }, { deep: true });
 
 watch(() => props.devices, (newDevices) => {
@@ -254,7 +256,8 @@ watch(() => props.mesh, async (newMesh) => {
   });
   // After re-initializing, we need to redraw everything and re-attach events
   setupMapEvents();
-  drawZones(props.zones, props.activeZoneId, mode.value);
+  drawZones(props.zones, props.activeZoneId);
+  enableEditMode(props.activeZoneId, mode.value);
   drawDevices(props.devices, props.conversionFn, mode.value);
 }, { deep: true });
 

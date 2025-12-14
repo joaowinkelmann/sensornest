@@ -89,7 +89,6 @@ const selectedEntity = ref(null);
 const allEntities = ref([]);
 const entityOptions = ref([]);
 
-// New date filters
 const from = ref('');
 const to = ref('');
 
@@ -149,20 +148,17 @@ const filterFn = (val, update) => {
 const handleExport = async () => {
   if (!selectedEntity.value) return;
 
-  // Build optional filters according to OpenAPI: ExportDataDto.from/to (ISO)
   const options = {};
   if (from.value) options.from = new Date(from.value).toISOString();
   if (to.value) options.to = new Date(to.value).toISOString();
 
   try {
-    // Keep backward compatibility: pass options as 3rd arg
     const result = await exporterStore.exportData(
       entityType.value,
       selectedEntity.value.value,
       options
     );
 
-    // Handle new chunked manifest: ExportResultDto.files (array of URLs)
     if (result && typeof result === 'object' && Array.isArray(result.files) && result.files.length) {
       $q.notify({
         type: 'info',
@@ -170,7 +166,6 @@ const handleExport = async () => {
         timeout: 2000
       });
 
-      // Trigger one download per file (stagger to avoid pop-up blockers)
       result.files.forEach((fileUrl, idx) => {
         setTimeout(() => {
           const a = document.createElement('a');
@@ -187,7 +182,6 @@ const handleExport = async () => {
       return;
     }
 
-    // Fallback: previous behavior (single URL string)
     if (typeof result === 'string') {
       const link = document.createElement('a');
       link.href = result;
@@ -198,10 +192,9 @@ const handleExport = async () => {
       return;
     }
 
-    // If store returns nothing usable
     $q.notify({ type: 'warning', message: t('data.exportNoFiles') });
   } catch (error) {
-    console.error('Export failed', error);
+    console.error('Exportação falhou', error);
   }
 };
 </script>

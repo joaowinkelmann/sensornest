@@ -59,7 +59,6 @@ const handleRegister = async () => {
   success.value = '';
   loading.value = true;
 
-  // Front-end check before calling API
   if (!password.value || !confirmPassword.value || password.value !== confirmPassword.value) {
     loading.value = false;
     error.value = t('register.passwordsMustMatch');

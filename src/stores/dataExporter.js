@@ -11,7 +11,7 @@ export const useDataExporterStore = defineStore('dataExporter', {
       this.loading = true;
       this.error = null;
       try {
-        // Request 5 MiB chunks by default (can be overridden)
+        // chunks de 5mb por default
         const payload = {
           entityType,
           entityId,
@@ -22,7 +22,7 @@ export const useDataExporterStore = defineStore('dataExporter', {
         const response = await apiClient.post('/data-exporter/export', payload);
         return response.data;
       } catch (e) {
-        this.error = 'Failed to export data.';
+        this.error = 'Falha ao exportar dados.';
         console.error(e);
         throw e;
       } finally {

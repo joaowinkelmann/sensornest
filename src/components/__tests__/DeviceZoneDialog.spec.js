@@ -16,7 +16,6 @@ const i18n = createI18n({
         changeZone: {
           title: 'Change Device Zone',
           selectZone: 'Select a new zone',
-          // Added to silence i18n warnings
           noZones: 'No zones in this mesh.',
         },
       },
@@ -92,7 +91,6 @@ describe('DeviceZoneDialog', () => {
       }
     });
 
-    // Ensure zones exist and selectedZoneId differs from device.zoneId
     wrapper.vm.selectedZoneId = 'z2';
     await wrapper.vm.$nextTick();
 
@@ -100,7 +98,6 @@ describe('DeviceZoneDialog', () => {
     await saveBtn.trigger('click');
 
     const emitted = wrapper.emitted('zone-changed') || [];
-    // Accept at least one emission (defensive for duplicate triggers in test env)
     expect(emitted.length).toBeGreaterThanOrEqual(1);
     const last = emitted[emitted.length - 1][0];
     expect(last).toEqual({ deviceId: '1', zoneId: 'z2' });

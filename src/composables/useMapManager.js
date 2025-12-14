@@ -1,26 +1,23 @@
 import { ref } from 'vue';
 import L from 'leaflet';
 
-// Custom TileLayer to handle out-of-bounds tiles gracefully
 const CustomTileLayer = L.TileLayer.extend({
   getTileUrl: function (coords) {
     const { x, y } = coords;
 
-    // Assuming a simple check for non-negative tile coordinates
+    // para quando os tiles são out of bounds
     if (x < 0 || y < 0) {
       return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
     }
 
-    // For valid coordinates, use the default implementation
+    // para quando os tiles são validos pega a url
     return L.TileLayer.prototype.getTileUrl.call(this, coords);
   }
 });
 
-// Factory function for the custom layer
 L.tileLayer.custom = function (url, options) {
   return new CustomTileLayer(url, options);
 };
-
 
 export function useMapManager(mapContainer) {
   const map = ref(null);
@@ -42,7 +39,7 @@ export function useMapManager(mapContainer) {
 
       if (mesh && mesh.mapUrl) {
         mapOptions.crs = L.CRS.Simple;
-        mapOptions.center = [0, 0]; // Center for CRS.Simple is y, x
+        mapOptions.center = [0, 0];
         mapOptions.zoom = 1;
 
         const ociToken = import.meta.env.VITE_OCI_MAP_TOKEN;

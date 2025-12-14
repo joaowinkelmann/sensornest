@@ -8,7 +8,7 @@ import RegisterView from '../RegisterView.vue';
 import flushPromises from 'flush-promises';
 
 const i18n = createI18n({
-  legacy: false, // use composition API
+  legacy: false, // composition API
   locale: 'en',
   messages: {
     en: {

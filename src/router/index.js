@@ -77,7 +77,6 @@ const routes = [
 
     ],
   },
-  // Catch-all redirect
   {
     path: '/:catchAll(.*)',
     redirect: '/',
@@ -89,11 +88,9 @@ const router = createRouter({
   routes,
 });
 
-// Navigation Guard
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
 
-  // Only fetch profile if needed (once per app session, or if stale/forced)
   if (authStore.token) {
     await authStore.getProfileIfNeeded();
   }

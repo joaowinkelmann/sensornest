@@ -38,15 +38,11 @@ const router = useRouter();
 
 const leftDrawerOpen = ref(true);
 
-// Make padding depend only on mobile + route (not on drawer/FAB state)
 const isMobile = computed(() => $q.screen.lt.md);
 const isMapEditor = computed(() =>
   route.name === 'map-editor' || route.path?.startsWith('/map-editor')
 );
 const applyTopPadding = computed(() => isMobile.value && !isMapEditor.value);
-
-// FAB still hides when drawer opens, but padding remains to prevent layout jump
-// const showMenuFab = computed(() => isMobile.value && !leftDrawerOpen.value);
 
 const handleLogout = () => {
   authStore.logout();
@@ -60,7 +56,7 @@ const toggleLeftDrawer = () => {
 
 <style scoped>
 .mobile-fab-container {
-  z-index: 2000; /* Ensure it's above map controls */
+  z-index: 2000;
 }
 
 .glassmorphism-btn {
@@ -81,7 +77,6 @@ const toggleLeftDrawer = () => {
   transform: scale(0.95);
 }
 
-/* Dark mode support */
 @media (prefers-color-scheme: dark) {
   .glassmorphism-btn {
     background: rgba(45, 45, 45, 0.45) !important;
@@ -92,7 +87,6 @@ const toggleLeftDrawer = () => {
 </style>
 
 <style>
-/* Mobile top padding when FAB is visible (except on map-editor) */
 @media (max-width: 1023px) {
   .mobile-top-padding {
     padding-top: 64px;

@@ -91,7 +91,6 @@ const checkResetToken = async () => {
   const token = route.query.token;
   if (token && typeof token === 'string') {
     try {
-      // Validate token
       const response = await apiClient.get('/users/reset-password/check', { params: { token } });
       if (response.data && response.data.valid) {
         resetToken.value = token;
@@ -103,7 +102,6 @@ const checkResetToken = async () => {
       console.error(e);
       $q.notify({ type: 'negative', message: t('resetPassword.tokenInvalid') });
     }
-    // Clean up URL ?
     router.replace({ query: null });
   }
 };

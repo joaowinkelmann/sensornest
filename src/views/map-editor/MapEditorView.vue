@@ -80,7 +80,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useMeshesStore } from '@/stores/meshes';
 import { useZonesStore } from '@/stores/zones';
@@ -123,22 +123,20 @@ const baseCoords = computed(() => {
 onMounted(async () => {
   await meshesStore.fetchMeshes();
   
-  // Auto-select first mesh if none is selected
+  // pega a primeira mesh se nenhuma estiver selecionada
   if (!meshesStore.selectedMeshId && meshesStore.meshes.length > 0) {
     meshesStore.selectMesh(meshesStore.meshes[0].id);
   }
 
-  // Always ensure zones are scoped to the currently selected mesh
+  // garante que as zonas estejam scoped para a mesh selecionada
   if (meshesStore.selectedMeshId) {
     await zonesStore.fetchZones(meshesStore.selectedMeshId);
-    // NEW: safety fallback — if devices didn't load (e.g., no zones),
-    // fetch them for the current mesh so the map renders devices.
     if (devicesStore.devices.length === 0) {
       await devicesStore.fetchDevices({ meshId: meshesStore.selectedMeshId });
     }
   }
 
-  // Only show notification if there are no meshes at all
+  // se não houver meshes, mostra uma notificação
   if (meshesStore.meshes.length === 0) {
     $q.notify({
       type: 'info',
@@ -147,9 +145,13 @@ onMounted(async () => {
   }
 });
 
+onUnmounted(() => {
+  zonesStore.setActiveZone(null);
+  zonesStore.backupVertices = null;
+});
+
 watch(() => zonesStore.activeZoneId, (newZoneId) => {
   zonesStore.backupVertices = null;
-  // Removed duplicate fetch; zones store now handles fetching on change
   if (!newZoneId) {
     devicesStore.clearDevices();
   }
@@ -280,7 +282,7 @@ const handleDeviceMoved = async ({ id, latlng }) => {
       timeout: 2000
     });
   } catch (error) {
-    console.error('Failed to update device position:', error);
+    console.error('Falha ao mover o dispositivo:', error);
     $q.notify({
       type: 'negative',
       message: t('notifications.deviceMovedError'),
@@ -302,7 +304,7 @@ const saveZone = async () => {
     zonesStore.isZoneDirty = false;
     $q.notify({ type: 'positive', message: t('notifications.zoneSaved') });
   } catch (error) {
-    console.error('Failed to save zone:', error);
+    console.error('Falha ao salvar a zona:', error);
     $q.notify({ type: 'negative', message: t('notifications.zoneSavedError') });
   }
 };
@@ -395,15 +397,14 @@ const handleDeviceZoneChanged = async ({ deviceId, zoneId }) => {
       message: t('notifications.deviceZoneUpdated'),
       timeout: 2000
     });
-    
-    // Refresh devices to show the updated zone assignment
+
     if (meshesStore.selectedMeshId) {
       await devicesStore.fetchDevices({ meshId: meshesStore.selectedMeshId });
     }
     
     showZoneDialog.value = false;
   } catch (error) {
-    console.error('Failed to update device zone:', error);
+    console.error('Falha ao atualizar a zona do dispositivo:', error);
     $q.notify({
       type: 'negative',
       message: t('notifications.deviceZoneUpdateError'),

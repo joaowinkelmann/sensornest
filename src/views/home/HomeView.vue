@@ -315,7 +315,7 @@ onMounted(() => {
   margin-top: 4px;
 }
 
-/* Responsive adjustments */
+/* Responsivo */
 @media (max-width: 768px) {
   .stat-value {
     font-size: 2rem;

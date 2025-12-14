@@ -79,7 +79,6 @@ const saveDevice = async () => {
     emit('device-updated');
   } catch (error) {
     console.error('Failed to update device:', error);
-    // Optionally, show an error message to the user
   }
 };
 </script>

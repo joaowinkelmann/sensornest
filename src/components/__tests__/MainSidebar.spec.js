@@ -7,7 +7,6 @@ import { h } from 'vue';
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
     t: (key) => key,
-    // Provide a simple ref-like object for locale to avoid undefined errors
     locale: { value: 'en-US' },
   }),
 }));
@@ -33,7 +32,6 @@ describe('MainSidebar.vue', () => {
     expect(links[3].text()).toContain('sidebar.devices');
     expect(links[4].text()).toContain('sidebar.data');
     expect(links[5].text()).toContain('sidebar.mapEditor');
-    // Language switcher item shows current language label
     expect(links[6].text()).toContain('English');
     expect(links[7].text()).toContain('Test User');
     expect(links[8].text()).toContain('Logout');
