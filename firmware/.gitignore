@@ -1,0 +1,17 @@
+# Build
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Cache
+.cache/
+
+
+# Components
+managed_components/
+
+# Generated config files
+sdkconfig
+sdkconfig.old
