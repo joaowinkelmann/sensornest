@@ -1,0 +1,272 @@
+{
+  "home": {
+    "overview": {
+      "title": "Resumen",
+      "totalDevices": "Total de Dispositivos",
+      "active": "Activos",
+      "inactive": "Inactivos",
+      "allTimeReadings": "Lecturas Totales",
+      "lastHour": "Última Hora",
+      "lastDay": "Últimas 24h",
+      "activeMeshes": "Mallas Activas",
+      "error": "Error al cargar estadísticas"
+    },
+    "quickActions": {
+      "title": "Acciones Rápidas",
+      "meshes": "Mallas",
+      "meshesSubtitle": "Administrar sus redes mesh",
+      "devices": "Dispositivos",
+      "devicesSubtitle": "Ver y configurar dispositivos",
+      "mapEditor": "Editor de Mapas",
+      "mapEditorSubtitle": "Editar zonas y posiciones",
+      "reports": "Informes",
+      "reportsSubtitle": "Ver informes detallados",
+      "data": "Datos",
+      "dataSubtitle": "Exportar datos de sensores para análisis"
+    }
+  },
+  "mapControls": {
+    "buttons": {
+      "addVertex": "Añadir Punto",
+      "removeVertex": "Quitar Punto",
+      "moveVertex": "Mover Punto",
+      "moveDevices": "Mover Dispositivos",
+      "newZone": "Nueva Zona",
+      "panMap": "Mover Mapa"
+    },
+    "instructions": {
+      "add": "Haz clic en el mapa para añadir un punto",
+      "remove": "Haz clic en un punto para eliminarlo",
+      "move": "Arrastra un punto para moverlo",
+      "moveDevices": "Arrastra un dispositivo para cambiar su posición",
+      "pan": "Mueve y haz zoom en el mapa",
+      "noZoneSelected": "Selecciona una zona para empezar a editar"
+    }
+  },
+  "sidebar": {
+    "logoAlt": "Logo de SensorNest",
+    "title": "SensorNest",
+    "home": "Resumen",
+    "meshes": "Mallas",
+    "mapEditor": "Editor de Mapas",
+    "devices": "Dispositivos",
+    "profile": "Perfil",
+    "data": "Datos",
+    "reports": "Informes",
+    "logout": "Cerrar Sesión",
+    "user": "Usuario",
+    "language": "Idioma"
+  },
+  "notifications": {
+    "meshSaved": "Malla guardada correctamente",
+    "meshSelected": "Malla seleccionada",
+    "meshPleaseSelect": "Por favor, seleccione una malla primero",
+    "zoneSaved": "Zona guardada correctamente",
+    "zoneNoActive": "No hay zona activa para guardar",
+    "zonePleaseSelect": "Por favor, seleccione una zona primero",
+    "zoneSavedError": "Error al guardar la zona",
+    "zoneCreated": "Zona creada",
+    "zoneCreatedError": "Error al crear la zona",
+    "zoneUpdated": "Zona actualizada",
+    "zoneDeleted": "Zona eliminada",
+    "deviceMoved": "Posición del dispositivo actualizada",
+    "deviceMovedError": "Error al actualizar la posición del dispositivo",
+    "noMeshesAvailable": "No hay mallas disponibles. Por favor, crea una malla primero."
+  },
+  "login": {
+    "title": "Iniciar sesión en SensorNest",
+    "emailLabel": "Dirección de correo electrónico",
+    "emailRequired": "Por favor, escribe tu correo electrónico",
+    "passwordLabel": "Contraseña",
+    "passwordRequired": "Por favor, escribe tu contraseña",
+    "signInButton": "Iniciar sesión",
+    "registerButton": "Crear una nueva cuenta",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "recoverPasswordTitle": "Recuperar contraseña",
+    "recoverPasswordInstructions": "Introduce tu correo electrónico para recibir las instrucciones de recuperación de contraseña.",
+    "recoverPasswordError": "Error al enviar el correo de recuperación.",
+    "recoverPasswordSent": "Instrucciones de recuperación enviadas a tu correo electrónico.",
+    "recoverButton": "Enviar correo"
+  },
+  "register": {
+    "title": "Crear una cuenta",
+    "nameLabel": "Nombre",
+    "nameRequired": "El nombre es obligatorio",
+    "emailLabel": "Correo electrónico",
+    "emailRequired": "El correo electrónico es obligatorio",
+    "passwordLabel": "Contraseña",
+    "passwordRequired": "La contraseña es obligatoria",
+    "registerButton": "Registrarse",
+    "loginButton": "Volver al inicio de sesión",
+    "successMessage": "¡Registro exitoso! Por favor, inicia sesión.",
+    "errorMessage": "Falló el registro."
+  },
+  "profile": {
+    "title": "Editar Perfil",
+    "nameLabel": "Nombre",
+    "nameRequired": "El nombre es obligatorio",
+    "emailLabel": "Correo electrónico",
+    "saveButton": "Guardar",
+    "loading": "Cargando perfil..."
+  },
+  "devices": {
+    "title": "Gestor de Dispositivos",
+    "filterByMesh": "Filtrar por Malla",
+    "filterByZone": "Filtrar por Zona",
+    "statisticsTitle": "Estadísticas de {deviceName}",
+    "statisticsError": "No se pudieron cargar las estadísticas.",
+    "closeButton": "Cerrar",
+    "updateSuccess": "¡Dispositivo actualizado correctamente!",
+    "dialogTitleEdit": "Editar Dispositivo",
+    "dialogTitleAdd": "Añadir Nuevo Dispositivo",
+    "deviceNameLabel": "Nombre del Dispositivo",
+    "macAddressLabel": "Dirección MAC",
+    "zoneLabel": "Zona",
+    "nameRequired": "El nombre del dispositivo es obligatorio.",
+    "macAddressRequired": "La dirección MAC es obligatoria.",
+    "macAddressInvalid": "Formato de dirección MAC no válido.",
+    "zoneRequired": "La zona es obligatoria.",
+    "cancelButton": "Cancelar",
+    "saveButton": "Guardar",
+    "deviceColorLabel": "Color del Dispositivo",
+    "wakeUpIntervalLabel": "Intervalo de Despertar (segundos)",
+    "readingsPerBatchLabel": "Lecturas por Lote",
+    "noColor": "Sin color",
+    "timeframes": {
+      "day": "Día",
+      "week": "Semana",
+      "month": "Mes"
+    }
+  },
+  "meshes": {
+    "title": "Mallas",
+    "createButton": "Crear Malla",
+    "statisticsTitle": "Estadísticas de {meshName}",
+    "statisticsError": "No se pudieron cargar las estadísticas.",
+    "closeButton": "Cerrar",
+    "meshCreatedSuccess": "¡Malla \"{meshName}\" creada correctamente!",
+    "meshUpdatedSuccess": "¡Malla \"{meshName}\" actualizada correctamente!",
+    "dialogTitleEdit": "Editar Malla",
+    "dialogTitleCreate": "Crear Nueva Malla",
+    "meshNameLabel": "Nombre de la Malla",
+    "nameRequired": "El nombre de la malla es obligatorio.",
+    "cancelButton": "Cancelar",
+    "saveButton": "Guardar",
+    "zoneStatisticsTitle": "Estadísticas de Zona",
+    "zoneStatisticsError": "No se pudieron cargar las estadísticas de la zona.",
+    "zoneName": "Nombre de la Zona",
+    "deviceCount": "Número de Dispositivos"
+  },
+  "meshDialog": {
+    "editTitle": "Editar Malla",
+    "createTitle": "Crear Nueva Malla",
+    "nameLabel": "Nombre de la Malla",
+    "nameRequired": "El nombre es obligatorio",
+    "osmTab": "OpenStreetMap",
+    "customMapTab": "Mapa Personalizado",
+    "getLocationButton": "Obtener Ubicación Actual",
+    "latitudeLabel": "Latitud",
+    "longitudeLabel": "Longitud",
+    "uploadLabel": "Subir Imagen de Mapa Personalizado",
+    "currentMapUrl": "URL del mapa actual:",
+    "cancelButton": "Cancelar",
+    "saveButton": "Guardar Cambios",
+    "createButton": "Crear",
+    "locationError": "No se pudo obtener tu ubicación.",
+    "geolocationNotSupported": "La geolocalización no es compatible con tu navegador.",
+    "nameMissing": "Por favor, introduce un nombre para la malla.",
+    "saveError": "Ocurrió un error al guardar la malla."
+  },
+  "zoneStatistics": {
+    "title": "Estadísticas de la Zona",
+    "subtitle": "Selecciona una zona para ver las estadísticas",
+    "showStatistics": "Mostrar estadísticas",
+    "loading": "Cargando estadísticas...",
+    "results": "Resultados"
+  },
+  "mapEditor": {
+    "createZoneTitle": "Crear Nueva Zona",
+    "createZoneMessage": "Introduce un nombre para la nueva zona:",
+    "createButton": "Crear",
+    "cancelButton": "Cancelar",
+    "selectMeshFirst": "Por favor, selecciona primero una malla"
+  },
+  "floatingSidebar": {
+    "mesh": "Malla",
+    "noMeshSelected": "Ninguna malla seleccionada",
+    "selectMesh": "Selecciona una malla",
+    "selectMeshButton": "Seleccionar Malla",
+    "zones": "Zonas",
+    "selectZone": "Selecciona una zona",
+    "noZones": "No hay zonas en esta malla.",
+    "createZoneButton": "Crear Zona",
+    "saveButton": "Guardar",
+    "undoButton": "Deshacer",
+    "editMode": "Modo de Edición",
+    "zonesLabel": "Zonas",
+    "devicesLabel": "Dispositivos"
+  },
+  "leafletMap": {
+    "saveZoneButton": "Guardar Zona",
+    "cancelButton": "Cancelar"
+  },
+  "mapsidebar": {
+    "undoTooltip": "Deshacer ediciones de zona no guardadas",
+    "saveTooltip": "Guardar Cambios de Zona",
+    "selectMeshTooltip": "Seleccionar Malla",
+    "editZonesTooltip": "Editar Zonas",
+    "createZoneTooltip": "Crear Nueva Zona",
+    "confirmTitle": "Confirmar",
+    "unsavedChanges": "Tienes cambios no guardados en la zona actual. ¿Estás seguro de que quieres descartarlos y cambiar a otra zona?",
+    "discardButton": "Descartar y Cambiar"
+  },
+  "reports": {
+    "title": "Mis Informes",
+    "description": "Esta página mostrará los informes del usuario."
+  },
+  "data": {
+    "title": "Exportación de Datos",
+    "description": "Exportar datos de sensores para análisis",
+    "entityType": "Tipo de Entidad",
+    "selectEntity": "Seleccionar Entidad",
+    "noResults": "No se encontraron resultados",
+    "fromDate": "Fecha de Inicio",
+    "toDate": "Fecha de Fin",
+    "exportButton": "Exportar Datos",
+    "mesh": "Malla",
+    "zone": "Zona",
+    "device": "Dispositivo",
+    "downloadingChunks": "Descargando {count} archivos...",
+    "exportNoFiles": "No se generaron archivos para exportar"
+  },
+  "resetPassword": {
+    "title": "Restablecer contraseña",
+    "newPasswordLabel": "Nueva contraseña",
+    "confirmPasswordLabel": "Confirmar nueva contraseña",
+    "submitButton": "Restablecer contraseña",
+    "tokenChecking": "Validando token...",
+    "tokenInvalid": "El enlace de restablecimiento no es válido o ha expirado.",
+    "success": "¡Contraseña restablecida con éxito! Ahora puedes iniciar sesión.",
+    "error": "No se pudo restablecer la contraseña.",
+    "backToLogin": "Volver al inicio de sesión"
+  },
+  "controlButton": {
+    "modeActive": "Modo {label} activo",
+    "switchTo": "Cambiar a modo {label}",
+    "disabled": "{label} (deshabilitado)"
+  },
+  "statistics": {
+    "loading": "Cargando estadísticas...",
+    "error": "Error al cargar estadísticas",
+    "periods": {
+      "day": "Últimas 24 Horas",
+      "week": "Últimos 7 Días",
+      "month": "Últimos 30 Días",
+      "year": "Últimos 12 Meses"
+    },
+    "temperature": "Temperatura",
+    "humidity": "Humedad",
+    "average": "Promedio",
+    "highest": "Máximo"
+  }
+}

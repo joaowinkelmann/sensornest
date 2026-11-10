@@ -1,0 +1,294 @@
+{
+  "home": {
+    "overview": {
+      "title": "Overview",
+      "totalDevices": "Total Devices",
+      "active": "Active",
+      "inactive": "Inactive",
+      "allTimeReadings": "All Time Readings",
+      "lastHour": "Last Hour",
+      "lastDay": "Last 24h",
+      "activeMeshes": "Active Meshes",
+      "error": "Failed to load statistics"
+    },
+    "quickActions": {
+      "title": "Quick Actions",
+      "meshes": "Meshes",
+      "meshesSubtitle": "Manage your mesh networks",
+      "devices": "Devices",
+      "devicesSubtitle": "View and configure devices",
+      "mapEditor": "Map Editor",
+      "mapEditorSubtitle": "Edit zones and positions",
+      "reports": "Reports",
+      "reportsSubtitle": "View detailed reports",
+      "data": "Data",
+      "dataSubtitle": "Export sensor data for analysis"
+    }
+  },
+  "mapControls": {
+    "buttons": {
+      "addVertex": "Add Point",
+      "removeVertex": "Remove Point",
+      "moveVertex": "Move Point",
+      "moveDevices": "Move Devices",
+      "newZone": "New Zone",
+      "panMap": "Pan Map"
+    },
+    "instructions": {
+      "add": "Click on the map to add a point",
+      "remove": "Click on a point to remove it",
+      "move": "Drag a point to move it",
+      "moveDevices": "Drag a device to change its position",
+      "pan": "Pan and zoom the map",
+      "noZoneSelected": "Select a zone to start editing"
+    }
+  },
+  "sidebar": {
+    "logoAlt": "SensorNest Logo",
+    "title": "SensorNest",
+    "home": "Overview",
+    "meshes": "Meshes",
+    "mapEditor": "Map Editor",
+    "devices": "Devices",
+    "reports": "Reports",
+    "data": "Data",
+    "profile": "Profile",
+    "logout": "Logout",
+    "user": "User",
+    "language": "Language"
+  },
+  "notifications": {
+    "meshSaved": "Mesh saved successfully",
+    "meshSelected": "Mesh selected",
+    "meshPleaseSelect": "Please select a mesh first",
+    "zoneSaved": "Zone saved successfully",
+    "zoneNoActive": "No active zone to save",
+    "zonePleaseSelect": "Please select a zone first",
+    "zoneSavedError": "Error saving zone",
+    "zoneCreated": "Zone created",
+    "zoneCreatedError": "Error creating zone",
+    "zoneUpdated": "Zone updated",
+    "zoneDeleted": "Zone deleted",
+    "deviceMoved": "Device position updated",
+    "deviceMovedError": "Error updating device position",
+    "noMeshesAvailable": "No meshes available. Please create a mesh first."
+  },
+  "login": {
+    "title": "Sign in to SensorNest",
+    "emailLabel": "Email address",
+    "emailRequired": "Please type your email",
+    "passwordLabel": "Password",
+    "passwordRequired": "Please type your password",
+    "signInButton": "Sign in",
+    "registerButton": "Create a new account",
+    "forgotPassword": "Forgot your password?",
+    "recoverPasswordTitle": "Recover Password",
+    "recoverPasswordInstructions": "Enter your email to receive password recovery instructions.",
+    "recoverPasswordError": "Error sending recovery email.",
+    "recoverPasswordSent": "Recovery instructions sent to your email.",
+    "recoverButton": "Send email"
+  },
+  "register": {
+    "title": "Create an Account",
+    "nameLabel": "Name",
+    "nameRequired": "Name is required",
+    "emailLabel": "Email",
+    "emailRequired": "Email is required",
+    "passwordLabel": "Password",
+    "passwordRequired": "Password is required",
+    "registerButton": "Register",
+    "loginButton": "Back to login",
+    "successMessage": "Registration successful! Please log in.",
+    "errorMessage": "Registration failed."
+  },
+  "profile": {
+    "title": "Edit Profile",
+    "nameLabel": "Name",
+    "nameRequired": "Name is required",
+    "emailLabel": "Email",
+    "saveButton": "Save",
+    "loading": "Loading profile..."
+  },
+  "devices": {
+    "title": "Device Manager",
+    "filterByMesh": "Filter by Mesh",
+    "filterByZone": "Filter by Zone",
+    "statisticsTitle": "Statistics for {deviceName}",
+    "statisticsError": "Could not load statistics.",
+    "closeButton": "Close",
+    "updateSuccess": "Device updated successfully!",
+    "dialogTitleEdit": "Edit Device",
+    "dialogTitleAdd": "Add New Device",
+    "deviceNameLabel": "Device Name",
+    "macAddressLabel": "MAC Address",
+    "zoneLabel": "Zone",
+    "nameRequired": "Device name is required.",
+    "macAddressRequired": "MAC address is required.",
+    "macAddressInvalid": "Invalid MAC address format.",
+    "zoneRequired": "Zone is required.",
+    "cancelButton": "Cancel",
+    "saveButton": "Save",
+    "deviceColorLabel": "Device Color",
+    "wakeUpIntervalLabel": "Wake Up Interval (seconds)",
+    "readingsPerBatchLabel": "Readings Per Batch",
+    "noColor": "No color",
+    "timeframes": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month"
+    },
+    "changeZone": {
+      "title": "Change Device Zone",
+      "selectZone": "Select a new zone",
+      "success": "Device zone updated successfully!",
+      "error": "Failed to update device zone.",
+      "noZones": "No zones in this mesh."
+    },
+    "contextDialog": {
+      "title": "Device",
+      "statisticsTab": "Statistics",
+      "zoneTab": "Zone"
+    }
+  },
+  "meshes": {
+    "title": "Meshes",
+    "createButton": "Create Mesh",
+    "statisticsTitle": "Statistics for {meshName}",
+    "statisticsError": "Could not load statistics.",
+    "closeButton": "Close",
+    "meshCreatedSuccess": "Mesh \"{meshName}\" created successfully!",
+    "meshUpdatedSuccess": "Mesh \"{meshName}\" updated successfully!",
+    "dialogTitleEdit": "Edit Mesh",
+    "dialogTitleCreate": "Create New Mesh",
+    "meshNameLabel": "Mesh Name",
+    "nameRequired": "Mesh name is required.",
+    "cancelButton": "Cancel",
+    "saveButton": "Save",
+    "zoneStatisticsTitle": "Zone Statistics",
+    "zoneStatisticsError": "Could not load zone statistics.",
+    "zoneName": "Zone Name",
+    "deviceCount": "Device Count"
+  },
+  "meshDialog": {
+    "editTitle": "Edit Mesh",
+    "createTitle": "Create New Mesh",
+    "nameLabel": "Mesh Name",
+    "nameRequired": "Name is required",
+    "osmTab": "OpenStreetMap",
+    "customMapTab": "Custom Map",
+    "getLocationButton": "Get Current Location",
+    "latitudeLabel": "Latitude",
+    "longitudeLabel": "Longitude",
+    "uploadLabel": "Upload Custom Map Image",
+    "currentMapUrl": "Current map URL:",
+    "cancelButton": "Cancel",
+    "saveButton": "Save Changes",
+    "createButton": "Create",
+    "locationError": "Could not get your location.",
+    "geolocationNotSupported": "Geolocation is not supported by your browser.",
+    "nameMissing": "Please enter a name for the mesh.",
+    "saveError": "An error occurred while saving the mesh."
+  },
+  "zoneStatistics": {
+    "title": "Zone Statistics",
+    "subtitle": "Select a zone to view statistics",
+    "showStatistics": "Show statistics",
+    "loading": "Loading statistics...",
+    "results": "Results"
+  },
+  "mapEditor": {
+    "createZoneTitle": "Create New Zone",
+    "createZoneMessage": "Enter a name for the new zone:",
+    "createButton": "Create",
+    "cancelButton": "Cancel",
+    "selectMeshFirst": "Please select a mesh first"
+  },
+  "floatingSidebar": {
+    "mesh": "Mesh",
+    "noMeshSelected": "No mesh selected",
+    "selectMesh": "Select a mesh",
+    "selectMeshButton": "Select Mesh",
+    "zones": "Zones",
+    "selectZone": "Select a zone",
+    "noZones": "No zones in this mesh.",
+    "createZoneButton": "Create Zone",
+    "saveButton": "Save",
+    "undoButton": "Undo",
+    "editMode": "Edit Mode",
+    "zonesLabel": "Zones",
+    "devicesLabel": "Devices"
+  },
+  "leafletMap": {
+    "saveZoneButton": "Save Zone",
+    "cancelButton": "Cancel"
+  },
+  "mapsidebar": {
+    "undoTooltip": "Undo unsaved zone edits",
+    "saveTooltip": "Save Zone Changes",
+    "selectMeshTooltip": "Select Mesh",
+    "editZonesTooltip": "Edit Zones",
+    "createZoneTooltip": "Create New Zone",
+    "confirmTitle": "Confirm",
+    "unsavedChanges": "You have unsaved changes in the current zone. Are you sure you want to discard them and switch to another zone?",
+    "discardButton": "Discard & Switch"
+  },
+  "reports": {
+    "title": "My Reports",
+    "description": "This page will display user reports."
+  },
+  "data": {
+    "title": "Data Export",
+    "description": "Export sensor data for analysis",
+    "entityType": "Entity Type",
+    "selectEntity": "Select Entity",
+    "noResults": "No results found",
+    "fromDate": "From Date",
+    "toDate": "To Date",
+    "exportButton": "Export Data",
+    "mesh": "Mesh",
+    "zone": "Zone",
+    "device": "Device",
+    "downloadingChunks": "Downloading {count} files...",
+    "exportNoFiles": "No files were generated for export"
+  },
+  "resetPassword": {
+    "title": "Reset Password",
+    "newPasswordLabel": "New Password",
+    "confirmPasswordLabel": "Confirm New Password",
+    "submitButton": "Reset Password",
+    "tokenChecking": "Validating token...",
+    "tokenInvalid": "The reset link is invalid or has expired.",
+    "success": "Password reset successfully! You can now log in.",
+    "error": "Failed to reset password.",
+    "backToLogin": "Back to login"
+  },
+  "controlButton": {
+    "modeActive": "{label} mode active",
+    "switchTo": "Switch to {label} mode",
+    "disabled": "{label} (disabled)"
+  },
+  "statistics": {
+    "loading": "Loading statistics...",
+    "error": "Error loading statistics",
+    "periods": {
+      "day": "Last 24 Hours",
+      "week": "Last 7 Days",
+      "month": "Last 30 Days",
+      "year": "Last 12 Months"
+    },
+    "temperature": "Temperature",
+    "humidity": "Humidity",
+    "average": "Average",
+    "highest": "Highest"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close"
+  },
+  "buttons": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "save": "Save"
+  }
+}
