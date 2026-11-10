@@ -93,10 +93,6 @@ npm test        # vitest
 
 Merged with `git subtree add --prefix=<dir> <source> main` per component, so `git log --all --graph` shows every original commit. Path-filtered log (`git log -- web/...`) shows one commit per prefix — expected for subtree merges; use `git log --merges` + second parents for archaeology.
 
-### Academic context
-
-Full TCC notes (monograph PDF, energy analyses, provisioning flow sketches, API docs draft) live in the private Notion page `[n] SensorNest (TCC)`. Public portfolio surface is this repo.
-
 ---
 
 ## Português
@@ -176,10 +172,6 @@ npm test        # vitest
 
 Unido com `git subtree add --prefix=<dir> <origem> main` por componente; `git log --all --graph` mostra todos os commits originais. Log filtrado por caminho (`git log -- web/...`) mostra um commit por prefixo — esperado em merges subtree; use `git log --merges` + segundos pais para arqueologia.
 
-### Contexto acadêmico
-
-As notas completas do TCC (PDF da monografia, análises energéticas, rascunhos do fluxo de provisionamento, rascunho da doc da API) estão na página privada do Notion `[n] SensorNest (TCC)`. A vitrine pública do portfólio é este repo.
-
 ---
 
 ## Español
@@ -258,7 +250,3 @@ npm test        # vitest
 ### Historial
 
 Unido con `git subtree add --prefix=<dir> <origen> main` por componente; `git log --all --graph` muestra todos los commits originales. El log filtrado por ruta (`git log -- web/...`) muestra un commit por prefijo — esperado en merges subtree; usa `git log --merges` + segundos padres para arqueología.
-
-### Contexto académico
-
-Las notas completas del TCC (PDF de la monografía, análisis energéticos, bocetos del flujo de aprovisionamiento, borrador de la doc de la API) están en la página privada de Notion `[n] SensorNest (TCC)`. La vitrina pública del portafolio es este repo.
