@@ -5,7 +5,7 @@
 <h1 align="center">sensornest</h1>
 
 <p align="center">
-  <a href="#english">English</a> · <a href="#português">Português</a>
+  <a href="#english">English</a> · <a href="#português">Português</a> · <a href="#español">Español</a>
 </p>
 
 <p align="center">
@@ -179,3 +179,86 @@ Unido com `git subtree add --prefix=<dir> <origem> main` por componente; `git lo
 ### Contexto acadêmico
 
 As notas completas do TCC (PDF da monografia, análises energéticas, rascunhos do fluxo de provisionamento, rascunho da doc da API) estão na página privada do Notion `[n] SensorNest (TCC)`. A vitrine pública do portfólio é este repo.
+
+---
+
+## Español
+
+Monorrepo unificado de **SensorNest** — TCC (trabajo de fin de grado) de [João Vitor Winkelmann](https://github.com/joaowinkelmann): una plataforma eficiente, escalable y segura de redes de sensores en malla para el monitoreo ambiental, con recolección cifrada, persistencia en la nube y front-end espacial con acceso controlado por usuarios.
+
+El historial de los tres repos originales se preservó mediante merges con `git subtree` (343 commits). Los originales siguen en línea tal como están:
+
+| Dir | Origen | Rol |
+|-----|--------|-----|
+| [`firmware/`](./firmware/) | [esp-sensornest](https://github.com/joaowinkelmann/esp-sensornest) | Firmware [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/): nodos sensores + controlador, red en malla, portal de aprovisionamiento Wi-Fi |
+| [`api/`](./api/) | [api-sensornest](https://github.com/joaowinkelmann/api-sensornest) | Backend [NestJS](https://nestjs.com/): autenticación, persistencia, estadísticas, teselas de mapa, subidas |
+| [`web/`](./web/) | [front-sensornest](https://github.com/joaowinkelmann/front-sensornest) | Admin [Vue 3](https://vuejs.org/) + [Quasar](https://quasar.dev/): visualización espacial, editor de mapa, informes |
+
+```
+nodos sensores (ESP32) --ESP-NOW / Wi-Fi Mesh--> controlador (ESP32) --HTTPS--> api/ --Postgres/OCI--> web/
+```
+
+### Objetivos
+
+- Estudiar WSNs, topologías en malla, protocolos de bajo consumo ([ESP32-C3](https://www.espressif.com/en/products/socs/esp32-c3)), cifrado, autenticación de usuarios, persistencia y visualización espacial.
+- Construir el hardware/firmware de los nodos y del controlador con comunicación Mesh, bajo consumo y recolección/transmisión cifrada.
+- Construir el backend ([`api/`](./api/)) para autenticación, gestión de usuarios/dispositivos y persistencia en la nube, y el front-end ([`web/`](./web/)) para visualización interactiva en mapa con control de acceso.
+- Validar eficiencia, escalabilidad y seguridad: pruebas de consumo, alcance de la malla, fiabilidad de la transmisión cifrada, visualización + control de acceso.
+
+### [`firmware/`](./firmware/)
+
+[ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/) (C). Objetivos incluyen ESP32, ESP32-C3, ESP32-S3 (la prueba de estrés energético se ejecutó en ESP32-S3 @ 80 MHz).
+
+- [`main/src/app/sensornest.c`](./firmware/main/src/app/sensornest.c) — punto de entrada; [`roles/`](./firmware/main/src/roles/) — `controller_role`, `worker_role`, `role_manager`
+- [`net/`](./firmware/main/src/net/) — `espnow_manager`, `wifi_manager`, `rest_client`, `rest_server`, `captive_dns`
+- [`sensor/`](./firmware/main/src/sensor/) — lectura de sensores ([DHT](https://github.com/UncleRus/esp-idf-lib) vía `esp-idf-lib/dht`); [`storage/`](./firmware/main/src/storage/) ([LittleFS](https://github.com/joltwallet/esp_littlefs)), [`security/`](./firmware/main/src/security/), [`indicator/`](./firmware/main/src/indicator/) (tira LED), [`front/`](./firmware/front/) — portal de aprovisionamiento Wi-Fi
+- Flujo de aprovisionamiento: en el primer arranque sin credenciales guardadas, abre un AP abierto `ESP-{shortID}` con portal cautivo (`index.html`); el usuario se conecta por teléfono/PC, ingresa el Wi-Fi cercano e inicia sesión en la API; el dispositivo se registra a ese usuario vía POST y sale del setup para actuar como recolector.
+
+```bash
+cd firmware
+idf.py set-target esp32s3   # o esp32c3
+idf.py build
+idf.py -p /dev/ttyUSB0 flash monitor
+```
+
+Notas de energía (investigación del TCC): los reguladores [AMS1117](https://www.advanced-monolithic.com/pdf/ds1117.pdf) desperdician ~4–5 mA en reposo — evitar en nodos a batería; preferir LDOs SOT-23-5 eficientes y conmutación de alimentación.
+
+### [`api/`](./api/)
+
+[NestJS](https://nestjs.com/) 11 + [Fastify](https://fastify.dev/) + [Prisma](https://www.prisma.io/) 7 + [Postgres](https://www.postgresql.org/). Prefijo global `sensornest/api/`, [Swagger](https://swagger.io/) en `sensornest/api/docs`. Auth JWT global (`AuthGuard`), correo vía [OCI Email Delivery](https://docs.oracle.com/en-us/iaas/Content/Email/Concepts/overview.htm) (plantillas Handlebars).
+
+Módulos ([`api/src/`](./api/src/)): `auth`, `users`, `meshes`, `zones`, `devices`, `readings`, `statistics` (métricas por mesh/zona/dispositivo: máximos y promedios del día/semana/mes/año), `data-exporter`, `uploader` (multipart, máx. 5 MB), `tiler` (teselas de mapa), `device-checker` (marca dispositivos inactivos), `health`, `mailer`.
+
+Modelo de datos ([`api/prisma/schema.prisma`](./api/prisma/schema.prisma)): `User`, `Mesh`, `Zone`, `Device`, `Reading` (+ migraciones, [`seed.ts`](./api/prisma/seed.ts)).
+
+```bash
+cd api
+cp .env.template .env   # completar DATABASE_URL, JWT_SECRET, OCI_* (bucket sensornest-maps, correo, tiling)
+npm install
+npx prisma migrate dev
+npm run start:dev
+```
+
+Env principal ([`api/.env.template`](./api/.env.template)): `DATABASE_URL`, `APP_PORT`, `APP_BASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `OCI_REGION/TENANCY/USER/FINGERPRINT/PRIVATE_KEY(_PATH)/NAMESPACE/BUCKET`, `OCI_EMAIL_*`, `MAP_TILE_FORMAT/QUALITY/EFFORT/MAX_ZOOM`, `TIME_BEFORE_DEVICE_INACTIVE`.
+
+### [`web/`](./web/)
+
+[Vue 3](https://vuejs.org/) + [Quasar](https://quasar.dev/) 2 + [Vite](https://vite.dev/) 7 + [Pinia](https://pinia.vuejs.org/) + [vue-router](https://router.vuejs.org/) + [axios](https://axios-http.com/). Mapas: [Leaflet](https://leafletjs.com/) + [leaflet-draw](https://github.com/Leaflet/Leaflet.draw) (editor de zonas, mín. 3 vértices para guardar). Gráficos: [ECharts](https://echarts.apache.org/). i18n: PT/EN.
+
+Rutas ([`web/src/views/`](./web/src/views/)): `auth/` (login, registro, restablecer contraseña), `home/`, `meshes/`, `zones/`, `devices/`, `data/`, `map-editor/`, `reports/`.
+
+```bash
+cd web
+cp .env.template .env   # VITE_API_URL=https://<host>/sensornest/api/ VITE_PORT VITE_OCI_MAP_TOKEN
+npm install
+npm run dev     # preview: npm run preview | servir: npm start (pm2, puerto 7772)
+npm test        # vitest
+```
+
+### Historial
+
+Unido con `git subtree add --prefix=<dir> <origen> main` por componente; `git log --all --graph` muestra todos los commits originales. El log filtrado por ruta (`git log -- web/...`) muestra un commit por prefijo — esperado en merges subtree; usa `git log --merges` + segundos padres para arqueología.
+
+### Contexto académico
+
+Las notas completas del TCC (PDF de la monografía, análisis energéticos, bocetos del flujo de aprovisionamiento, borrador de la doc de la API) están en la página privada de Notion `[n] SensorNest (TCC)`. La vitrina pública del portafolio es este repo.
