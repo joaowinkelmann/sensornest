@@ -1,0 +1,116 @@
+name: SensorNest API Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Unit & Integration Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Set up test environment
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          JWT_SECRET: "A_very_secret_JWT_key_for_E2E_purposes_#confia"
+          JWT_EXPIRES_IN: "3600s"
+        run: |
+          echo "DATABASE_URL=$DATABASE_URL" >> $GITHUB_ENV
+          echo "JWT_SECRET=$JWT_SECRET" >> $GITHUB_ENV
+          echo "JWT_EXPIRES_IN=$JWT_EXPIRES_IN" >> $GITHUB_ENV
+
+      # Generate Prisma client with test database
+      - name: Generate Prisma Client
+        run: bunx prisma generate
+
+      # Run database migrations
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+        run: bunx prisma migrate deploy
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          JWT_SECRET: "A_very_secret_JWT_key_for_E2E_purposes_#confia"
+          JWT_EXPIRES_IN: "3600s"
+        run: bun test
+
+      - name: Run E2E tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          JWT_SECRET: "A_very_secret_JWT_key_for_E2E_purposes_#confia"
+          JWT_EXPIRES_IN: "3600s"
+        run: bun run test:e2e
+
+      - name: Ensure NestJS builds
+        run: bun run build
+
+  deploy:
+    name: Deploy over SSH
+    runs-on: ubuntu-latest
+    needs: test # Somente executa se passou os testes
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copy files with SSH
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          # -a implies -rlptgoD. Kept compression and omit-dir-times, removed -v
+          # --info=stats prints only a brief summary at the end.
+          ARGS: "-azO --delete --info=stats"
+          SOURCE: "./"
+          REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+          REMOTE_USER: ${{ secrets.REMOTE_USER }}
+          REMOTE_PORT: 443
+          TARGET: ${{ secrets.TARGET_DIR }}
+          EXCLUDE: "/node_modules/, **.env, .env.local, .gitignore, .git/, .github/, .vscode/"
+          SCRIPT_BEFORE: |
+            set -euo pipefail
+            echo "===> Starting deployment"
+            sudo systemctl stop nginx
+            echo "|||| Running halt.sh..."
+            cd ${{ secrets.TARGET_DIR }}
+            bash .scripts/halt.sh
+          SCRIPT_AFTER: |
+            set -euo pipefail
+            set -x
+            whoami
+            cd ${{ secrets.TARGET_DIR }}
+            sudo systemctl start nginx
+            echo "|||| Running run.sh..."
+            chmod +x .scripts/*.sh
+            bash .scripts/run.sh
+            echo "===> Finished deployment"

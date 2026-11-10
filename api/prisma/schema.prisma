@@ -1,0 +1,154 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String   @default("User")
+  insDthr      DateTime @default(now()) @map("ins_dthr")
+  altDthr      DateTime @updatedAt @map("alt_dthr")
+  passwordHash String   @map("password_hash")
+
+  passwordResetToken   String?  @unique @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
+
+  meshes Mesh[]
+  devices Device[]
+
+  @@map("user")
+}
+
+model Mesh {
+  id      String   @id @default(uuid())
+  name    String
+  insDthr DateTime @default(now()) @map("ins_dthr")
+  altDthr DateTime @updatedAt @map("alt_dthr")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Ponto central dentro do mapa do OpenStreetMap (caso não tenha um mapa setado)
+  lat Float // Latitude
+  lon Float // Longitude
+
+  // URL do mapa customizado, se houver, utilzando o padrão /{zoom}/{x}/{y}.png ou algo parecido
+  mapUrl String? @map("map_url") // URL do mapa customizado, se houver
+  mapMaxZoom Int?   @map("map_max_zoom")
+  mapMinZoom Int?   @map("map_min_zoom")
+
+  // Uma Mesh tem várias Zones
+  zones Zone[]
+
+  // Uma Mesh tem vários Devices
+  devices Device[]
+
+  @@map("mesh")
+}
+
+// Representa uma área poligonal específica dentro de uma Mesh para agrupar dispositivos
+model Zone {
+  id      String   @id @default(uuid())
+  name    String
+  insDthr DateTime @default(now()) @map("ins_dthr")
+  altDthr DateTime @updatedAt @map("alt_dthr")
+
+  // Vértices que definem a forma do polígono em um mapa virtual.
+  // Posição relativa ao centro da Mesh, ou seja, (0,0) é o centro da Mesh.
+  // Armazenado como JSON para ser flexível, por exemplo, [{ "x": 0, "y": -50 }, { "x": 100, "y": 50 }, ...]
+  vertices Json
+
+  // Cada Zone pertence a uma Mesh somente
+  meshId String @map("mesh_id")
+  mesh   Mesh   @relation(fields: [meshId], references: [id], onDelete: Cascade)
+
+  // Para estilização da Zone, vamos atribuir um campo para cor
+  bgColor String? @map("bg_color") // Cor de fundo em formato hexadecimal
+
+  // Os dispositvos pertenecem a uma Zone
+  devices Device[]
+
+  @@map("zone")
+}
+
+// Dispositivo coletor e emissor de dados
+model Device {
+  id          String   @id @default(uuid())
+  insDthr     DateTime @default(now()) @map("ins_dthr")
+  altDthr     DateTime @updatedAt @map("alt_dthr")
+  macAddress  String   @unique @map("mac_address")
+  name        String
+  description String?
+
+  // Posição relativa do dispositivo ao centro da Mesh no mapa virtual
+  x Float
+  y Float
+
+  // Status e função do dispositivo
+  status DeviceStatus @default(PENDING)
+  role   DeviceRole   @default(WORKER)
+
+  // Dispositivo vai sempre pertencer a uma Mesh
+  meshId String @map("mesh_id")
+  mesh   Mesh   @relation(fields: [meshId], references: [id], onDelete: Cascade)
+
+  // Zona pode ser nula, indicando que o dispositivo não está atribuído a nenhuma zona específica
+  zoneId String? @map("zone_id")
+  zone   Zone?   @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+
+  // Sempre é um usuário que vai cadastrar e possuir o dispositivo
+  userId String @map("user_id") 
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Parametrizações / Configurações do dispositivo
+  deviceColor String? @map("color") // Cor do dispositivo para visualização no mapa e posterior identificação em tempo real
+  // wakeUpInterval Int? @map("wake_up_interval") // Intervalo de tempo em segundos entre as leituras de sensores, e por consequência, o período de sono do dispositivo
+  wakeUpInterval Int? @map("wake_up_interval") @default(3600) // Intervalo de tempo em segundos entre as leituras de sensores, e por consequência, o período de sono do dispositivo. Padrão 1 hora (3600 segundos)
+  readingsPerBatch Int? @map("readings_per_batch") @default(1) // Quantidade de leituras que o dispositivo deve armazenar antes de enviar um lote para o Controller
+
+  readings Reading[]
+
+  @@map("device")
+}
+
+// Representa uma leitura de sensores realizada por um Device
+model Reading {
+  id      String   @id @default(uuid())
+  insDthr DateTime @default(now()) @map("ins_dthr")
+  altDthr DateTime @updatedAt @map("alt_dthr")
+
+  // Momento da leitura
+  readingTime DateTime @map("reading_time")
+
+  // Valores dos sensores
+  temperature Float?
+  humidity    Float?
+
+  // Dispositivo que fez a leitura
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@map("reading")
+}
+
+enum DeviceStatus {
+  PENDING // Aguardando ativação/configuração após recém descoberto e adicionado à Mesh automaticamente.
+  ACTIVE // Configurado e enviando dados.
+  INACTIVE // Configurado porém não enviou dados por um período prolongado.
+  DISABLED // Manualmente desativado pelo usuário.
+}
+
+enum DeviceRole {
+  WORKER // Dispositivo que coleta dados de sensores periodicamente e envia para o Controller. Faz uso de descanso profundo.
+  CONTROLLER // Tem conexão ativa com a rede AP/Internet. É quem envia os dados para a API. Sempre ativo. Também faz leituras de sensores.
+}
